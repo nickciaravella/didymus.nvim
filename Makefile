@@ -3,7 +3,7 @@ DEPS := deps
 MINI := $(DEPS)/mini.nvim
 TEST_PATH ?= tests
 
-.PHONY: test test-unit test-integration test-file deps fmt fmt-check clean
+.PHONY: test test-unit test-e2e test-file deps fmt fmt-check clean
 
 ## Run all *.test.lua files under TEST_PATH (headless).
 test: deps
@@ -12,10 +12,10 @@ test: deps
 test-unit:
 	$(MAKE) test TEST_PATH=tests/unit
 
-test-integration:
-	$(MAKE) test TEST_PATH=tests/integration
+test-e2e:
+	$(MAKE) test TEST_PATH=tests/e2e
 
-## Run one test file: make test-file FILE=tests/integration/startup.test.lua
+## Run one test file: make test-file FILE=tests/e2e/startup.test.lua
 test-file: deps
 	$(NVIM) --headless --noplugin -u tests/minimal_init.lua -c "lua MiniTest.run_file('$(FILE)')"
 
