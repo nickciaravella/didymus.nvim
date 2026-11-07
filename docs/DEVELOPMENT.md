@@ -40,6 +40,7 @@ flowchart TB
 | Agent scope | The agent works in all buffers, also outside a review. Only one agent session runs at a time. |
 | Agent backends | `terminal` and `test` in v1. The interface must also fit ACP. |
 | Agent views | A float, or a split on the right. |
+| Agent commands | `start`, `toggle` and `stop`. Most users only use `toggle`. |
 | Agent context | The location and the code in a fenced block. |
 | Agent in end-to-end tests | The `test` backend for the flows. A fake agent CLI for the terminal backend. |
 | Text | STE100. See [`AGENTS.md`](../AGENTS.md#writing-rules-ste100). |
@@ -57,9 +58,13 @@ flowchart TB
 ## Code structure
 
 ```text
-plugin/didymus.lua     :Didymus command (stub)
-lua/didymus/init.lua   setup()
-lua/didymus/health.lua :checkhealth didymus
-tests/unit/didymus/    unit tests, mirror lua/didymus/
-tests/e2e/             end-to-end tests, by feature
+plugin/didymus.lua           :Didymus command and <Plug> mappings
+lua/didymus/init.lua         setup()
+lua/didymus/config.lua       defaults and user config
+lua/didymus/command.lua      :Didymus subcommands and completion
+lua/didymus/health.lua       :checkhealth didymus
+lua/didymus/agent/           the agent. See architecture/agent.md.
+tests/unit/didymus/          unit tests, mirror lua/didymus/
+tests/e2e/                   end-to-end tests, by feature
+tests/fixtures/              files for tests, such as the fake agent
 ```

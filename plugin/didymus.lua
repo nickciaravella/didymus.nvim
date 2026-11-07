@@ -9,5 +9,17 @@ if vim.fn.has("nvim-0.12") == 0 then
 end
 
 vim.api.nvim_create_user_command("Didymus", function(cmd)
-  require("didymus").command(cmd.fargs)
-end, { nargs = "*", desc = "didymus.nvim" })
+  require("didymus.command").run(cmd.args)
+end, {
+  nargs = "*",
+  desc = "didymus.nvim",
+  complete = function(arglead, cmdline, cursorpos)
+    return require("didymus.command").complete(arglead, cmdline, cursorpos)
+  end,
+})
+
+for _, action in ipairs({ "start", "toggle", "stop" }) do
+  vim.keymap.set({ "n", "t" }, ("<Plug>(didymus-agent-%s)"):format(action), function()
+    require("didymus.agent")[action]()
+  end, { desc = "didymus: agent " .. action })
+end

@@ -57,6 +57,21 @@ End-to-end tests drive a child Neovim the way a user does, and check the result 
 
 See `tests/e2e/startup.test.lua` for an example.
 
+### The fake agent
+
+`tests/fixtures/fake_agent.lua` acts like an agent CLI. Use it in place of a real agent in end-to-end tests:
+
+```lua
+{ vim.v.progpath, "--clean", "-l", "tests/fixtures/fake_agent.lua", "--name", "test" }
+```
+
+| Argument | Behavior |
+| --- | --- |
+| `--name <name>` | Show `fake agent <name>` as the banner. |
+| `--exit <code>` | Exit with `<code>` after the first line of input. |
+
+The agent starts in a separate process. Do not use a fixed delay. Poll the agent buffer until the text shows. See `tests/e2e/agent/session.test.lua`.
+
 ### Integration tests
 
 Integration tests check that a provider, such as the GitHub provider, follows the provider interface. Keep them small. Test only the behavior that the interface needs.
