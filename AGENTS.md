@@ -11,6 +11,7 @@ Rules and references for AI agents that work on didymus.nvim.
 | [`docs/TESTING.md`](docs/TESTING.md) | How to run and write tests. |
 | [`docs/TASK_TRACKING.md`](docs/TASK_TRACKING.md) | Epics, labels and issues. |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Key terms. |
+| [`docs/architecture/agent.md`](docs/architecture/agent.md) | The design and work plan of the `agent` epic. |
 | [`docs/reference/design-prompt.md`](docs/reference/design-prompt.md) | The reference file. See below. |
 
 ### The reference file
