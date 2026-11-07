@@ -80,3 +80,4 @@ Be concise and simple. Only write code, comments or documentation that is useful
 
 1. Run `make test` and `make fmt-check`.
 2. Give the user a short manual checklist for each change that a person can see.
+3. Use the `submit-pr` skill (`.claude/skills/submit-pr/SKILL.md`) to open a pull request.
