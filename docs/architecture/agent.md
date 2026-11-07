@@ -30,6 +30,8 @@ These features come later:
 | A7 | Send submits the context and the prompt. It does not show the agent. |
 | A8 | The context is the location and the code in a fenced block. |
 | A9 | The backends are `terminal` and `test`. The interface must also fit an ACP backend. |
+| A10 | `start` starts the agent and does not show it. `toggle` starts the agent if necessary, and shows or hides the view. `stop` ends the agent and closes the view. |
+| A11 | If the agent runs, `start` and `toggle` do not start a new agent. If their `cmd` is different, they show a warning. |
 
 ## Parts
 
@@ -91,16 +93,19 @@ Calls go in one direction: `command` → `agent/init` → `session` → `view` a
 ---@class didymus.agent.BackendOpts
 ---@field cmd string|string[] A string runs through 'shell'.
 ---@field cwd string
+---@field width integer       The size before a view shows the buffer.
+---@field height integer
 ---@field on_exit fun(code: integer)
 
 --- A backend module returns `{ new = fun(opts: didymus.agent.BackendOpts): didymus.agent.Backend }`.
+--- `new()` throws an error if the agent cannot start.
 ---@class didymus.agent.Backend
 ---@field append fun(self, prompt: didymus.agent.Prompt) Put the prompt in the agent input.
 ---@field send fun(self, prompt: didymus.agent.Prompt)   Put the prompt in the agent input and submit it.
 ---@field buf fun(self): integer?                         The buffer for the view. Nil means no view.
 ---@field focus? fun(self, win: integer)                  Called after the view focuses `win`.
 ---@field is_running fun(self): boolean
----@field stop fun(self)
+---@field stop fun(self)                                  Stop the agent and delete the buffer.
 ```
 
 A backend obeys these rules:
@@ -117,16 +122,20 @@ The other parts have these interfaces:
 
 --- session.lua. It is an object, so that a review can have its own session later.
 ---@class didymus.agent.Session
+---@field cmd string|string[]
 ---@field new fun(opts: { cmd: string|string[], cwd: string, backend: string }): didymus.agent.Session Start the backend.
+---@field restart fun(self, opts: { cmd: string|string[], cwd: string }) Start a new backend. Delete the buffer of the old backend.
 ---@field show fun(self, kind: didymus.agent.ViewKind) Show the backend buffer in the view. Then call `backend:focus()`.
 ---@field hide fun(self)
+---@field is_visible fun(self): boolean
 ---@field append fun(self, prompt: didymus.agent.Prompt)
 ---@field send fun(self, prompt: didymus.agent.Prompt)
----@field stop fun(self)
+---@field stop fun(self) Hide the view and stop the backend.
 ---@field is_running fun(self): boolean
 
 --- view.lua. One window in the current tabpage.
 ---@class didymus.agent.View
+---@field size fun(kind: didymus.agent.ViewKind): integer, integer The width and height of the window that `show()` opens.
 ---@field show fun(self, buf: integer, kind: didymus.agent.ViewKind): integer Return the window. Change its kind if necessary.
 ---@field hide fun(self) Close the window. The buffer stays.
 ---@field is_visible fun(self): boolean
@@ -147,26 +156,28 @@ The other parts have these interfaces:
 
 ```lua
 local agent = require("didymus.agent")
-agent.open({ cmd = "codex", view = "float" }) -- start if necessary, show and focus
-agent.toggle({ view = "split" })             -- show or hide
-agent.stop()
-agent.append()                               -- the current line, or the selection in visual mode
-agent.send()                                 -- open the input float
-agent.send({ text = "Explain this." })       -- submit at once, with no input float
+agent.start({ cmd = "codex" })                  -- start if necessary, do not show
+agent.toggle({ cmd = "codex", view = "float" }) -- start if necessary, then show and focus, or hide
+agent.stop()                                    -- end the agent and close the view
+agent.append()                                  -- the current line, or the selection in visual mode
+agent.send()                                    -- open the input float
+agent.send({ text = "Explain this." })          -- submit at once, with no input float
 ```
+
+Most users only use `toggle`. Use `start` to start the agent before you show it.
 
 All options are optional. `cmd` and `view` use the config if you do not give them.
 
 ```text
-:Didymus agent open [float|split] [cmd]
-:Didymus agent toggle [float|split]
+:Didymus agent start [cmd]
+:Didymus agent toggle [float|split] [cmd]
 :Didymus agent stop
 :[range]Didymus agent append
 :[range]Didymus agent send [text]
 ```
 
-- `[cmd]` is the rest of the line. It runs through 'shell'.
-- Each action has a `<Plug>(didymus-agent-…)` mapping for normal and visual mode.
+- `[cmd]` is the rest of the line. It runs through 'shell'. If the agent runs, didymus does not use it.
+- Each action has a `<Plug>(didymus-agent-…)` mapping. `start`, `toggle` and `stop` work in normal and terminal mode. `append` and `send` work in normal and visual mode.
 - There are no default keymaps.
 
 The config defaults:
@@ -187,13 +198,24 @@ A size below 1 is a fraction of the editor size.
 
 ## Flows
 
-### Open
+### Start
 
-1. If no session runs, start the backend with `cmd` and the current directory.
-2. Show the backend buffer in the view, and focus the window.
-3. Call `backend:focus(win)`. The terminal backend starts terminal mode.
+1. If no session runs, start the backend with `cmd` and the current directory. Use the size of the view.
+2. Show the message "started `<cmd>`".
 
 If a session runs with a different `cmd`, keep it and show a warning. To change the command, stop the session first.
+
+### Toggle
+
+1. If the view is visible, hide it. Stop here. The agent continues.
+2. If no session runs, start one, as in Start.
+3. Show the backend buffer in the view, and focus the window.
+4. Call `backend:focus(win)`. The terminal backend starts terminal mode.
+
+### Stop
+
+1. Hide the view.
+2. Stop the backend. The backend deletes its buffer.
 
 ### Append
 
@@ -211,8 +233,8 @@ If a session runs with a different `cmd`, keep it and show a warning. To change 
 ### Exit
 
 1. The backend calls `on_exit(code)`. Show the exit code.
-2. Keep the buffer, so that the user can read the last output.
-3. The next open, append or send starts a new session. Tell the user that it is a new conversation.
+2. Keep the buffer, so that the user can read the last output. The terminal backend leaves terminal mode, because the next key in terminal mode deletes the buffer.
+3. The next start, toggle, append or send restarts the session. Restart deletes the old buffer. Tell the user that it is a new conversation.
 
 ## Text format
 
@@ -235,11 +257,12 @@ Explain this.
 
 | Step | Behavior |
 | --- | --- |
-| Start | Make a buffer with `bufhidden=hide`. Call `jobstart(cmd, { term = true, cwd = cwd })` in it with `nvim_buf_call()`. This works with no window, so send can start a hidden agent. |
+| Start | Make a buffer with `bufhidden=hide`. Call `jobstart(cmd, { term = true, cwd = cwd, width = width, height = height })` in it with `nvim_buf_call()`. This works with no window, so `start` and send can start a hidden agent. Without `width` and `height`, the pty gets the size of a small hidden window. |
 | Ready | Queue input until the first output, plus `terminal.ready_delay`. |
 | Input | Write the text with `chansend()` in bracketed paste (`ESC[200~` … `ESC[201~`). Without bracketed paste, each newline submits. |
 | Submit | Send `\r` after `terminal.submit_delay`. Some TUIs ignore an Enter that comes in the same write as the paste. |
 | Focus | `startinsert`. |
+| Exit | If the agent buffer is current in terminal mode, `stopinsert`. Call `on_exit` after the mode change, because the mode change clears the message area. |
 
 ## Test backend
 
@@ -262,7 +285,7 @@ Explain this.
 | --- | --- |
 | `prompt` | Unit tests for the context and the text format. |
 | Input float | End-to-end tests with screenshots. |
-| Open, toggle, stop, views and exit | End-to-end tests with the terminal backend and the fake agent. |
+| Start, toggle, stop, views and exit | End-to-end tests with the terminal backend and the fake agent. |
 | Terminal input | End-to-end tests with the fake agent. |
 | Append and send | End-to-end tests with the test backend. |
 | Real agents | A manual check with `claude` and `codex` in each task that changes the terminal backend. |
@@ -298,7 +321,7 @@ flowchart LR
 
 | Task | Content | Needs |
 | --- | --- | --- |
-| 1. [Agent in a split](https://github.com/nickciaravella/didymus.nvim/issues/4) | `config.lua` and `command.lua`. `:Didymus agent open`, `toggle` and `stop`. The session, the split view, the start and exit of the terminal backend, and the fake agent (output only). | None |
+| 1. [Agent in a split](https://github.com/nickciaravella/didymus.nvim/issues/4) | `config.lua` and `command.lua`. `:Didymus agent start`, `toggle` and `stop`. The session, the split view, the start and exit of the terminal backend, and the fake agent (output only). | None |
 | 2. [Prompt format](https://github.com/nickciaravella/didymus.nvim/issues/5) | `prompt.lua`: the context from a line, a range or a selection, and `to_text()`. | None |
 | 3. [Input float](https://github.com/nickciaravella/didymus.nvim/issues/6) | `ui/input.lua`: one line that grows, `<CR>`, `<C-y>`, cancel and the keys config. Make sure that `<C-y>` submits when blink.cmp or nvim-cmp is installed. | None |
 | 4. [Float view](https://github.com/nickciaravella/didymus.nvim/issues/7) | `view = "float"` and the `view` option. A session can move between the views. | 1 |

@@ -1,15 +1,13 @@
+local config = require("didymus.config")
+
 local M = {}
 
----@type table
-M.config = {}
+M.config = config.options
 
 ---@param opts table?
 function M.setup(opts)
-  M.config = vim.tbl_deep_extend("force", {}, opts or {})
-end
-
-function M.command()
-  vim.notify("didymus: not available yet", vim.log.levels.WARN)
+  config.setup(opts)
+  M.config = config.options
 end
 
 return M

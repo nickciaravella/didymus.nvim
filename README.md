@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** The plugin does not work yet.
+> **Early development.** Only the agent split works now.
 
 ## Goals
 
@@ -25,6 +25,37 @@ vim.pack.add({ "https://github.com/nickciaravella/didymus.nvim" })
 
 -- lazy.nvim
 { "nickciaravella/didymus.nvim" }
+```
+
+## Agent
+
+Run an agent CLI, such as Claude Code or Codex, in a split on the right.
+
+| Command | Behavior |
+| --- | --- |
+| `:Didymus agent toggle [split] [cmd]` | Show the agent, or hide it. Start it if it does not run. |
+| `:Didymus agent start [cmd]` | Start the agent, but do not show it. |
+| `:Didymus agent stop` | End the agent and close its split. |
+
+`[cmd]` overrides `agent.cmd`. If the agent runs, didymus does not use `[cmd]`. To change the agent, stop it first.
+
+There are no default keymaps. For example:
+
+```lua
+vim.keymap.set({ "n", "t" }, "<M-a>", "<Plug>(didymus-agent-toggle)")
+```
+
+The mappings are `<Plug>(didymus-agent-toggle)`, `<Plug>(didymus-agent-start)` and `<Plug>(didymus-agent-stop)`.
+
+The defaults:
+
+```lua
+require("didymus").setup({
+  agent = {
+    cmd = "claude", -- a string runs through 'shell'
+    split = { width = 0.4 }, -- below 1 is a fraction of the editor width
+  },
+})
 ```
 
 ## Contributing
