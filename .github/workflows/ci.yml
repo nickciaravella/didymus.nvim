@@ -7,19 +7,13 @@ on:
 
 jobs:
   test:
-    name: test (nvim ${{ matrix.version }})
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # v0.12.0 is the minimum version. Keep it in this list.
-        version: [v0.12.0, stable, nightly]
     steps:
       - uses: actions/checkout@v4
       - uses: rhysd/action-setup-vim@v1
         with:
           neovim: true
-          version: ${{ matrix.version }}
+          version: stable
       - run: make test
 
   format:

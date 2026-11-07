@@ -9,6 +9,7 @@ Rules and references for AI agents that work on didymus.nvim.
 | [`README.md`](README.md) | The user view. |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Decisions, open questions, code structure. |
 | [`docs/TESTING.md`](docs/TESTING.md) | How to run and write tests. |
+| [`docs/TASK_TRACKING.md`](docs/TASK_TRACKING.md) | Epics, labels and issues. |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Key terms. |
 | [`docs/reference/design-prompt.md`](docs/reference/design-prompt.md) | The reference file. See below. |
 
@@ -27,15 +28,16 @@ The reference file is a first pass at the design. It is not a spec.
 3. Do not block the UI.
 4. Examine external APIs against the live schema or the installed source. Do not trust memory for API shapes.
 5. Update the docs in the same change as the code.
-6. Add integration tests for each feature. Add unit tests only for real logic. See `docs/TESTING.md`.
+6. Add end-to-end tests for each feature. Add unit tests only for real logic. See `docs/TESTING.md`.
+7. Do infrastructure work only when an epic needs it. See `docs/TASK_TRACKING.md`.
 
 ## Commands
 
 | Task | Command |
 | --- | --- |
 | Run all tests | `make test` |
-| Run unit or integration tests | `make test-unit`, `make test-integration` |
-| Run one test file | `make test-file FILE=tests/integration/startup.test.lua` |
+| Run unit or end-to-end tests | `make test-unit`, `make test-e2e` |
+| Run one test file | `make test-file FILE=tests/e2e/startup.test.lua` |
 | Format | `make fmt` |
 | Check the format | `make fmt-check` |
 
@@ -78,3 +80,4 @@ Be concise and simple. Only write code, comments or documentation that is useful
 
 1. Run `make test` and `make fmt-check`.
 2. Give the user a short manual checklist for each change that a person can see.
+3. Use the `submit-pr` skill (`.claude/skills/submit-pr/SKILL.md`) to open a pull request.
