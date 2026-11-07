@@ -80,7 +80,7 @@ Calls go in one direction: `command` → `agent/init` → `session` → `view` a
 
 ```lua
 ---@class didymus.agent.Context
----@field path string        Relative to the session cwd, or absolute if outside it.
+---@field path string        Relative to the current directory, or absolute if outside it.
 ---@field start_line integer 1-based, inclusive.
 ---@field end_line integer   1-based, inclusive.
 ---@field text string
@@ -142,7 +142,7 @@ The other parts have these interfaces:
 
 --- prompt.lua
 ---@class didymus.agent.prompt
----@field context fun(opts: { buf: integer, range: integer[]? }): didymus.agent.Context With no range: the current line, or the selection in visual mode.
+---@field context fun(opts: { buf: integer, range: integer[]? }): didymus.agent.Context With no range: the current line, or the selection in visual mode. Throws an error if the buffer has no file.
 ---@field to_text fun(prompt: didymus.agent.Prompt): string
 
 --- ui/input.lua
@@ -250,7 +250,9 @@ Explain this.
 ````
 
 - The location of one line is `path:10`.
-- The fence is longer than the longest backtick run in the code.
+- A blank line goes between two contexts.
+- The fence is longer than the longest backtick run in the code, and has the filetype.
+- Each context has a file. `context()` throws an error for a buffer with no file.
 - For append, the text ends with a newline, so the user types under the block.
 
 ## Terminal backend
