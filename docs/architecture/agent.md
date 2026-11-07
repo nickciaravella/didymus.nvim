@@ -277,7 +277,7 @@ Explain this.
 
 ## Work plan
 
-Each task is one GitHub issue with the `agent` label, and one pull request. Each task adds its tests and updates the docs.
+Each task is one GitHub issue with the `agent` label, and one pull request. Each task adds its tests and updates the docs. The issue has the full scope and the tests.
 
 ```mermaid
 flowchart LR
@@ -285,7 +285,9 @@ flowchart LR
   t1 --> t5["5 Terminal input"]
   t1 --> t6["6 Test backend"]
   t1 --> t7["7 Health check"]
-  t2["2 Prompt format"] --> t8["8 Append"]
+  t2["2 Prompt format"] --> t5
+  t2 --> t6
+  t2 --> t8["8 Append"]
   t5 --> t8
   t6 --> t8
   t2 --> t9["9 Send"]
@@ -296,14 +298,14 @@ flowchart LR
 
 | Task | Content | Needs |
 | --- | --- | --- |
-| 1. Agent in a split | `config.lua` and `command.lua`. `:Didymus agent open`, `toggle` and `stop`. The session, the split view, the start and exit of the terminal backend, and the fake agent (output only). | None |
-| 2. Prompt format | `prompt.lua`: the context from a line, a range or a selection, and `to_text()`. | None |
-| 3. Input float | `ui/input.lua`: one line that grows, `<CR>`, `<C-y>`, cancel and the keys config. Make sure that `<C-y>` submits when blink.cmp or nvim-cmp is installed. | None |
-| 4. Float view | `view = "float"` and the `view` option. A session can move between the views. | 1 |
-| 5. Terminal input | `append` and `send` in the terminal backend: bracketed paste, the ready queue and the submit delay. The fake agent reads input. A manual check with `claude` and `codex`, also with a long paste. | 1 |
-| 6. Test backend | `backends/test.lua` and the `agent.backend` option. | 1 |
-| 7. Health check | `:checkhealth didymus` checks that the program in `agent.cmd` is on `$PATH`. | 1 |
-| 8. Append | `:Didymus agent append` and its `<Plug>` mapping. | 2, 5, 6 |
-| 9. Send | `:Didymus agent send` and its `<Plug>` mapping. A hidden start, and the "Sent" message. | 2, 3, 5, 6 |
+| 1. [Agent in a split](https://github.com/nickciaravella/didymus.nvim/issues/4) | `config.lua` and `command.lua`. `:Didymus agent open`, `toggle` and `stop`. The session, the split view, the start and exit of the terminal backend, and the fake agent (output only). | None |
+| 2. [Prompt format](https://github.com/nickciaravella/didymus.nvim/issues/5) | `prompt.lua`: the context from a line, a range or a selection, and `to_text()`. | None |
+| 3. [Input float](https://github.com/nickciaravella/didymus.nvim/issues/6) | `ui/input.lua`: one line that grows, `<CR>`, `<C-y>`, cancel and the keys config. Make sure that `<C-y>` submits when blink.cmp or nvim-cmp is installed. | None |
+| 4. [Float view](https://github.com/nickciaravella/didymus.nvim/issues/7) | `view = "float"` and the `view` option. A session can move between the views. | 1 |
+| 5. [Terminal input](https://github.com/nickciaravella/didymus.nvim/issues/8) | `append` and `send` in the terminal backend: bracketed paste, the ready queue and the submit delay. The fake agent reads input. A manual check with `claude` and `codex`, also with a long paste. | 1, 2 |
+| 6. [Test backend](https://github.com/nickciaravella/didymus.nvim/issues/9) | `backends/test.lua` and the `agent.backend` option. | 1, 2 |
+| 7. [Health check](https://github.com/nickciaravella/didymus.nvim/issues/10) | `:checkhealth didymus` checks that the program in `agent.cmd` is on `$PATH`. | 1 |
+| 8. [Append](https://github.com/nickciaravella/didymus.nvim/issues/11) | `:Didymus agent append` and its `<Plug>` mapping. | 2, 5, 6 |
+| 9. [Send](https://github.com/nickciaravella/didymus.nvim/issues/12) | `:Didymus agent send` and its `<Plug>` mapping. A hidden start, and the "Sent" message. | 2, 3, 5, 6 |
 
 Tasks 1, 2 and 3 can start at the same time. Then tasks 4 to 7 can go in parallel. Tasks 8 and 9 come last.
