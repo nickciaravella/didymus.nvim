@@ -262,7 +262,7 @@ Explain this.
 | Input | Write the text with `chansend()` in bracketed paste (`ESC[200~` … `ESC[201~`). Without bracketed paste, each newline submits. |
 | Submit | Send `\r` after `terminal.submit_delay`. Some TUIs ignore an Enter that comes in the same write as the paste. |
 | Focus | `startinsert`. |
-| Exit | If the agent buffer is current in terminal mode, `stopinsert`. |
+| Exit | If the agent buffer is current in terminal mode, `stopinsert`. Call `on_exit` after the mode change, because the mode change clears the message area. |
 
 ## Test backend
 

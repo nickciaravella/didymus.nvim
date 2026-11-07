@@ -24,9 +24,20 @@ function M.new(opts)
         self.job = nil
         -- In terminal mode, the next key after the exit deletes the buffer. Keep it for the user.
         if vim.api.nvim_get_current_buf() == buf and vim.api.nvim_get_mode().mode == "t" then
+          -- The mode change clears the message area, so call on_exit after it.
+          vim.api.nvim_create_autocmd("ModeChanged", {
+            pattern = "t:*",
+            once = true,
+            callback = function()
+              vim.schedule(function()
+                opts.on_exit(code)
+              end)
+            end,
+          })
           vim.cmd.stopinsert()
+        else
+          opts.on_exit(code)
         end
-        opts.on_exit(code)
       end,
     })
   end)

@@ -54,6 +54,15 @@ local function expect_message(text)
   no_eq(child.cmd_capture("messages"):find(text, 1, true), nil)
 end
 
+--- Wait until the last screen line shows `text`. A redraw can clear a message that is in :messages.
+---@param text string
+local function wait_for_screen_message(text)
+  wait_for(function()
+    local screen = child.get_screenshot().text
+    return table.concat(screen[#screen]):find(text, 1, true) ~= nil
+  end, "screen message " .. text)
+end
+
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -146,6 +155,8 @@ T["a different cmd does not replace a running agent"] = function()
 end
 
 T["after an exit, the buffer stays, and the next toggle starts a new conversation"] = function()
+  -- The command of the fake agent is long. The exit message must fit on one line.
+  child.o.columns = 250
   child.lua("require('didymus.agent').toggle({ cmd = ... })", { fake_cmd("--exit", "3") })
   wait_for_text("fake agent")
   local old_buf = agent_buf()
@@ -154,7 +165,7 @@ T["after an exit, the buffer stays, and the next toggle starts a new conversatio
   wait_for(function()
     return child.lua_get("require('didymus.agent').current():is_running()") == false
   end, "the agent exits")
-  expect_message("exited with code 3")
+  wait_for_screen_message("exited with code 3")
 
   -- A key in terminal mode after the exit deletes the buffer. didymus leaves terminal mode first.
   wait_for_mode("nt")
