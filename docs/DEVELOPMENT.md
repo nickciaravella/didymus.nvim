@@ -36,6 +36,12 @@ flowchart TB
 | Code host in end-to-end tests | The local provider. Integration tests check each real provider, such as GitHub, against the provider interface. |
 | Work tracking | Three epics: `agent`, `diff`, `review`. Each epic is a GitHub label. See [`TASK_TRACKING.md`](TASK_TRACKING.md). |
 | Infrastructure | Build it only when an epic needs it. |
+| Agent design | See [`architecture/agent.md`](architecture/agent.md). |
+| Agent scope | The agent works in all buffers, also outside a review. Only one agent session runs at a time. |
+| Agent backends | `terminal` and `test` in v1. The interface must also fit ACP. |
+| Agent views | A float, or a split on the right. |
+| Agent context | The location and the code in a fenced block. |
+| Agent in end-to-end tests | The `test` backend for the flows. A fake agent CLI for the terminal backend. |
 | Text | STE100. See [`AGENTS.md`](../AGENTS.md#writing-rules-ste100). |
 | Format | stylua (`.stylua.toml`) |
 | License | MIT |
@@ -45,8 +51,7 @@ flowchart TB
 - How do we get the PR code: a git worktree, or the current checkout?
 - Which integrations ship first?
 - What are the interfaces between core and the integrations?
-- Should the agent panel also be a float?
-- How do end-to-end tests use an agent without the network?
+- Does Claude Code show a long paste as a short placeholder? If it does not, we can change the agent context format.
 - Do the integration tests for the GitHub provider use the real GitHub, or recorded output?
 
 ## Code structure
