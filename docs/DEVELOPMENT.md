@@ -31,6 +31,8 @@ flowchart TB
 | Minimum Neovim version | 0.12 |
 | Test framework | mini.test. See [`TESTING.md`](TESTING.md). |
 | Test layout | Unit tests mirror `lua/`. End-to-end tests are by feature. |
+| Test kinds | Unit, end-to-end and integration tests. See [`TESTING.md`](TESTING.md). |
+| Editor state in unit tests | A child Neovim. Prefer it to mocks of `vim.api` and `vim.fn`. |
 | Test Neovim version | The installed Neovim. CI uses stable. |
 | Network in tests | Unit and end-to-end tests do not use the network. Unit tests mock external dependencies. |
 | Code host in end-to-end tests | The local provider. Integration tests check each real provider, such as GitHub, against the provider interface. |

@@ -77,8 +77,16 @@ Be concise and simple. Only write code, comments or documentation that is useful
 2. Start function names with a verb.
 3. Write a comment only to tell why. The code tells what.
 
+## Before you start
+
+1. Read the issue and the architecture doc of its epic.
+2. Give the user a short plan. List the decisions that the issue does not make.
+3. If the issue and the architecture doc do not agree, ask the user.
+4. If a decision changes the scope of another open issue, update that issue.
+
 ## Before you finish
 
 1. Run `make test` and `make fmt-check`.
 2. Give the user a short manual checklist for each change that a person can see.
 3. Use the `submit-pr` skill (`.claude/skills/submit-pr/SKILL.md`) to open a pull request.
+4. Merge a pull request only when the user asks. Use a squash merge after CI passes.
