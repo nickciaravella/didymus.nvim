@@ -1,5 +1,30 @@
 local M = {}
 
+---@param cmd string|string[]
+---@return string?
+local function get_program(cmd)
+  if type(cmd) == "table" then
+    return cmd[1]
+  end
+  return vim.split(vim.trim(cmd), "%s+")[1]
+end
+
+local function check_agent()
+  vim.health.start("didymus agent")
+
+  local program = get_program(require("didymus.config").options.agent.cmd)
+  if not program or program == "" then
+    vim.health.warn("`agent.cmd` is empty", "Set `agent.cmd`.")
+  elseif vim.fn.executable(program) == 1 then
+    vim.health.ok(("`%s` is on $PATH (agent.cmd)"):format(program))
+  else
+    vim.health.warn(
+      ("`%s` is not on $PATH (agent.cmd)"):format(program),
+      "Install it, or set `agent.cmd`."
+    )
+  end
+end
+
 function M.check()
   vim.health.start("didymus")
 
@@ -15,6 +40,8 @@ function M.check()
   else
     vim.health.error("`git` is not on $PATH")
   end
+
+  check_agent()
 end
 
 return M

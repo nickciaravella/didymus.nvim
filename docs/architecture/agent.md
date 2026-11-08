@@ -310,12 +310,22 @@ Explain this.
 - It shows one row for each event: `paste: "<text>"` and `key: "<byte>"`. The text goes through `vim.inspect()`, so a newline shows as `\n`.
 - A `\r` or a `\n` outside a paste shows `submitted: "<text>"`. The `\n` makes sure that a test fails if a newline is not in a paste.
 
+## Health check
+
+`:checkhealth didymus` has a `didymus agent` section. It checks that the program of `agent.cmd` is on `$PATH`. It does not start the program.
+
+- A string `cmd` gives its first word. The check does not parse shell quotes.
+- A list `cmd` gives its first item.
+- A missing or empty program gives a warning, not an error, because the `[cmd]` of a command can replace `agent.cmd`.
+- The check uses only the config. It ignores the `cmd` of a running session.
+
 ## Tests
 
 | Part | Test |
 | --- | --- |
 | `prompt` | Unit tests for the context and the text format. |
 | Input float | End-to-end tests with screenshots. |
+| Health check | End-to-end tests of the `:checkhealth` report. |
 | Start, toggle, stop, views and exit | End-to-end tests with the terminal backend and the fake agent. |
 | Terminal input | End-to-end tests with the fake agent. |
 | Append and send | End-to-end tests with the test backend. |
