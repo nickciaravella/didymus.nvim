@@ -11,7 +11,7 @@ local M = {}
 ---@field width number? A width below 1 is a fraction of the current window width.
 ---@field max_height integer?
 ---@field keys didymus.ui.input.Keys?
----@field range integer[]? The first and the last line of the code, 1-based. Default: the cursor line.
+---@field range integer[]? The first and the last line of the code, 1-based. These lines have a highlight. Default: the cursor line.
 
 local defaults = {
   width = 60,
@@ -26,6 +26,8 @@ local cancel_current
 -- The border uses two rows and two columns.
 local border_size = 2
 
+local namespace = vim.api.nvim_create_namespace("didymus.ui.input")
+
 ---@param width number
 ---@param win_width integer
 ---@return integer
@@ -34,22 +36,8 @@ local function resolve_width(width, win_width)
   return math.max(1, math.min(width, win_width - border_size))
 end
 
---- The screen column of the first non-blank character of a line. On a blank line, or if the
---- character is outside the window, the first text column of the window.
----@param win integer
----@param info vim.fn.getwininfo.ret.item
----@param lnum integer
----@return integer
-local function find_line_start(win, info, lnum)
-  local line = vim.api.nvim_buf_get_lines(info.bufnr, lnum - 1, lnum, true)[1]
-  local first_char = line:find("%S")
-  local col = first_char and vim.fn.screenpos(win, lnum, first_char).col or 0
-  return col > 0 and col or info.wincol + info.textoff
-end
-
---- Put the float above the lines, at the start of the first line. If the space above is too
---- small, put it under the lines, at the start of the last line. The float covers no part of
---- the lines, also when a line wraps.
+--- Put the float above the lines, in the center of the window. If the space above is too
+--- small, put it under the lines. The float covers no part of the lines, also when a line wraps.
 ---@param win integer
 ---@param range integer[] The first and the last line, 1-based.
 ---@param width integer
@@ -68,25 +56,29 @@ local function find_position(win, range, width, max_height)
   lines_top = lines_top > 0 and lines_top or text_top
   lines_bottom = lines_bottom > 0 and lines_bottom or text_bottom
 
-  ---@param lnum integer
-  ---@return integer
-  local function find_col(lnum)
-    -- Screen columns are 1-based, and float columns are 0-based.
-    local col = find_line_start(win, info, lnum) - 1
-    local win_left = info.wincol - 1
-    -- Move the float left, so that it stays in the window.
-    return math.max(win_left, math.min(col, win_left + info.width - width - border_size))
-  end
-
+  -- Screen rows are 1-based, and float rows are 0-based.
+  local col = info.wincol - 1 + math.floor((info.width - width - border_size) / 2)
   local rows_above = lines_top - text_top - border_size
   local rows_below = text_bottom - lines_bottom - border_size
   if rows_above >= max_height or rows_above >= rows_below then
     -- With the SW anchor, the float ends on the row above the lines and grows up.
-    return { relative = "editor", anchor = "SW", row = lines_top - 1, col = find_col(first) },
+    return { relative = "editor", anchor = "SW", row = lines_top - 1, col = col },
       math.max(1, math.min(max_height, rows_above))
   end
-  return { relative = "editor", anchor = "NW", row = lines_bottom, col = find_col(last) },
+  return { relative = "editor", anchor = "NW", row = lines_bottom, col = col },
     math.max(1, math.min(max_height, rows_below))
+end
+
+--- Highlight the lines that the prompt is about, while the float is open.
+---@param buf integer
+---@param range integer[]
+local function highlight_context(buf, range)
+  vim.api.nvim_set_hl(0, "DidymusInputContext", { link = "Visual", default = true })
+  for lnum = range[1], range[2] do
+    vim.api.nvim_buf_set_extmark(buf, namespace, lnum - 1, 0, {
+      line_hl_group = "DidymusInputContext",
+    })
+  end
 end
 
 ---@param win integer
@@ -123,6 +115,8 @@ function M.open(opts)
   local range = opts.range or { cursor_line, cursor_line }
   local width = resolve_width(opts.width, vim.api.nvim_win_get_width(origin_win))
   local position, max_height = find_position(origin_win, range, width, opts.max_height)
+  local origin_buf = vim.api.nvim_win_get_buf(origin_win)
+  highlight_context(origin_buf, range)
   local footer = (" %s submit  %s cancel "):format(keys.submit, keys.cancel)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].bufhidden = "wipe"
@@ -160,6 +154,9 @@ function M.open(opts)
     done = true
     cancel_current = nil
     vim.api.nvim_del_augroup_by_id(group)
+    if vim.api.nvim_buf_is_valid(origin_buf) then
+      vim.api.nvim_buf_clear_namespace(origin_buf, namespace, 0, -1)
+    end
     if vim.api.nvim_get_current_win() == win and vim.api.nvim_win_is_valid(origin_win) then
       vim.api.nvim_set_current_win(origin_win)
     end

@@ -26,7 +26,7 @@ These features come later:
 | A3 | `agent.cmd` sets the agent command. The `cmd` option of the API and of the command overrides it. |
 | A4 | The view is `float` or `split`. `agent.view` sets the default. The `view` option overrides it. |
 | A5 | Append uses the current line in normal mode and the selection in visual mode. It puts the context in the agent input and focuses the agent. It does not submit. |
-| A6 | Send opens an input float above the code, at the start of the line. The float starts with one line and grows when the text wraps. `<CR>` adds a line. `<C-y>` submits. The keys are configurable. |
+| A6 | Send opens an input float above the code, in the center of the current window. The code has a highlight while the float is open. The float starts with one line and grows when the text wraps. `<CR>` adds a line. `<C-y>` submits. The keys are configurable. |
 | A7 | Send submits the context and the prompt. It does not show the agent. |
 | A8 | The context is the location and the code in a fenced block. |
 | A9 | The backends are `terminal` and `test`. The interface must also fit an ACP backend. |
@@ -156,7 +156,7 @@ The other parts have these interfaces:
 ---@field width number?      Default 60. A width below 1 is a fraction of the current window width.
 ---@field max_height integer? Default 10.
 ---@field keys { submit: string?, cancel: string? }? Default `{ submit = "<C-y>", cancel = "q" }`.
----@field range integer[]?   The first and the last line of the code, 1-based. Default: the cursor line.
+---@field range integer[]?   The first and the last line of the code, 1-based. These lines have a highlight. Default: the cursor line.
 ```
 
 `agent/init.lua` keeps the standalone session, and finds it with `current()`. Later, `current()` gives the review session in a review tabpage.
@@ -250,8 +250,9 @@ If a session runs with a different `cmd`, keep it and show a warning. To change 
 | Behavior | Decision |
 | --- | --- |
 | Position | Above the first line of `range`, and the float grows up. If the space above is less than `max_height` and less than the space under the last line, the float goes under the last line and grows down. |
-| Column | The left border is at the first non-blank character of the line next to the float. On a blank line, or if that character is outside the window, it is at the first text column. |
-| Window | The float, with its border, stays in the current window, so it does not cover the agent split. If the float goes past the right edge, it moves left. If the window is too narrow for `width`, the float uses the window width. |
+| Column | The center of the current window. |
+| Highlight | The lines of `range` have the `DidymusInputContext` highlight while the float is open. It links to `Visual`. It covers full lines, also for a part of a line in a selection. |
+| Window | The float, with its border, stays in the current window, so it does not cover the agent split. If the window is too narrow for `width`, the float uses the window width. |
 | Wrapped line | The float goes above the first screen row of the first line, or under the last screen row of the last line. It does not cover the code. |
 | Size | One line at the start. It grows when the text wraps, up to `max_height`. Then it scrolls. |
 | Border | `'winborder'`. If it is empty or `none`, `rounded`, because a title needs a border. |
