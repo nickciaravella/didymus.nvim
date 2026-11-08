@@ -129,13 +129,43 @@ We add the first integration tests with the first provider.
 
 ## Manual tests
 
-Load the local plugin:
+Do manual tests on a throwaway PR, not on a PR that other persons use.
 
-```sh
-nvim --cmd "set rtp^=$PWD"
+### Load the plugin from a worktree
+
+Make your config load didymus.nvim from `$DIDYMUS_DIR` when it is set. For example, with lazy.nvim:
+
+```lua
+{ dir = vim.env.DIDYMUS_DIR or "~/Work/didymus.nvim", main = "didymus" }
 ```
 
-Do manual tests on a throwaway PR, not on a PR that other persons use.
+lazy.nvim resets `'runtimepath'`, so `--cmd "set rtp^=$PWD"` has no effect.
+
+Make sure that didymus.nvim loads from the worktree. This command prints the path of its `init.lua`:
+
+```sh
+DIDYMUS_DIR="$PWD" nvim --headless -c 'lua io.write(debug.getinfo(require("didymus").setup, "S").source)' -c qa
+```
+
+If your config does not read `DIDYMUS_DIR`, use `nvim --clean -u tests/minimal_init.lua` in place of `DIDYMUS_DIR="$PWD" nvim`.
+
+### The setup file
+
+Agents write the setup of a manual test in `.manual-test/setup.lua`. Git ignores `.manual-test/`. Load the setup after your config with `-S`, and give the files and the line of the test:
+
+```sh
+DIDYMUS_DIR="$PWD" nvim -S .manual-test/setup.lua lua/didymus/agent/init.lua +42
+```
+
+The setup adds its options to the options of your config. For example, this setup uses the fake agent:
+
+```lua
+local didymus = require("didymus")
+local fake_agent = vim.fn.getcwd() .. "/tests/fixtures/fake_agent.lua"
+didymus.setup(vim.tbl_deep_extend("force", didymus.config, {
+  agent = { cmd = { vim.v.progpath, "--clean", "-l", fake_agent, "--name", "manual test" } },
+}))
+```
 
 ## CI
 

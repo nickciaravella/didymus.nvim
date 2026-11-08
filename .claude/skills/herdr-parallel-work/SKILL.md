@@ -66,7 +66,7 @@ Do these steps when the user tells you that a pull request is ready. If a check 
 
 1. Make sure that CI passed: `gh pr checks <PR>`.
 2. Make sure that the worker is `done`.
-3. Make sure that the worktree has no changes, and that all its commits are pushed: `git -C <worktree> status -sb`. The merge deletes the worktree. If a terminal of the user is in the worktree, ask the user before you merge.
+3. Make sure that the worktree has no changes, and that all its commits are pushed: `git -C <worktree> status -sb`. The merge deletes the worktree. If a terminal of the user is in the worktree, ask the user before you merge. The Neovim of the test tab is in the worktree, so close the test tab first. See "Close the test tab" in the `herdr-manual-test` skill.
 4. Merge: `gh pr merge <PR> --squash --delete-branch`. This deletes the remote branch, the local branch and the worktree.
 5. Do the steps in "After a merge".
 
@@ -74,13 +74,14 @@ Do these steps when the user tells you that a pull request is ready. If a check 
 
 Do these steps also when the user merges a pull request.
 
-1. Find the space and the tab in the `herdr.space` and `herdr.tab` labels: `hc get <terminal> --json | jq .labels`.
-2. Find the terminals of the space with `herdr-app ls`. Check the labels of each one with `hc get`.
-3. If the space has only labeled terminals, close it: `herdr-app do space.close --id <space> --confirmed true`. If the user added a terminal, close only the tab of the worker: `herdr-app do tab.close --id <tab> --confirmed true`. Tell the user.
-4. End the worker: `hc kill <terminal>; hc rm <terminal>`.
-5. If the worktree or the local branch still exists, remove it. Use the commands in `docs/DEVELOPMENT.md`. If `git worktree remove` refuses because of changes, keep the worktree and tell the user. Do not use `--force`.
-6. Update the main checkout: `git pull`.
-7. Tell each other worker that `main` moved. Skip a `blocked` worker. It gets the notice at the next check.
+1. If the test tab of the issue is open, close it. See "Close the test tab" in the `herdr-manual-test` skill.
+2. Find the space and the tab in the `herdr.space` and `herdr.tab` labels: `hc get <terminal> --json | jq .labels`.
+3. Find the terminals of the space with `herdr-app ls`. Check the labels of each one with `hc get`.
+4. If the space has only labeled terminals, close it: `herdr-app do space.close --id <space> --confirmed true`. If the user added a terminal, close only the tab of the worker: `herdr-app do tab.close --id <tab> --confirmed true`. Tell the user.
+5. End the worker: `hc kill <terminal>; hc rm <terminal>`.
+6. If the worktree or the local branch still exists, remove it. Use the commands in `docs/DEVELOPMENT.md`. If `git worktree remove` refuses because of changes, keep the worktree and tell the user. Do not use `--force`.
+7. Update the main checkout: `git pull`.
+8. Tell each other worker that `main` moved. Skip a `blocked` worker. It gets the notice at the next check.
 
    ```sh
    notice=$(cat <<'EOF'
