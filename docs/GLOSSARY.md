@@ -26,6 +26,7 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Provider | An integration for a code host, such as GitHub. |
 | Reference file | `docs/reference/design-prompt.md`. A first pass at the design. Not a spec. |
 | Send | Submit a prompt with its context. Do not show the agent. |
+| Test backend | A backend without a process. End-to-end tests use it for the agent flows. |
 | Thread | A list of comments on one line or range. |
 | Unit test | A test of a pure function, or of a function that uses only Neovim. It has no external dependencies. |
 | View | The window that shows an agent session: a float or a split. |

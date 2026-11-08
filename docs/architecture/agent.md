@@ -269,10 +269,12 @@ Explain this.
 
 ## Test backend
 
-- It starts no process. Its buffer is a scratch buffer.
-- `append` and `send` keep each prompt in a list and write the text of the prompt to the buffer. Tests check the list or the screen.
-- It is ready at once.
-- The test helper `exit(code)` calls `on_exit(code)`.
+- It starts no process. Its buffer is a scratch buffer. It does not use `cmd`.
+- `append` and `send` add `{ kind = "append"|"send", prompt = prompt }` to `backend.prompts`. Tests check the list or the screen.
+- The buffer shows a line `append:` or `send:` for each prompt, then the lines of `prompt.to_text()`.
+- It is ready at once. It has no `focus`.
+- `backend:exit(code)` calls `on_exit(code)`. The buffer stays. Only the test backend has this method.
+- `stop` deletes the buffer. If `on_exit` was not called, it calls `on_exit(0)`.
 
 ## Fake agent
 

@@ -53,6 +53,7 @@ The defaults:
 require("didymus").setup({
   agent = {
     cmd = "claude", -- a string runs through 'shell'
+    backend = "terminal", -- "terminal", or "test" for tests
     split = { width = 0.4 }, -- below 1 is a fraction of the editor width
     terminal = {
       ready_delay = 500, -- ms to wait after the first output of the agent, before input

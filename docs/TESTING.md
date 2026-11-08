@@ -21,7 +21,7 @@ The first run clones mini.nvim into `deps/`.
 | Kind | Checks | External dependencies |
 | --- | --- | --- |
 | Unit | A pure function, or a function that uses only Neovim. | None. |
-| End-to-end | One feature as a user sees it, through commands, keys and the public API. | None. The local provider in place of GitHub. The fake agent in place of an agent. |
+| End-to-end | One feature as a user sees it, through commands, keys and the public API. | None. The local provider in place of GitHub. The test backend or the fake agent in place of an agent. |
 | Integration | One provider or external dependency against the real thing. If necessary, more than one module, for a larger functional test. | The real dependency, for example `gh`. |
 
 The unit tests and the end-to-end tests do not use the network.
@@ -80,6 +80,21 @@ End-to-end tests drive a child Neovim the way a user does, and check the result 
 - Check windows, buffers, the cursor, and messages. Use `MiniTest.expect.reference_screenshot()` to check the screen.
 
 See `tests/e2e/startup.test.lua` for an example.
+
+### The test backend or the fake agent
+
+| Use | To test |
+| --- | --- |
+| The test backend | Flows that do not need a terminal, such as append and send. |
+| The fake agent | The terminal backend: its start, exit, terminal mode and input. |
+
+The test backend starts no process, so its tests do not wait. Set it in `setup()`:
+
+```lua
+require("didymus").setup({ agent = { backend = "test" } })
+```
+
+It keeps each prompt in `backend.prompts` and shows its text in the buffer. `helpers.prompts(child)` gives the list. `helpers.exit(child, code)` makes the agent exit. See `tests/e2e/agent/test_backend.test.lua`.
 
 ### The fake agent
 
