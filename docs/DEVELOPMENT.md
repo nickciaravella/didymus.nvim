@@ -65,6 +65,7 @@ lua/didymus/config.lua       defaults and user config
 lua/didymus/command.lua      :Didymus subcommands and completion
 lua/didymus/health.lua       :checkhealth didymus
 lua/didymus/agent/           the agent. See architecture/agent.md.
+lua/didymus/ui/              UI parts that do not know about agents, such as the input float
 tests/unit/didymus/          unit tests, mirror lua/didymus/
 tests/e2e/                   end-to-end tests, by feature
 tests/fixtures/              files for tests, such as the fake agent
