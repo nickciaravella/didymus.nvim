@@ -27,6 +27,29 @@ local cancel_current
 local border_size = 2
 
 local namespace = vim.api.nvim_create_namespace("didymus.ui.input")
+local redraw_namespace = vim.api.nvim_create_namespace("didymus.ui.input.redraw")
+
+--- The lines that have the highlight, while a float is open.
+---@type { win: integer, buf: integer, range: integer[] }?
+local context
+
+-- An extmark belongs to a buffer, so it shows in each window of the buffer. The provider
+-- highlights only the window of the prompt.
+vim.api.nvim_set_decoration_provider(namespace, {
+  on_win = function(_, win, buf)
+    if context and context.win == win and context.buf == buf then
+      vim.api.nvim_buf_set_extmark(buf, namespace, context.range[1] - 1, 0, {
+        end_row = context.range[2],
+        end_col = 0,
+        strict = false,
+        hl_group = "DidymusInputContext",
+        hl_eol = true,
+        ephemeral = true,
+      })
+    end
+    return false
+  end,
+})
 
 ---@param width number
 ---@param win_width integer
@@ -69,16 +92,26 @@ local function find_position(win, range, width, max_height)
     math.max(1, math.min(max_height, rows_below))
 end
 
---- Highlight the lines that the prompt is about, while the float is open.
----@param buf integer
+--- Highlight the lines that the prompt is about in `win`, while the float is open.
+---@param win integer
 ---@param range integer[]
-local function highlight_context(buf, range)
+local function highlight_context(win, range)
   vim.api.nvim_set_hl(0, "DidymusInputContext", { link = "Visual", default = true })
+  context = { win = win, buf = vim.api.nvim_win_get_buf(win), range = range }
+  -- The provider does not make Neovim draw the lines again, but a change of an extmark does.
+  -- So these extmarks have no visible highlight. They exist until the float closes.
   for lnum = range[1], range[2] do
-    vim.api.nvim_buf_set_extmark(buf, namespace, lnum - 1, 0, {
-      line_hl_group = "DidymusInputContext",
+    vim.api.nvim_buf_set_extmark(context.buf, redraw_namespace, lnum - 1, 0, {
+      line_hl_group = "DidymusInputContextRedraw",
     })
   end
+end
+
+local function clear_context()
+  if context and vim.api.nvim_buf_is_valid(context.buf) then
+    vim.api.nvim_buf_clear_namespace(context.buf, redraw_namespace, 0, -1)
+  end
+  context = nil
 end
 
 ---@param win integer
@@ -115,8 +148,7 @@ function M.open(opts)
   local range = opts.range or { cursor_line, cursor_line }
   local width = resolve_width(opts.width, vim.api.nvim_win_get_width(origin_win))
   local position, max_height = find_position(origin_win, range, width, opts.max_height)
-  local origin_buf = vim.api.nvim_win_get_buf(origin_win)
-  highlight_context(origin_buf, range)
+  highlight_context(origin_win, range)
   local footer = (" %s submit  %s cancel "):format(keys.submit, keys.cancel)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].bufhidden = "wipe"
@@ -154,9 +186,7 @@ function M.open(opts)
     done = true
     cancel_current = nil
     vim.api.nvim_del_augroup_by_id(group)
-    if vim.api.nvim_buf_is_valid(origin_buf) then
-      vim.api.nvim_buf_clear_namespace(origin_buf, namespace, 0, -1)
-    end
+    clear_context()
     if vim.api.nvim_get_current_win() == win and vim.api.nvim_win_is_valid(origin_win) then
       vim.api.nvim_set_current_win(origin_win)
     end

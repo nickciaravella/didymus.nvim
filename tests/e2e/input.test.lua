@@ -1,4 +1,5 @@
 local eq = MiniTest.expect.equality
+local no_eq = MiniTest.expect.no_equality
 local expect_screenshot = MiniTest.expect.reference_screenshot
 
 local child = MiniTest.new_child_neovim()
@@ -105,14 +106,17 @@ T["with a range, opens under the last line"] = function()
   expect_screenshot(child.get_screenshot())
 end
 
---- The lines of `buf` that have the context highlight, 1-based.
----@param buf integer
----@return integer[]
-local function highlighted_lines(buf)
-  local namespace = child.api.nvim_create_namespace("didymus.ui.input")
-  return vim.tbl_map(function(mark)
-    return mark[2] + 1
-  end, child.api.nvim_buf_get_extmarks(buf, namespace, 0, -1, {}))
+T["highlights only the current window, if two windows show the buffer"] = function()
+  child.cmd("vsplit")
+  open({ title = "Prompt", width = 20, range = { 2, 4 } })
+  expect_screenshot(child.get_screenshot())
+end
+
+--- The highlight attributes of a screen row.
+---@param row integer
+---@return string
+local function row_attrs(row)
+  return table.concat(child.get_screenshot().attr[row])
 end
 
 T["highlights the lines until the float closes"] = MiniTest.new_set({
@@ -120,13 +124,13 @@ T["highlights the lines until the float closes"] = MiniTest.new_set({
 })
 
 T["highlights the lines until the float closes"]["with"] = function(keys)
-  local buf = child.api.nvim_get_current_buf()
+  local plain = row_attrs(3)
   open({ range = { 2, 4 } })
-  eq(highlighted_lines(buf), { 2, 3, 4 })
+  no_eq(row_attrs(3), plain)
   eq(child.api.nvim_get_hl(0, { name = "DidymusInputContext" }).link, "Visual")
   child.type_keys("text", keys)
   eq(input_win(), nil)
-  eq(highlighted_lines(buf), {})
+  eq(row_attrs(3), plain)
 end
 
 T["fits in a window narrower than width"] = function()

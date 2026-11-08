@@ -251,7 +251,7 @@ If a session runs with a different `cmd`, keep it and show a warning. To change 
 | --- | --- |
 | Position | Above the first line of `range`, and the float grows up. If the space above is less than `max_height` and less than the space under the last line, the float goes under the last line and grows down. |
 | Column | The center of the current window. |
-| Highlight | The lines of `range` have the `DidymusInputContext` highlight while the float is open. It links to `Visual`. It covers full lines, also for a part of a line in a selection. |
+| Highlight | The lines of `range` have the `DidymusInputContext` highlight while the float is open. It links to `Visual`. It covers full lines, also for a part of a line in a selection. It shows only in the current window, also when other windows show the buffer. An extmark shows in all windows of its buffer, so a decoration provider draws the highlight. |
 | Window | The float, with its border, stays in the current window, so it does not cover the agent split. If the window is too narrow for `width`, the float uses the window width. |
 | Wrapped line | The float goes above the first screen row of the first line, or under the last screen row of the last line. It does not cover the code. |
 | Size | One line at the start. It grows when the text wraps, up to `max_height`. Then it scrolls. |
