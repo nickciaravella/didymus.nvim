@@ -13,6 +13,7 @@ Rules and references for AI agents that work on didymus.nvim.
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Key terms. |
 | [`docs/architecture/agent.md`](docs/architecture/agent.md) | The design and work plan of the `agent` epic. |
 | [`docs/reference/design-prompt.md`](docs/reference/design-prompt.md) | The reference file. See below. |
+| [`agents/expertise/`](agents/expertise/README.md) | The notebooks: facts about the technologies of the project. See "Notebooks" below. |
 
 ### The reference file
 
@@ -31,6 +32,16 @@ The reference file is a first pass at the design. It is not a spec.
 5. Update the docs in the same change as the code.
 6. Add end-to-end tests for each feature. Add unit tests only for real logic. See `docs/TESTING.md`.
 7. Do infrastructure work only when an epic needs it. See `docs/TASK_TRACKING.md`.
+
+## Notebooks
+
+Each notebook in `agents/expertise/` keeps the tricky facts about one technology, such as `neovim.md`.
+
+1. When you work with a technology, scan the headings of its notebook: `grep -n '^##' agents/expertise/neovim.md`.
+2. Read each entry whose heading applies to your work.
+3. When a tricky fact about a technology took effort to find, add an entry. See [`agents/expertise/README.md`](agents/expertise/README.md).
+
+Do not keep these facts in a local memory, such as the Claude Code auto memory. A local memory is only for the preferences of one user.
 
 ## Commands
 
@@ -80,9 +91,10 @@ Be concise and simple. Only write code, comments or documentation that is useful
 ## Before you start
 
 1. Read the issue and the architecture doc of its epic, if the epic has one. See `docs/TASK_TRACKING.md`.
-2. Give the user a short plan. List the decisions that the issue does not make.
-3. If the issue and the architecture doc do not agree, ask the user.
-4. If a decision changes the scope of another open issue, update that issue.
+2. Scan the notebooks of the technologies that the task uses. See "Notebooks".
+3. Give the user a short plan. List the decisions that the issue does not make.
+4. If the issue and the architecture doc do not agree, ask the user.
+5. If a decision changes the scope of another open issue, update that issue.
 
 ## Before you finish
 
