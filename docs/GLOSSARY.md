@@ -21,6 +21,7 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Integration test | A test that checks one provider or external dependency against the real thing. It can use more than one module. |
 | Local provider | A provider that keeps changes in a local git repo. End-to-end tests use it in place of GitHub. |
 | Merge-base | The common ancestor of base and head. |
+| Notebook | A file of tricky facts about one technology, for agents, such as `agents/expertise/neovim.md`. |
 | Pending review | A review that is started but not submitted. |
 | Prompt | The text for the agent, and its context. |
 | Provider | An integration for a code host, such as GitHub. |

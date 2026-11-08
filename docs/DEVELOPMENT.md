@@ -49,6 +49,10 @@ flowchart TB
 | Config for manual tests | The config of the user, with didymus.nvim from `$DIDYMUS_DIR`. Else `tests/minimal_init.lua`. |
 | Agent in manual tests | The fake agent, unless a step needs the real agent. |
 | Shared UI code | `lua/didymus/ui/`. It does not know about agents, diffs or reviews. Code that more than one part uses goes here, such as `ui/layout.lua`. |
+| Agent expertise | Notebooks in `agents/expertise/`, one for each technology. They are Markdown files, not skills, so that all agents can read them. See [`agents/expertise/README.md`](../agents/expertise/README.md). |
+| Notebook entries | Only facts that are tricky, not well documented, and have no other place. Each entry has a proof and the version that it was checked on. |
+| Notebook changes | In the pull request of the task. An agent can make a new notebook or section without a question to the user. The reviewer examines it. |
+| Local agent memory | Only for the preferences of one user. Facts about a technology go in a notebook. |
 | Text | STE100. See [`AGENTS.md`](../AGENTS.md#writing-rules-ste100). |
 | Format | stylua (`.stylua.toml`) |
 | License | MIT |
