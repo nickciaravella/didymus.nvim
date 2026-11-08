@@ -56,6 +56,24 @@ flowchart TB
 - What are the interfaces between core and the integrations?
 - Do the integration tests for the GitHub provider use the real GitHub, or recorded output?
 
+## Work in a worktree
+
+To work on more than one issue at the same time, give each issue a worktree:
+
+```sh
+git fetch origin
+git worktree add --no-track -b <type>/<slug> ../didymus.nvim-worktrees/<issue>-<slug> origin/main
+```
+
+The first `make test` in a worktree clones mini.nvim into its own `deps/`.
+
+After the pull request merges, remove the worktree and the branch:
+
+```sh
+git worktree remove ../didymus.nvim-worktrees/<issue>-<slug>
+git branch -D <type>/<slug>
+```
+
 ## Code structure
 
 ```text
