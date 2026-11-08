@@ -90,3 +90,11 @@ Be concise and simple. Only write code, comments or documentation that is useful
 2. Give the user a short manual checklist for each change that a person can see.
 3. Use the `submit-pr` skill (`.claude/skills/submit-pr/SKILL.md`) to open a pull request.
 4. Merge a pull request only when the user asks. Use a squash merge after CI passes.
+
+## Parallel work
+
+Agents can work on different issues at the same time. Each agent works in its own worktree. See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md#work-in-a-worktree).
+
+1. Change only the files in your worktree.
+2. Before you open a pull request, rebase on `origin/main`. Then run `make test` and `make fmt-check`.
+3. If `main` changes after you open the pull request, merge `origin/main` into your branch. Do not force push.
