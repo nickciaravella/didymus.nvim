@@ -36,7 +36,7 @@ flowchart TB
 | Test Neovim version | The installed Neovim. CI uses stable. |
 | Network in tests | Unit and end-to-end tests do not use the network. Unit tests mock external dependencies. |
 | Code host in end-to-end tests | The local provider. Integration tests check each real provider, such as GitHub, against the provider interface. |
-| Work tracking | Three epics: `agent`, `diff`, `review`. Each epic is a GitHub label. See [`TASK_TRACKING.md`](TASK_TRACKING.md). |
+| Work tracking | Four epics: `agent`, `agentic-dev`, `diff`, `review`. Each epic is a GitHub label. See [`TASK_TRACKING.md`](TASK_TRACKING.md). |
 | Infrastructure | Build it only when an epic needs it. |
 | Agent design | See [`architecture/agent.md`](architecture/agent.md). |
 | Agent scope | The agent works in all buffers, also outside a review. Only one agent session runs at a time. |
