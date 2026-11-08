@@ -21,7 +21,7 @@ Use `herdr-app` for spaces and tabs. Use `hc` to read, label and send text to te
 
 ## Rules
 
-- Start a worker only when the dependencies of its issue are merged. See the work plan in the architecture doc of the epic.
+- Start a worker only when the dependencies of its issue are merged. See the `Needs:` line of the issue, and the work plan in the architecture doc of the epic, if it has one.
 - Do not answer the questions of a worker. The user does this. Merge only when the user asks.
 - Close only the spaces and terminals that have the `didymus.role` label.
 
@@ -44,7 +44,7 @@ Use `herdr-app` for spaces and tabs. Use `hc` to read, label and send text to te
 The task template:
 
 ```text
-Work on issue #<issue> in this worktree, `<worktree>`, on branch `<branch>`. The branch has no upstream, so the first push is `git push -u origin <branch>`. Follow `AGENTS.md`: read the issue and the architecture doc, then give me a short plan with the decisions that the issue does not make. Wait for my approval before you write code. Another agent works on #<other issue> (<title>) at the same time. You can both change <shared files>. Follow the "Parallel work" rules in `AGENTS.md`. Do not merge the pull request. Do not start other issues or agents.
+Work on issue #<issue> in this worktree, `<worktree>`, on branch `<branch>`. The branch has no upstream, so the first push is `git push -u origin <branch>`. Follow `AGENTS.md`: read the issue and the architecture doc of its epic, if it has one. Then give me a short plan with the decisions that the issue does not make. Wait for my approval before you write code. Another agent works on #<other issue> (<title>) at the same time. You can both change <shared files>. Follow the "Parallel work" rules in `AGENTS.md`. Do not merge the pull request. Do not start other issues or agents.
 ```
 
 Write one "Another agent" sentence for each other worker. Find the shared files in the scope of the issues.
