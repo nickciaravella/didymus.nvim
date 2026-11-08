@@ -88,23 +88,30 @@ function M.start(opts)
   end
 end
 
---- Hide the agent if it is visible. If not, start it if necessary, then show and focus it.
---- With `view`, hide or show that view. If the other view is visible, it closes.
+--- Start the agent if necessary, then show and focus it. If the other view is visible, it closes.
 ---@param opts { cmd: string|string[]?, view: didymus.agent.ViewKind? }?
-function M.toggle(opts)
+function M.focus(opts)
   opts = opts or {}
   local view = resolve_view(opts.view)
   if not view then
-    return
-  end
-  if standalone and standalone:is_visible(opts.view) then
-    standalone:hide()
     return
   end
   local session = ensure_running(opts.cmd, view)
   if session then
     session:show(view)
   end
+end
+
+--- Hide the agent if it is visible. If not, do as `focus()`.
+--- With `view`, hide or show that view.
+---@param opts { cmd: string|string[]?, view: didymus.agent.ViewKind? }?
+function M.toggle(opts)
+  opts = opts or {}
+  if standalone and standalone:is_visible(opts.view) then
+    standalone:hide()
+    return
+  end
+  M.focus(opts)
 end
 
 --- Stop the agent and close its view.

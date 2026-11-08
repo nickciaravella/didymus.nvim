@@ -7,6 +7,7 @@ M.defaults = {
     backend = "terminal", -- "terminal" or "test"
     split = { width = 0.4 },
     float = { width = 0.85, height = 0.85 },
+    keys = { focus = false, leave = false }, -- for example "<C-a>"
     terminal = { ready_delay = 500, submit_delay = 50 }, -- milliseconds
   },
 }

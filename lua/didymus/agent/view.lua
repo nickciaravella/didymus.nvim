@@ -6,16 +6,21 @@ local layout = require("didymus.ui.layout")
 ---@class didymus.agent.View
 ---@field win integer?
 ---@field kind didymus.agent.ViewKind? The kind of the last window that `show()` opened.
----@field private resize_autocmd integer?
+---@field private origin_win integer? The window before `show()`.
+---@field private augroup integer
 local View = {}
 View.__index = View
 
 ---@type table<didymus.agent.ViewKind, true>
 View.kinds = { float = true, split = true }
 
+local view_count = 0
+
 ---@return didymus.agent.View
 function View.new()
-  return setmetatable({}, View)
+  view_count = view_count + 1
+  local augroup = vim.api.nvim_create_augroup(("didymus.agent.view.%d"):format(view_count), {})
+  return setmetatable({ augroup = augroup }, View)
 end
 
 --- The size of the window that `show()` opens. The float can be smaller, if its border does not fit.
@@ -49,13 +54,20 @@ local function open_win(buf, kind)
   local width, height = View.size(kind)
   local win
   if kind == "float" then
-    -- The border comes from 'winborder'. Its size is known only after the float opens.
-    win = vim.api.nvim_open_win(
-      buf,
-      true,
-      { relative = "editor", row = 0, col = 0, width = width, height = height }
-    )
+    vim.api.nvim_set_hl(0, "DidymusAgentFloat", { link = "Normal", default = true })
+    -- The inside has the code background. Without a border, nothing separates it from the code.
+    local no_border = vim.o.winborder == "" or vim.o.winborder == "none"
+    win = vim.api.nvim_open_win(buf, true, {
+      relative = "editor",
+      row = 0,
+      col = 0,
+      width = width,
+      height = height,
+      border = no_border and "rounded" or nil,
+    })
+    -- The size of a border from 'winborder' is known only after the float opens.
     fit_float(win)
+    vim.wo[win][0].winhighlight = "NormalFloat:DidymusAgentFloat"
   else
     win = vim.api.nvim_open_win(buf, true, { split = "right", win = -1, width = width })
     vim.wo[win][0].winfixwidth = true
@@ -88,42 +100,81 @@ end
 ---@param kind didymus.agent.ViewKind
 ---@return integer win
 function View:show(buf, kind)
+  local current_win = vim.api.nvim_get_current_win()
+  if current_win ~= self.win then
+    self.origin_win = current_win
+  end
+  local leave_key = config.options.agent.keys.leave
+  if leave_key then
+    vim.keymap.set({ "n", "t" }, leave_key, function()
+      self:leave()
+    end, { buffer = buf, desc = "didymus: leave the agent" })
+  end
+
   if self:is_visible(kind) then
     vim.api.nvim_win_set_buf(self.win, buf)
     vim.api.nvim_set_current_win(self.win)
     return self.win
   end
   local old_win = self.win
-  self:stop_resize()
+  vim.api.nvim_clear_autocmds({ group = self.augroup })
   -- Open the new window first, so that the old window is not the last window.
   self.win, self.kind = open_win(buf, kind), kind
   close_win(old_win)
   if kind == "float" then
-    self.resize_autocmd = vim.api.nvim_create_autocmd("VimResized", {
-      callback = function()
-        if not (self.kind == "float" and self.win and vim.api.nvim_win_is_valid(self.win)) then
-          self.resize_autocmd = nil
-          return true
-        end
-        fit_float(self.win)
-      end,
-    })
+    self:watch_float()
   end
   return self.win
 end
 
+--- Fit the float when the editor size changes. Hide it when the focus leaves it.
 ---@private
-function View:stop_resize()
-  if self.resize_autocmd then
-    pcall(vim.api.nvim_del_autocmd, self.resize_autocmd)
-    self.resize_autocmd = nil
+function View:watch_float()
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = self.augroup,
+    callback = function()
+      if self:is_visible("float") then
+        fit_float(self.win --[[@as integer]])
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd("WinLeave", {
+    group = self.augroup,
+    callback = function()
+      if vim.api.nvim_get_current_win() ~= self.win then
+        return
+      end
+      -- The window layout cannot change in WinLeave.
+      vim.schedule(function()
+        if self:is_visible("float") and vim.api.nvim_get_current_win() ~= self.win then
+          self:hide()
+        end
+      end)
+    end,
+  })
+end
+
+--- Go back to the window before the agent. A float hides when the focus leaves it.
+function View:leave()
+  if vim.api.nvim_get_current_win() ~= self.win then
+    return
+  end
+  pcall(vim.cmd.wincmd, "p")
+  local origin = self.origin_win
+  if
+    vim.api.nvim_get_current_win() == self.win
+    and origin
+    and vim.api.nvim_win_is_valid(origin)
+    and vim.api.nvim_win_get_tabpage(origin) == vim.api.nvim_get_current_tabpage()
+  then
+    vim.api.nvim_set_current_win(origin)
   end
 end
 
 --- Close the window. The buffer stays.
 function View:hide()
   if close_win(self.win) then
-    self:stop_resize()
+    vim.api.nvim_clear_autocmds({ group = self.augroup })
     self.win = nil
   end
 end

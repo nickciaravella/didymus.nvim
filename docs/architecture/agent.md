@@ -30,7 +30,7 @@ These features come later:
 | A7 | Send submits the context and the prompt. It does not show the agent. |
 | A8 | The context is the location and the code in a fenced block. |
 | A9 | The backends are `terminal` and `test`. The interface must also fit an ACP backend. |
-| A10 | `start` starts the agent and does not show it. `toggle` starts the agent if necessary, and shows or hides the view. `stop` ends the agent and closes the view. |
+| A10 | `start` starts the agent and does not show it. `toggle` starts the agent if necessary, and shows or hides the view. `focus` starts the agent if necessary, and shows and focuses the view. `stop` ends the agent and closes the view. |
 | A11 | If the agent runs, `start` and `toggle` do not start a new agent. If their `cmd` is different, they show a warning. |
 
 ## Parts
@@ -142,6 +142,7 @@ The other parts have these interfaces:
 ---@field size fun(kind: didymus.agent.ViewKind): integer, integer The width and height of the window that `show()` opens.
 ---@field show fun(self, buf: integer, kind: didymus.agent.ViewKind): integer Return the window. Close the window of the other kind.
 ---@field hide fun(self) Close the window. The buffer stays.
+---@field leave fun(self) Go back to the window before the agent.
 ---@field is_visible fun(self, kind: didymus.agent.ViewKind?): boolean
 
 --- prompt.lua
@@ -179,6 +180,7 @@ The other parts have these interfaces:
 local agent = require("didymus.agent")
 agent.start({ cmd = "codex" })                  -- start if necessary, do not show
 agent.toggle({ cmd = "codex", view = "float" }) -- start if necessary, then show and focus the float, or hide it
+agent.focus({ view = "float" })                 -- start if necessary, then show and focus the float
 agent.stop()                                    -- end the agent and close the view
 agent.append()                                  -- the current line, or the selection in visual mode
 agent.send()                                    -- open the input float
@@ -192,14 +194,17 @@ All options are optional. `cmd` and `view` use the config if you do not give the
 ```text
 :Didymus agent start [cmd]
 :Didymus agent toggle [float|split] [cmd]
+:Didymus agent focus [float|split] [cmd]
 :Didymus agent stop
 :[range]Didymus agent append
 :[range]Didymus agent send [text]
 ```
 
 - `[cmd]` is the rest of the line. It runs through 'shell'. If the agent runs, didymus does not use it.
-- Each action has a `<Plug>(didymus-agent-…)` mapping. `start`, `toggle` and `stop` work in normal and terminal mode. `append` and `send` work in normal and visual mode.
-- There are no default keymaps.
+- Each action has a `<Plug>(didymus-agent-…)` mapping. `start`, `toggle`, `focus` and `stop` work in normal and terminal mode. `append` and `send` work in normal and visual mode.
+- There are no default keymaps. `agent.keys` sets two optional keys:
+  - `focus`: a global normal-mode key for `focus`.
+  - `leave`: a key in the agent buffer, in terminal and normal mode. It goes back to the window before the agent. If that window is not valid, it goes to the previous window.
 
 The config defaults:
 
@@ -210,6 +215,7 @@ agent = {
   backend = "terminal", -- "terminal" or "test"
   split = { width = 0.4 },
   float = { width = 0.85, height = 0.85 },
+  keys = { focus = false, leave = false }, -- for example "<C-a>"
   input = { width = 60, max_height = 10, keys = { submit = "<C-y>", cancel = "q" } },
   terminal = { ready_delay = 500, submit_delay = 50 }, -- milliseconds
 }
@@ -235,6 +241,16 @@ If a session runs with a different `cmd`, keep it and show a warning. To change 
 5. Call `backend:focus(win)`. The terminal backend starts terminal mode.
 
 For example, with the split visible, `toggle float` closes the split and shows the float. Then `toggle split` closes the float and shows the split.
+
+### Focus
+
+1. Find the view, as in Toggle.
+2. Do steps 3 to 5 of Toggle. A visible view does not hide.
+
+### Leave
+
+1. The `leave` key goes back to the window before the agent.
+2. The float hides, because the focus left it. The split stays.
 
 ### Stop
 
@@ -266,9 +282,10 @@ For example, with the split visible, `toggle float` closes the split and shows t
 | --- | --- |
 | Position | In the center of the editor, above the command line. |
 | Size | `agent.float.width` and `agent.float.height`, without the border. If the float and its border do not fit, the float becomes smaller. |
-| Border | `'winborder'`. |
+| Border | `'winborder'` and `FloatBorder`. If `'winborder'` is empty or `none`, `rounded`, because the inside has the code background. |
+| Inside | `DidymusAgentFloat`, which links to `Normal`. The code background is better for the agent text than the float background. |
 | Resize | On `VimResized`, the float gets its size and its center again. |
-| Focus | The float stays when the focus goes to a different window. |
+| Focus | When the focus goes to a different window, the float hides. The agent continues. |
 
 ## Input float
 
