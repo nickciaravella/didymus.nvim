@@ -87,9 +87,20 @@ Be concise and simple. Only write code, comments or documentation that is useful
 ## Before you finish
 
 1. Run `make test` and `make fmt-check`.
-2. Give the user a short manual checklist for each change that a person can see.
+2. Prepare the manual test for each change that a person can see. See "Manual tests" below.
 3. Use the `submit-pr` skill (`.claude/skills/submit-pr/SKILL.md`) to open a pull request.
 4. Merge a pull request only when the user asks. Use a squash merge after CI passes.
+
+### Manual tests
+
+Do as much of the setup as you can, so that the user only does the test. See [`docs/TESTING.md`](docs/TESTING.md#manual-tests).
+
+1. Write the setup in `.manual-test/setup.lua`: the options and the keys for the test.
+2. Use the fake agent. Use the real agent only if a step needs it.
+3. Make sure that Neovim loads didymus.nvim from your worktree.
+4. If `HC_TERMINAL_ID` is set, open the test tab with the `herdr-manual-test` skill.
+5. Else, give the user the command that starts Neovim, with the files and lines of the test.
+6. Give the user the checklist: each step and its expected result.
 
 ## Parallel work
 

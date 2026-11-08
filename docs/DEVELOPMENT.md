@@ -45,6 +45,9 @@ flowchart TB
 | Agent commands | `start`, `toggle` and `stop`. Most users only use `toggle`. |
 | Agent context | The location and the code in a fenced block. Claude Code shows the paste as a short placeholder, also for a short context. |
 | Agent in end-to-end tests | The `test` backend for the flows. A fake agent CLI for the terminal backend. |
+| Manual tests | The agent prepares them: a setup file in `.manual-test/`, and a Herdr tab if possible. See [`TESTING.md`](TESTING.md#manual-tests). |
+| Config for manual tests | The config of the user, with didymus.nvim from `$DIDYMUS_DIR`. Else `tests/minimal_init.lua`. |
+| Agent in manual tests | The fake agent, unless a step needs the real agent. |
 | Shared UI code | `lua/didymus/ui/`. It does not know about agents, diffs or reviews. Code that more than one part uses goes here, such as `ui/layout.lua`. |
 | Text | STE100. See [`AGENTS.md`](../AGENTS.md#writing-rules-ste100). |
 | Format | stylua (`.stylua.toml`) |
