@@ -26,7 +26,7 @@ These features come later:
 | A3 | `agent.cmd` sets the agent command. The `cmd` option of the API and of the command overrides it. |
 | A4 | The view is `float` or `split`. `agent.view` sets the default. The `view` option overrides it. |
 | A5 | Append uses the current line in normal mode and the selection in visual mode. It puts the context in the agent input and focuses the agent. It does not submit. |
-| A6 | Send opens an input float at the cursor. The float starts with one line and grows when the text wraps. `<CR>` adds a line. `<C-y>` submits. The keys are configurable. |
+| A6 | Send opens an input float above the cursor line, in the center of the current window. The float starts with one line and grows when the text wraps. `<CR>` adds a line. `<C-y>` submits. The keys are configurable. |
 | A7 | Send submits the context and the prompt. It does not show the agent. |
 | A8 | The context is the location and the code in a fenced block. |
 | A9 | The backends are `terminal` and `test`. The interface must also fit an ACP backend. |
@@ -153,7 +153,7 @@ The other parts have these interfaces:
 ---@field title string?
 ---@field on_submit fun(text: string)
 ---@field on_cancel fun()?
----@field width number?      Default 60. A width below 1 is a fraction of the editor width.
+---@field width number?      Default 60. A width below 1 is a fraction of the current window width.
 ---@field max_height integer? Default 10.
 ---@field keys { submit: string?, cancel: string? }? Default `{ submit = "<C-y>", cancel = "q" }`.
 ```
@@ -202,7 +202,7 @@ agent = {
 }
 ```
 
-A size below 1 is a fraction of the editor size.
+A size below 1 is a fraction of the editor size. For `input.width`, it is a fraction of the current window width.
 
 ## Flows
 
@@ -234,7 +234,7 @@ If a session runs with a different `cmd`, keep it and show a warning. To change 
 
 ### Send
 
-1. Make the context. Open the input float at the cursor.
+1. Make the context. Open the input float above the cursor line, in the center of the current window.
 2. On submit, start a session if no session runs. Do not show the view.
 3. Call `backend:send()`. Show the message "Sent to `<cmd>`".
 
@@ -248,7 +248,9 @@ If a session runs with a different `cmd`, keep it and show a warning. To change 
 
 | Behavior | Decision |
 | --- | --- |
-| Position | Under the cursor line, at the cursor column. If the space under the line is less than `max_height`, the float goes above the line and grows up. |
+| Position | Above the cursor line, in the center of the current window. The float grows up. If the space above the line is less than `max_height` and less than the space under the line, the float goes under the line and grows down. |
+| Window | The float, with its border, stays in the current window, so it does not cover the agent split. If the window is too narrow for `width`, the float uses the window width. |
+| Wrapped line | The float goes above the first screen row of the cursor line, or under its last screen row. It does not cover the line. |
 | Size | One line at the start. It grows when the text wraps, up to `max_height`. Then it scrolls. |
 | Border | `'winborder'`. If it is empty or `none`, `rounded`, because a title needs a border. |
 | Footer | The keys, for example `<C-y> submit  q cancel`. Only if it fits in the width. |

@@ -63,8 +63,9 @@ local T = MiniTest.new_set({
   },
 })
 
-T["opens with one line under the cursor, in insert mode"] = function()
-  open({ title = "Prompt", width = 30 })
+T["opens with one line above the cursor line, in the center of the window"] = function()
+  child.api.nvim_win_set_cursor(0, { 7, 0 })
+  open({ title = "Prompt", width = 30, max_height = 4 })
   eq(child.api.nvim_get_mode().mode, "i")
   eq(input_height(), 1)
   eq(child.api.nvim_get_current_win(), input_win())
@@ -72,11 +73,56 @@ T["opens with one line under the cursor, in insert mode"] = function()
   expect_screenshot(child.get_screenshot())
 end
 
-T["opens above the cursor if the space under the line is too small"] = function()
-  child.api.nvim_buf_set_lines(0, -1, -1, false, vim.fn["repeat"]({ "" }, 10))
-  child.api.nvim_win_set_cursor(0, { 15, 0 })
+T["opens under the line on the first line of the window"] = function()
+  child.api.nvim_win_set_cursor(0, { 1, 0 })
+  open({ title = "Prompt", width = 30 })
+  expect_screenshot(child.get_screenshot())
+end
+
+T["does not cover a wrapped line"] = function()
+  child.api.nvim_buf_set_lines(0, 6, 7, false, { ("long "):rep(15) })
+  child.api.nvim_win_set_cursor(0, { 7, 70 })
+  open({ title = "Prompt", width = 30, max_height = 2 })
+  expect_screenshot(child.get_screenshot())
+end
+
+T["stays in the code window when the agent split is open"] = function()
+  child.lua("require('didymus').setup(...)", { { agent = { backend = "test" } } })
+  child.lua("require('didymus.agent').toggle()")
+  child.cmd("wincmd p")
+  child.api.nvim_win_set_cursor(0, { 7, 0 })
+  open({ title = "Prompt", width = 20, max_height = 4 })
+  expect_screenshot(child.get_screenshot())
+end
+
+T["fits in a window narrower than width"] = function()
+  child.cmd("vsplit")
+  child.api.nvim_win_set_cursor(0, { 7, 0 })
   open({ title = "Prompt", width = 30, max_height = 4 })
-  child.type_keys("one<CR>two")
+  eq(child.api.nvim_win_get_width(assert(input_win())), 23)
+  expect_screenshot(child.get_screenshot())
+end
+
+T["a width below 1 is a fraction of the window width"] = function()
+  child.cmd("vsplit")
+  open({ width = 0.5 })
+  eq(child.api.nvim_win_get_width(assert(input_win())), 12)
+end
+
+T["above the line, grows up when the text wraps"] = function()
+  child.api.nvim_win_set_cursor(0, { 7, 0 })
+  open({ width = 20, max_height = 4 })
+  --- The 0-based screen row of the bottom border. The position updates on a redraw.
+  local function bottom_row()
+    child.cmd("redraw")
+    local win = assert(input_win())
+    return child.api.nvim_win_get_position(win)[1] + child.api.nvim_win_get_height(win) + 1
+  end
+  -- The row above the cursor line.
+  eq(bottom_row(), 5)
+  child.type_keys("one two three four five six")
+  eq(input_height(), 2)
+  eq(bottom_row(), 5)
   expect_screenshot(child.get_screenshot())
 end
 

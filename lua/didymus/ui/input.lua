@@ -8,7 +8,7 @@ local M = {}
 ---@field title string?
 ---@field on_submit fun(text: string)
 ---@field on_cancel fun()?
----@field width number? A width below 1 is a fraction of the editor width.
+---@field width number? A width below 1 is a fraction of the current window width.
 ---@field max_height integer?
 ---@field keys didymus.ui.input.Keys?
 
@@ -22,29 +22,47 @@ local defaults = {
 ---@type fun()?
 local cancel_current
 
+-- The border uses two rows and two columns.
+local border_size = 2
+
 ---@param width number
+---@param win_width integer
 ---@return integer
-local function resolve_width(width)
-  width = width < 1 and math.floor(vim.o.columns * width) or width
-  -- The border uses two columns.
-  return math.max(1, math.min(width, vim.o.columns - 2))
+local function resolve_width(width, win_width)
+  width = width < 1 and math.floor(win_width * width) or width
+  return math.max(1, math.min(width, win_width - border_size))
 end
 
---- Put the float under the cursor line. If the space under the line is too small, put it above.
+--- Put the float above the cursor line, in the center of the window. If the space above the
+--- line is too small, put it under the line. The float covers no part of a wrapped line.
+---@param win integer
+---@param width integer
 ---@param max_height integer
 ---@return vim.api.keyset.win_config position
 ---@return integer max_height The max height that fits.
-local function find_position(max_height)
-  local cursor_row = vim.fn.win_screenpos(0)[1] + vim.fn.winline() - 1
-  local rows_below = vim.o.lines - vim.o.cmdheight - cursor_row - 2
-  local rows_above = cursor_row - 1 - 2
-  if rows_below >= max_height or rows_below >= rows_above then
-    return { relative = "cursor", anchor = "NW", row = 1, col = 0 },
-      math.max(1, math.min(max_height, rows_below))
+local function find_position(win, width, max_height)
+  local info = vim.fn.getwininfo(win)[1]
+  local text_top = info.winrow + info.winbar
+  local text_bottom = text_top + info.height - 1
+  local lnum = vim.api.nvim_win_get_cursor(win)[1]
+  local last_col = math.max(1, #vim.api.nvim_buf_get_lines(info.bufnr, lnum - 1, lnum, true)[1])
+  -- A row of 0 means that part of the line is outside the window.
+  local line_top = vim.fn.screenpos(win, lnum, 1).row
+  local line_bottom = vim.fn.screenpos(win, lnum, last_col).row
+  line_top = line_top > 0 and line_top or text_top
+  line_bottom = line_bottom > 0 and line_bottom or text_bottom
+
+  -- Screen rows are 1-based, and float rows are 0-based.
+  local col = info.wincol - 1 + math.floor((info.width - width - border_size) / 2)
+  local rows_above = line_top - text_top - border_size
+  local rows_below = text_bottom - line_bottom - border_size
+  if rows_above >= max_height or rows_above >= rows_below then
+    -- With the SW anchor, the float ends on the row above the line and grows up.
+    return { relative = "editor", anchor = "SW", row = line_top - 1, col = col },
+      math.max(1, math.min(max_height, rows_above))
   end
-  -- With the SW anchor, the float ends above the cursor line and grows up.
-  return { relative = "cursor", anchor = "SW", row = 0, col = 0 },
-    math.max(1, math.min(max_height, rows_above))
+  return { relative = "editor", anchor = "NW", row = line_bottom, col = col },
+    math.max(1, math.min(max_height, rows_below))
 end
 
 ---@param win integer
@@ -63,7 +81,7 @@ local function update_height(win, max_height)
   end
 end
 
---- Open a float at the cursor for a prompt. `<CR>` adds a line.
+--- Open a float above the cursor line for a prompt. `<CR>` adds a line.
 ---@param opts didymus.ui.input.Opts
 function M.open(opts)
   vim.validate("opts.on_submit", opts.on_submit, "function")
@@ -76,8 +94,8 @@ function M.open(opts)
   end
 
   local origin_win = vim.api.nvim_get_current_win()
-  local position, max_height = find_position(opts.max_height)
-  local width = resolve_width(opts.width)
+  local width = resolve_width(opts.width, vim.api.nvim_win_get_width(origin_win))
+  local position, max_height = find_position(origin_win, width, opts.max_height)
   local footer = (" %s submit  %s cancel "):format(keys.submit, keys.cancel)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].bufhidden = "wipe"
