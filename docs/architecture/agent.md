@@ -147,7 +147,15 @@ The other parts have these interfaces:
 
 --- ui/input.lua
 ---@class didymus.ui.input
----@field open fun(opts: { title: string?, on_submit: fun(text: string), on_cancel: fun()? })
+---@field open fun(opts: didymus.ui.input.Opts)
+
+---@class didymus.ui.input.Opts
+---@field title string?
+---@field on_submit fun(text: string)
+---@field on_cancel fun()?
+---@field width number?      Default 60. A width below 1 is a fraction of the editor width.
+---@field max_height integer? Default 10.
+---@field keys { submit: string?, cancel: string? }? Default `{ submit = "<C-y>", cancel = "q" }`.
 ```
 
 `agent/init.lua` keeps the standalone session, and finds it with `current()`. Later, `current()` gives the review session in a review tabpage.
@@ -235,6 +243,22 @@ If a session runs with a different `cmd`, keep it and show a warning. To change 
 1. The backend calls `on_exit(code)`. Show the exit code.
 2. Keep the buffer, so that the user can read the last output. The terminal backend leaves terminal mode, because the next key in terminal mode deletes the buffer.
 3. The next start, toggle, append or send restarts the session. Restart deletes the old buffer. Tell the user that it is a new conversation.
+
+## Input float
+
+| Behavior | Decision |
+| --- | --- |
+| Position | Under the cursor line, at the cursor column. If the space under the line is less than `max_height`, the float goes above the line and grows up. |
+| Size | One line at the start. It grows when the text wraps, up to `max_height`. Then it scrolls. |
+| Border | `'winborder'`. If it is empty or `none`, `rounded`, because a title needs a border. |
+| Footer | The keys, for example `<C-y> submit  q cancel`. Only if it fits in the width. |
+| Buffer | `buftype=nofile`, `bufhidden=wipe` and `filetype=didymus_input`. Users can use the filetype to configure the float. |
+| Submit | `<C-y>` in insert and normal mode. The text is the lines joined with `\n`, with no blank lines at the end. If the text is empty, submit does nothing. |
+| Cancel | `q` and `<Esc>` in normal mode. To leave or close the float also cancels. `<Esc>` is not configurable. |
+| Callbacks | Only one callback runs, after the float closes. On submit and on cancel with a key, the original window is current and in normal mode. |
+| Second float | `open()` cancels the open float first. |
+| Completion | Off. The float sets `'autocomplete'` off and `b:completion = false`, which blink.cmp reads. nvim-cmp has no buffer variable. Users of nvim-cmp exclude the `didymus_input` filetype. |
+| Submit mapping | Some completion plugins set a buffer `<C-y>` mapping on `InsertEnter` with no fallback. So the float sets its submit mapping again after `InsertEnter`. |
 
 ## Text format
 
