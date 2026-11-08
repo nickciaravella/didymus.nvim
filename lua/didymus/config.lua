@@ -3,6 +3,7 @@ local M = {}
 M.defaults = {
   agent = {
     cmd = "claude",
+    backend = "terminal", -- "terminal" or "test"
     split = { width = 0.4 },
     terminal = { ready_delay = 500, submit_delay = 50 }, -- milliseconds
   },

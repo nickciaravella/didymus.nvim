@@ -33,6 +33,20 @@ function M.agent_buf(child)
   ]])
 end
 
+--- The prompts that the test backend recorded.
+---@param child MiniTest.child
+---@return didymus.agent.backends.test.Entry[]
+function M.prompts(child)
+  return child.lua_get("require('didymus.agent').current().backend.prompts")
+end
+
+--- Make the test backend act as if the agent exited.
+---@param child MiniTest.child
+---@param code integer
+function M.exit(child, code)
+  child.lua("require('didymus.agent').current().backend:exit(...)", { code })
+end
+
 ---@param child MiniTest.child
 ---@return string[]
 function M.agent_lines(child)

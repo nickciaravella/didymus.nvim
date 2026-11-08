@@ -19,6 +19,7 @@ local View = require("didymus.agent.view")
 
 local backends = {
   terminal = "didymus.agent.backends.terminal",
+  test = "didymus.agent.backends.test",
 }
 
 ---@class didymus.agent.Session
@@ -48,9 +49,13 @@ end
 --- Start a new backend. Delete the buffer of the old backend.
 ---@param opts { cmd: string|string[], cwd: string }
 function Session:restart(opts)
+  local module = backends[self.backend_name]
+  if not module then
+    error(("unknown backend %q"):format(self.backend_name), 0)
+  end
   local width, height = View.size("split")
   local backend
-  backend = require(backends[self.backend_name]).new({
+  backend = require(module).new({
     cmd = opts.cmd,
     cwd = opts.cwd,
     width = width,

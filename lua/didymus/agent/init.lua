@@ -30,8 +30,11 @@ local function ensure_running(cmd)
     return session, false
   end
 
-  local opts =
-    { cmd = cmd or config.options.agent.cmd, cwd = vim.fn.getcwd(), backend = "terminal" }
+  local opts = {
+    cmd = cmd or config.options.agent.cmd,
+    cwd = vim.fn.getcwd(),
+    backend = config.options.agent.backend,
+  }
   local ok, err = pcall(function()
     if session then
       session:restart(opts)
