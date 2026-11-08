@@ -160,9 +160,9 @@ end
 
 T[":Didymus completes the agent commands"] = function()
   eq(child.fn.getcompletion("Didymus ", "cmdline"), { "agent" })
-  eq(child.fn.getcompletion("Didymus agent ", "cmdline"), { "start", "stop", "toggle" })
+  eq(child.fn.getcompletion("Didymus agent ", "cmdline"), { "focus", "start", "stop", "toggle" })
   eq(child.fn.getcompletion("Didymus agent t", "cmdline"), { "toggle" })
-  eq(child.fn.getcompletion("Didymus agent toggle ", "cmdline"), { "split" })
+  eq(child.fn.getcompletion("Didymus agent toggle ", "cmdline"), { "float", "split" })
 end
 
 return T

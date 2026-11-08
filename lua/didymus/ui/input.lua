@@ -1,3 +1,5 @@
+local layout = require("didymus.ui.layout")
+
 local M = {}
 
 ---@class didymus.ui.input.Keys
@@ -55,8 +57,7 @@ vim.api.nvim_set_decoration_provider(namespace, {
 ---@param win_width integer
 ---@return integer
 local function resolve_width(width, win_width)
-  width = width < 1 and math.floor(win_width * width) or width
-  return math.max(1, math.min(width, win_width - border_size))
+  return math.max(1, math.min(layout.resolve_size(width, win_width), win_width - border_size))
 end
 
 --- Put the float above the lines, in the center of the window. If the space above is too
@@ -80,7 +81,7 @@ local function find_position(win, range, width, max_height)
   lines_bottom = lines_bottom > 0 and lines_bottom or text_bottom
 
   -- Screen rows are 1-based, and float rows are 0-based.
-  local col = info.wincol - 1 + math.floor((info.width - width - border_size) / 2)
+  local col = info.wincol - 1 + layout.center_offset(width + border_size, info.width)
   local rows_above = lines_top - text_top - border_size
   local rows_below = text_bottom - lines_bottom - border_size
   if rows_above >= max_height or rows_above >= rows_below then

@@ -24,13 +24,13 @@ These features come later:
 | A1 | The agent works in all buffers, also outside a review. It starts in the current directory. |
 | A2 | Only one agent session runs at a time. |
 | A3 | `agent.cmd` sets the agent command. The `cmd` option of the API and of the command overrides it. |
-| A4 | The view is `float` or `split`. `agent.view` sets the default. The `view` option overrides it. |
+| A4 | The view is `float` or `split`. Only one view is visible at a time. `toggle` with a `view` shows or hides that view. `toggle` with no `view` uses the last view, then `agent.view`. |
 | A5 | Append uses the current line in normal mode and the selection in visual mode. It puts the context in the agent input and focuses the agent. It does not submit. |
 | A6 | Send opens an input float above the code, in the center of the current window. The code has a highlight while the float is open. The float starts with one line and grows when the text wraps. `<CR>` adds a line. `<C-y>` submits. The keys are configurable. |
 | A7 | Send submits the context and the prompt. It does not show the agent. |
 | A8 | The context is the location and the code in a fenced block. |
 | A9 | The backends are `terminal` and `test`. The interface must also fit an ACP backend. |
-| A10 | `start` starts the agent and does not show it. `toggle` starts the agent if necessary, and shows or hides the view. `stop` ends the agent and closes the view. |
+| A10 | `start` starts the agent and does not show it. `toggle` starts the agent if necessary, and shows or hides the view. `focus` starts the agent if necessary, and shows and focuses the view. `stop` ends the agent and closes the view. |
 | A11 | If the agent runs, `start` and `toggle` do not start a new agent. If their `cmd` is different, they show a warning. |
 
 ## Parts
@@ -66,6 +66,7 @@ lua/didymus/
     backends/terminal.lua        agent CLI in a terminal buffer
     backends/test.lua            backend without a process, for tests
   ui/input.lua                   input float
+  ui/layout.lua                  sizes and positions of windows
 tests/fixtures/fake_agent.lua    fake agent CLI
 ```
 
@@ -73,6 +74,7 @@ Calls go in one direction: `command` → `agent/init` → `session` → `view` a
 
 - `view` does not know about backends. It shows a buffer.
 - `ui/input` does not know about agents. It gives back text, so the review epic can use it too.
+- `ui/layout` has the window sizes and positions that more than one part uses, such as a centered float.
 - Backends use only `prompt.to_text()`.
 - `session.lua` finds the backend module by name in a fixed table. There is no registry yet.
 
@@ -123,11 +125,12 @@ The other parts have these interfaces:
 --- session.lua. It is an object, so that a review can have its own session later.
 ---@class didymus.agent.Session
 ---@field cmd string|string[]
----@field new fun(opts: { cmd: string|string[], cwd: string, backend: string }): didymus.agent.Session Start the backend.
----@field restart fun(self, opts: { cmd: string|string[], cwd: string }) Start a new backend. Delete the buffer of the old backend.
+---@field new fun(opts: { cmd: string|string[], cwd: string, backend: string, view: didymus.agent.ViewKind }): didymus.agent.Session Start the backend. `view` sets the size.
+---@field restart fun(self, opts: { cmd: string|string[], cwd: string, view: didymus.agent.ViewKind }) Start a new backend. Delete the buffer of the old backend.
 ---@field show fun(self, kind: didymus.agent.ViewKind) Show the backend buffer in the view. Then call `backend:focus()`.
 ---@field hide fun(self)
----@field is_visible fun(self): boolean
+---@field is_visible fun(self, kind: didymus.agent.ViewKind?): boolean With `kind`, true only if that view is visible.
+---@field view_kind fun(self): didymus.agent.ViewKind? The last view that showed the agent.
 ---@field append fun(self, prompt: didymus.agent.Prompt)
 ---@field send fun(self, prompt: didymus.agent.Prompt)
 ---@field stop fun(self) Hide the view and stop the backend.
@@ -135,10 +138,12 @@ The other parts have these interfaces:
 
 --- view.lua. One window in the current tabpage.
 ---@class didymus.agent.View
+---@field kind didymus.agent.ViewKind? The kind of the last window that `show()` opened.
 ---@field size fun(kind: didymus.agent.ViewKind): integer, integer The width and height of the window that `show()` opens.
----@field show fun(self, buf: integer, kind: didymus.agent.ViewKind): integer Return the window. Change its kind if necessary.
+---@field show fun(self, buf: integer, kind: didymus.agent.ViewKind): integer Return the window. Close the window of the other kind.
 ---@field hide fun(self) Close the window. The buffer stays.
----@field is_visible fun(self): boolean
+---@field leave fun(self) Go back to the window before the agent.
+---@field is_visible fun(self, kind: didymus.agent.ViewKind?): boolean
 
 --- prompt.lua
 ---@class didymus.agent.prompt
@@ -157,6 +162,14 @@ The other parts have these interfaces:
 ---@field max_height integer? Default 10.
 ---@field keys { submit: string?, cancel: string? }? Default `{ submit = "<C-y>", cancel = "q" }`.
 ---@field range integer[]?   The first and the last line of the code, 1-based. These lines have a highlight. Default: the cursor line.
+
+--- ui/layout.lua
+---@class didymus.ui.layout
+---@field resolve_size fun(size: number, total: integer): integer A size below 1 is a fraction of `total`.
+---@field editor_area fun(): didymus.ui.layout.Area The editor rows above the command line.
+---@field border_size fun(border: string|table): integer, integer The columns and rows of a border from `nvim_win_get_config()`.
+---@field center_offset fun(size: integer, total: integer): integer The offset that puts `size` in the center of `total`.
+---@field center fun(area: didymus.ui.layout.Area, width: integer, height: integer, border: string|table): { row, col, width, height } Make the float smaller if it does not fit.
 ```
 
 `agent/init.lua` keeps the standalone session, and finds it with `current()`. Later, `current()` gives the review session in a review tabpage.
@@ -166,7 +179,8 @@ The other parts have these interfaces:
 ```lua
 local agent = require("didymus.agent")
 agent.start({ cmd = "codex" })                  -- start if necessary, do not show
-agent.toggle({ cmd = "codex", view = "float" }) -- start if necessary, then show and focus, or hide
+agent.toggle({ cmd = "codex", view = "float" }) -- start if necessary, then show and focus the float, or hide it
+agent.focus({ view = "float" })                 -- start if necessary, then show and focus the float
 agent.stop()                                    -- end the agent and close the view
 agent.append()                                  -- the current line, or the selection in visual mode
 agent.send()                                    -- open the input float
@@ -180,14 +194,17 @@ All options are optional. `cmd` and `view` use the config if you do not give the
 ```text
 :Didymus agent start [cmd]
 :Didymus agent toggle [float|split] [cmd]
+:Didymus agent focus [float|split] [cmd]
 :Didymus agent stop
 :[range]Didymus agent append
 :[range]Didymus agent send [text]
 ```
 
 - `[cmd]` is the rest of the line. It runs through 'shell'. If the agent runs, didymus does not use it.
-- Each action has a `<Plug>(didymus-agent-…)` mapping. `start`, `toggle` and `stop` work in normal and terminal mode. `append` and `send` work in normal and visual mode.
-- There are no default keymaps.
+- Each action has a `<Plug>(didymus-agent-…)` mapping. `start`, `toggle`, `focus` and `stop` work in normal and terminal mode. `append` and `send` work in normal and visual mode.
+- There are no default keymaps. `agent.keys` sets two optional keys:
+  - `focus`: a global normal-mode key for `focus`.
+  - `leave`: a key in the agent buffer, in terminal and normal mode. It goes back to the window before the agent. If that window is not valid, it goes to the previous window.
 
 The config defaults:
 
@@ -197,7 +214,8 @@ agent = {
   view = "split", -- "split" or "float"
   backend = "terminal", -- "terminal" or "test"
   split = { width = 0.4 },
-  float = { width = 0.8, height = 0.8 },
+  float = { width = 0.85, height = 0.85 },
+  keys = { focus = false, leave = false }, -- for example "<C-a>"
   input = { width = 60, max_height = 10, keys = { submit = "<C-y>", cancel = "q" } },
   terminal = { ready_delay = 500, submit_delay = 50 }, -- milliseconds
 }
@@ -216,10 +234,23 @@ If a session runs with a different `cmd`, keep it and show a warning. To change 
 
 ### Toggle
 
-1. If the view is visible, hide it. Stop here. The agent continues.
-2. If no session runs, start one, as in Start.
-3. Show the backend buffer in the view, and focus the window.
-4. Call `backend:focus(win)`. The terminal backend starts terminal mode.
+1. Find the view: the `view` option, else the last view, else `agent.view`.
+2. If that view is visible, hide it. Stop here. The agent continues. With no `view` option, hide each visible view.
+3. If no session runs, start one, as in Start.
+4. Show the backend buffer in the view, and focus the window. If the other view is visible, close it. The buffer and the agent stay the same.
+5. Call `backend:focus(win)`. The terminal backend starts terminal mode.
+
+For example, with the split visible, `toggle float` closes the split and shows the float. Then `toggle split` closes the float and shows the split.
+
+### Focus
+
+1. Find the view, as in Toggle.
+2. Do steps 3 to 5 of Toggle. A visible view does not hide.
+
+### Leave
+
+1. The `leave` key goes back to the window before the agent.
+2. The float hides, because the focus left it. The split stays.
 
 ### Stop
 
@@ -244,6 +275,17 @@ If a session runs with a different `cmd`, keep it and show a warning. To change 
 1. The backend calls `on_exit(code)`. Show the exit code.
 2. Keep the buffer, so that the user can read the last output. The terminal backend leaves terminal mode, because the next key in terminal mode deletes the buffer.
 3. The next start, toggle, append or send restarts the session. Restart deletes the old buffer. Tell the user that it is a new conversation.
+
+## Float view
+
+| Behavior | Decision |
+| --- | --- |
+| Position | In the center of the editor, above the command line. |
+| Size | `agent.float.width` and `agent.float.height`, without the border. If the float and its border do not fit, the float becomes smaller. |
+| Border | `'winborder'` and `FloatBorder`. If `'winborder'` is empty or `none`, `rounded`, because the inside has the code background. |
+| Inside | `DidymusAgentFloat`, which links to `Normal`. The code background is better for the agent text than the float background. |
+| Resize | On `VimResized`, the float gets its size and its center again. |
+| Focus | When the focus goes to a different window, the float hides. The agent continues. |
 
 ## Input float
 

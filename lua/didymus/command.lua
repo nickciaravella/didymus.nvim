@@ -1,9 +1,9 @@
 local M = {}
 
-local views = { split = {} }
+local views = { float = {}, split = {} }
 
 local tree = {
-  agent = { start = {}, toggle = views, stop = {} },
+  agent = { start = {}, toggle = views, focus = views, stop = {} },
 }
 
 ---@param text string
@@ -20,17 +20,27 @@ local function non_empty(text)
   return text ~= "" and text or nil
 end
 
+--- Parse `[float|split] [cmd]`.
+---@param rest string
+---@return { view: didymus.agent.ViewKind?, cmd: string? }
+local function parse_view_and_cmd(rest)
+  local word, after = split_word(rest)
+  local view
+  if views[word] then
+    view, rest = word, after
+  end
+  return { view = view, cmd = non_empty(rest) }
+end
+
 local agent_actions = {
   start = function(rest)
     require("didymus.agent").start({ cmd = non_empty(rest) })
   end,
   toggle = function(rest)
-    local word, after = split_word(rest)
-    local view
-    if views[word] then
-      view, rest = word, after
-    end
-    require("didymus.agent").toggle({ view = view, cmd = non_empty(rest) })
+    require("didymus.agent").toggle(parse_view_and_cmd(rest))
+  end,
+  focus = function(rest)
+    require("didymus.agent").focus(parse_view_and_cmd(rest))
   end,
   stop = function()
     require("didymus.agent").stop()
@@ -44,7 +54,7 @@ function M.run(args)
   action, rest = split_word(rest)
   if group ~= "agent" or not agent_actions[action] then
     vim.notify(
-      "didymus: unknown command. Use :Didymus agent start, toggle or stop.",
+      "didymus: unknown command. Use :Didymus agent start, toggle, focus or stop.",
       vim.log.levels.ERROR
     )
     return

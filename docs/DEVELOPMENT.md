@@ -45,6 +45,7 @@ flowchart TB
 | Agent commands | `start`, `toggle` and `stop`. Most users only use `toggle`. |
 | Agent context | The location and the code in a fenced block. Claude Code shows the paste as a short placeholder, also for a short context. |
 | Agent in end-to-end tests | The `test` backend for the flows. A fake agent CLI for the terminal backend. |
+| Shared UI code | `lua/didymus/ui/`. It does not know about agents, diffs or reviews. Code that more than one part uses goes here, such as `ui/layout.lua`. |
 | Text | STE100. See [`AGENTS.md`](../AGENTS.md#writing-rules-ste100). |
 | Format | stylua (`.stylua.toml`) |
 | License | MIT |
@@ -83,7 +84,7 @@ lua/didymus/config.lua       defaults and user config
 lua/didymus/command.lua      :Didymus subcommands and completion
 lua/didymus/health.lua       :checkhealth didymus
 lua/didymus/agent/           the agent. See architecture/agent.md.
-lua/didymus/ui/              UI parts that do not know about agents, such as the input float
+lua/didymus/ui/              UI parts for all epics, such as the input float and window layout
 tests/unit/didymus/          unit tests, mirror lua/didymus/
 tests/e2e/                   end-to-end tests, by feature
 tests/fixtures/              files for tests, such as the fake agent

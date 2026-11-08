@@ -18,7 +18,7 @@ end, {
   end,
 })
 
-for _, action in ipairs({ "start", "toggle", "stop" }) do
+for _, action in ipairs({ "start", "toggle", "focus", "stop" }) do
   vim.keymap.set({ "n", "t" }, ("<Plug>(didymus-agent-%s)"):format(action), function()
     require("didymus.agent")[action]()
   end, { desc = "didymus: agent " .. action })
