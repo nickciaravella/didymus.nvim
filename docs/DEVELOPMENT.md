@@ -62,7 +62,7 @@ To work on more than one issue at the same time, give each issue a worktree:
 
 ```sh
 git fetch origin
-git worktree add ../didymus.nvim-worktrees/<issue>-<slug> -b <type>/<slug> origin/main
+git worktree add --no-track -b <type>/<slug> ../didymus.nvim-worktrees/<issue>-<slug> origin/main
 ```
 
 The first `make test` in a worktree clones mini.nvim into its own `deps/`.
