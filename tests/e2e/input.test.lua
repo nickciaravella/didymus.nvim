@@ -63,7 +63,7 @@ local T = MiniTest.new_set({
   },
 })
 
-T["opens with one line above the cursor line, in the center of the window"] = function()
+T["opens with one line above the cursor line, at the start of the line"] = function()
   child.api.nvim_win_set_cursor(0, { 7, 0 })
   open({ title = "Prompt", width = 30, max_height = 4 })
   eq(child.api.nvim_get_mode().mode, "i")
@@ -86,12 +86,30 @@ T["does not cover a wrapped line"] = function()
   expect_screenshot(child.get_screenshot())
 end
 
-T["stays in the code window when the agent split is open"] = function()
+T["lines up with the indent of the line"] = function()
+  child.api.nvim_win_set_cursor(0, { 4, 0 })
+  open({ title = "Prompt", width = 20, max_height = 1 })
+  expect_screenshot(child.get_screenshot())
+end
+
+T["moves left to stay in the code window when the agent split is open"] = function()
   child.lua("require('didymus').setup(...)", { { agent = { backend = "test" } } })
   child.lua("require('didymus.agent').toggle()")
   child.cmd("wincmd p")
-  child.api.nvim_win_set_cursor(0, { 7, 0 })
-  open({ title = "Prompt", width = 20, max_height = 4 })
+  child.api.nvim_win_set_cursor(0, { 4, 0 })
+  -- The window is 29 columns, and the float with its border is 28. The indent is 2 columns.
+  open({ title = "Prompt", width = 26, max_height = 1 })
+  eq(child.api.nvim_win_get_position(assert(input_win()))[2], 1)
+  expect_screenshot(child.get_screenshot())
+end
+
+T["with a range, opens above the first line"] = function()
+  open({ title = "Prompt", width = 20, max_height = 1, range = { 4, 7 } })
+  expect_screenshot(child.get_screenshot())
+end
+
+T["with a range, opens under the last line"] = function()
+  open({ title = "Prompt", width = 20, range = { 3, 5 } })
   expect_screenshot(child.get_screenshot())
 end
 

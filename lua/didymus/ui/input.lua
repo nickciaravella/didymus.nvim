@@ -11,6 +11,7 @@ local M = {}
 ---@field width number? A width below 1 is a fraction of the current window width.
 ---@field max_height integer?
 ---@field keys didymus.ui.input.Keys?
+---@field range integer[]? The first and the last line of the code, 1-based. Default: the cursor line.
 
 local defaults = {
   width = 60,
@@ -33,35 +34,58 @@ local function resolve_width(width, win_width)
   return math.max(1, math.min(width, win_width - border_size))
 end
 
---- Put the float above the cursor line, in the center of the window. If the space above the
---- line is too small, put it under the line. The float covers no part of a wrapped line.
+--- The screen column of the first non-blank character of a line. On a blank line, or if the
+--- character is outside the window, the first text column of the window.
 ---@param win integer
+---@param info vim.fn.getwininfo.ret.item
+---@param lnum integer
+---@return integer
+local function find_line_start(win, info, lnum)
+  local line = vim.api.nvim_buf_get_lines(info.bufnr, lnum - 1, lnum, true)[1]
+  local first_char = line:find("%S")
+  local col = first_char and vim.fn.screenpos(win, lnum, first_char).col or 0
+  return col > 0 and col or info.wincol + info.textoff
+end
+
+--- Put the float above the lines, at the start of the first line. If the space above is too
+--- small, put it under the lines, at the start of the last line. The float covers no part of
+--- the lines, also when a line wraps.
+---@param win integer
+---@param range integer[] The first and the last line, 1-based.
 ---@param width integer
 ---@param max_height integer
 ---@return vim.api.keyset.win_config position
 ---@return integer max_height The max height that fits.
-local function find_position(win, width, max_height)
+local function find_position(win, range, width, max_height)
   local info = vim.fn.getwininfo(win)[1]
   local text_top = info.winrow + info.winbar
   local text_bottom = text_top + info.height - 1
-  local lnum = vim.api.nvim_win_get_cursor(win)[1]
-  local last_col = math.max(1, #vim.api.nvim_buf_get_lines(info.bufnr, lnum - 1, lnum, true)[1])
-  -- A row of 0 means that part of the line is outside the window.
-  local line_top = vim.fn.screenpos(win, lnum, 1).row
-  local line_bottom = vim.fn.screenpos(win, lnum, last_col).row
-  line_top = line_top > 0 and line_top or text_top
-  line_bottom = line_bottom > 0 and line_bottom or text_bottom
+  local first, last = range[1], range[2]
+  local last_line = vim.api.nvim_buf_get_lines(info.bufnr, last - 1, last, true)[1]
+  -- A row of 0 means that part of the lines is outside the window.
+  local lines_top = vim.fn.screenpos(win, first, 1).row
+  local lines_bottom = vim.fn.screenpos(win, last, math.max(1, #last_line)).row
+  lines_top = lines_top > 0 and lines_top or text_top
+  lines_bottom = lines_bottom > 0 and lines_bottom or text_bottom
 
-  -- Screen rows are 1-based, and float rows are 0-based.
-  local col = info.wincol - 1 + math.floor((info.width - width - border_size) / 2)
-  local rows_above = line_top - text_top - border_size
-  local rows_below = text_bottom - line_bottom - border_size
+  ---@param lnum integer
+  ---@return integer
+  local function find_col(lnum)
+    -- Screen columns are 1-based, and float columns are 0-based.
+    local col = find_line_start(win, info, lnum) - 1
+    local win_left = info.wincol - 1
+    -- Move the float left, so that it stays in the window.
+    return math.max(win_left, math.min(col, win_left + info.width - width - border_size))
+  end
+
+  local rows_above = lines_top - text_top - border_size
+  local rows_below = text_bottom - lines_bottom - border_size
   if rows_above >= max_height or rows_above >= rows_below then
-    -- With the SW anchor, the float ends on the row above the line and grows up.
-    return { relative = "editor", anchor = "SW", row = line_top - 1, col = col },
+    -- With the SW anchor, the float ends on the row above the lines and grows up.
+    return { relative = "editor", anchor = "SW", row = lines_top - 1, col = find_col(first) },
       math.max(1, math.min(max_height, rows_above))
   end
-  return { relative = "editor", anchor = "NW", row = line_bottom, col = col },
+  return { relative = "editor", anchor = "NW", row = lines_bottom, col = find_col(last) },
     math.max(1, math.min(max_height, rows_below))
 end
 
@@ -81,11 +105,12 @@ local function update_height(win, max_height)
   end
 end
 
---- Open a float above the cursor line for a prompt. `<CR>` adds a line.
+--- Open a float for a prompt, above or under the code. `<CR>` adds a line.
 ---@param opts didymus.ui.input.Opts
 function M.open(opts)
   vim.validate("opts.on_submit", opts.on_submit, "function")
   vim.validate("opts.on_cancel", opts.on_cancel, "function", true)
+  vim.validate("opts.range", opts.range, "table", true)
   opts = vim.tbl_deep_extend("force", defaults, opts)
   local keys = opts.keys
 
@@ -94,8 +119,10 @@ function M.open(opts)
   end
 
   local origin_win = vim.api.nvim_get_current_win()
+  local cursor_line = vim.api.nvim_win_get_cursor(origin_win)[1]
+  local range = opts.range or { cursor_line, cursor_line }
   local width = resolve_width(opts.width, vim.api.nvim_win_get_width(origin_win))
-  local position, max_height = find_position(origin_win, width, opts.max_height)
+  local position, max_height = find_position(origin_win, range, width, opts.max_height)
   local footer = (" %s submit  %s cancel "):format(keys.submit, keys.cancel)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].bufhidden = "wipe"
