@@ -1,11 +1,11 @@
 ---
 name: herdr-parallel-work
-description: Work on more than one didymus.nvim issue at the same time in the Herdr app. Each issue gets a git worktree, a Herdr space and a worker agent. Use when the user asks to start parallel work in Herdr, to check the workers, or to clean up after a worker's pull request merges.
+description: Work on more than one didymus.nvim issue at the same time in the Herdr app. Each issue gets a git worktree, a Herdr space and a worker agent. Use when the user asks to start parallel work in Herdr, to check the workers, to merge the pull request of a worker, or to clean up after a merge.
 ---
 
 # Parallel work in Herdr
 
-Use this skill from a Claude session in the Herdr app, in the main checkout. You start the workers, check them, and clean up after each merge. The user approves their plans and answers their questions.
+Use this skill from a Claude session in the Herdr app, in the main checkout. You are the orchestrator. You start the workers, check them, merge their pull requests, and clean up. The user approves the plans, answers the questions, and tells you when to merge.
 
 Use `herdr-app` for spaces and tabs. Use `hc` to read, label and send text to terminals. For the full manuals, run `herdr-app --skill` and `hc --skill`.
 
@@ -21,8 +21,9 @@ Use `herdr-app` for spaces and tabs. Use `hc` to read, label and send text to te
 
 ## Rules
 
-- Start a worker only when the dependencies of its issue are merged. See the work plan in the architecture doc of the epic.
-- Do not answer the questions of a worker. The user does this. Merge only when the user asks.
+- Start a worker only when the dependencies of its issue are merged. See the `Needs:` line of the issue, and the work plan in the architecture doc of the epic, if it has one.
+- Do not answer the questions of a worker. The user does this.
+- Merge a pull request only when the user tells you that it is ready. Workers do not merge.
 - Close only the spaces and terminals that have the `didymus.role` label.
 
 ## Start a worker
@@ -44,7 +45,7 @@ Use `herdr-app` for spaces and tabs. Use `hc` to read, label and send text to te
 The task template:
 
 ```text
-Work on issue #<issue> in this worktree, `<worktree>`, on branch `<branch>`. The branch has no upstream, so the first push is `git push -u origin <branch>`. Follow `AGENTS.md`: read the issue and the architecture doc, then give me a short plan with the decisions that the issue does not make. Wait for my approval before you write code. Another agent works on #<other issue> (<title>) at the same time. You can both change <shared files>. Follow the "Parallel work" rules in `AGENTS.md`. Do not merge the pull request. Do not start other issues or agents.
+Work on issue #<issue> in this worktree, `<worktree>`, on branch `<branch>`. The branch has no upstream, so the first push is `git push -u origin <branch>`. Follow `AGENTS.md`: read the issue and the architecture doc of its epic, if it has one. Then give me a short plan with the decisions that the issue does not make. Wait for my approval before you write code. Another agent works on #<other issue> (<title>) at the same time. You can both change <shared files>. Follow the "Parallel work" rules in `AGENTS.md`. When you finish and give me a summary, start it with a short description of the issue. Do not merge the pull request. Do not start other issues or agents.
 ```
 
 Write one "Another agent" sentence for each other worker. Find the shared files in the scope of the issues.
@@ -59,14 +60,27 @@ gh pr list --head <branch> --state all --json number,state
 
 A worker with the status `blocked` or `done` waits for the user. Tell the user the name of its space.
 
+## Merge a pull request
+
+Do these steps when the user tells you that a pull request is ready. If a check fails, do not merge, and tell the user.
+
+1. Make sure that CI passed: `gh pr checks <PR>`.
+2. Make sure that the worker is `done`.
+3. Make sure that the worktree has no changes, and that all its commits are pushed: `git -C <worktree> status -sb`. The merge deletes the worktree. If a terminal of the user is in the worktree, ask the user before you merge.
+4. Merge: `gh pr merge <PR> --squash --delete-branch`. This deletes the remote branch, the local branch and the worktree.
+5. Do the steps in "After a merge".
+
 ## After a merge
 
-1. Find the space in the `herdr.space` label: `hc get <terminal> --json | jq .labels`.
-2. Make sure that the space has only labeled terminals. List them with `herdr-app ls`. Check the labels of each one with `hc get`. If the user added a terminal, do not close the space, and tell the user.
-3. Close the space: `herdr-app do space.close --id <space> --confirmed true`. Then end the worker: `hc kill <terminal>; hc rm <terminal>`.
-4. Remove the worktree and the branch. Use the commands in `docs/DEVELOPMENT.md`. If `git worktree remove` refuses because of changes, keep the worktree and tell the user. Do not use `--force`.
-5. Update the main checkout: `git pull`.
-6. Tell each other worker that `main` moved. Skip a `blocked` worker. It gets the notice at the next check.
+Do these steps also when the user merges a pull request.
+
+1. Find the space and the tab in the `herdr.space` and `herdr.tab` labels: `hc get <terminal> --json | jq .labels`.
+2. Find the terminals of the space with `herdr-app ls`. Check the labels of each one with `hc get`.
+3. If the space has only labeled terminals, close it: `herdr-app do space.close --id <space> --confirmed true`. If the user added a terminal, close only the tab of the worker: `herdr-app do tab.close --id <tab> --confirmed true`. Tell the user.
+4. End the worker: `hc kill <terminal>; hc rm <terminal>`.
+5. If the worktree or the local branch still exists, remove it. Use the commands in `docs/DEVELOPMENT.md`. If `git worktree remove` refuses because of changes, keep the worktree and tell the user. Do not use `--force`.
+6. Update the main checkout: `git pull`.
+7. Tell each other worker that `main` moved. Skip a `blocked` worker. It gets the notice at the next check.
 
    ```sh
    notice=$(cat <<'EOF'

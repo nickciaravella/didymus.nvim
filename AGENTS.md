@@ -79,7 +79,7 @@ Be concise and simple. Only write code, comments or documentation that is useful
 
 ## Before you start
 
-1. Read the issue and the architecture doc of its epic.
+1. Read the issue and the architecture doc of its epic, if the epic has one. See `docs/TASK_TRACKING.md`.
 2. Give the user a short plan. List the decisions that the issue does not make.
 3. If the issue and the architecture doc do not agree, ask the user.
 4. If a decision changes the scope of another open issue, update that issue.
