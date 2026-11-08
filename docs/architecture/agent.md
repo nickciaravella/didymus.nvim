@@ -26,7 +26,7 @@ These features come later:
 | A3 | `agent.cmd` sets the agent command. The `cmd` option of the API and of the command overrides it. |
 | A4 | The view is `float` or `split`. Only one view is visible at a time. `toggle` with a `view` shows or hides that view. `toggle` with no `view` uses the last view, then `agent.view`. |
 | A5 | Append uses the current line in normal mode and the selection in visual mode. It puts the context in the agent input and focuses the agent. It does not submit. |
-| A6 | Send opens an input float at the cursor. The float starts with one line and grows when the text wraps. `<CR>` adds a line. `<C-y>` submits. The keys are configurable. |
+| A6 | Send opens an input float above the code, in the center of the current window. The code has a highlight while the float is open. The float starts with one line and grows when the text wraps. `<CR>` adds a line. `<C-y>` submits. The keys are configurable. |
 | A7 | Send submits the context and the prompt. It does not show the agent. |
 | A8 | The context is the location and the code in a fenced block. |
 | A9 | The backends are `terminal` and `test`. The interface must also fit an ACP backend. |
@@ -157,15 +157,17 @@ The other parts have these interfaces:
 ---@field title string?
 ---@field on_submit fun(text: string)
 ---@field on_cancel fun()?
----@field width number?      Default 60. A width below 1 is a fraction of the editor width.
+---@field width number?      Default 60. A width below 1 is a fraction of the current window width.
 ---@field max_height integer? Default 10.
 ---@field keys { submit: string?, cancel: string? }? Default `{ submit = "<C-y>", cancel = "q" }`.
+---@field range integer[]?   The first and the last line of the code, 1-based. These lines have a highlight. Default: the cursor line.
 
 --- ui/layout.lua
 ---@class didymus.ui.layout
 ---@field resolve_size fun(size: number, total: integer): integer A size below 1 is a fraction of `total`.
 ---@field editor_area fun(): didymus.ui.layout.Area The editor rows above the command line.
 ---@field border_size fun(border: string|table): integer, integer The columns and rows of a border from `nvim_win_get_config()`.
+---@field center_offset fun(size: integer, total: integer): integer The offset that puts `size` in the center of `total`.
 ---@field center fun(area: didymus.ui.layout.Area, width: integer, height: integer, border: string|table): { row, col, width, height } Make the float smaller if it does not fit.
 ```
 
@@ -213,7 +215,7 @@ agent = {
 }
 ```
 
-A size below 1 is a fraction of the editor size.
+A size below 1 is a fraction of the editor size. For `input.width`, it is a fraction of the current window width.
 
 ## Flows
 
@@ -248,7 +250,7 @@ For example, with the split visible, `toggle float` closes the split and shows t
 
 ### Send
 
-1. Make the context. Open the input float at the cursor.
+1. Make the context. Open the input float above the line or the selection. Give the lines as `range`.
 2. On submit, start a session if no session runs. Do not show the view.
 3. Call `backend:send()`. Show the message "Sent to `<cmd>`".
 
@@ -272,7 +274,11 @@ For example, with the split visible, `toggle float` closes the split and shows t
 
 | Behavior | Decision |
 | --- | --- |
-| Position | Under the cursor line, at the cursor column. If the space under the line is less than `max_height`, the float goes above the line and grows up. |
+| Position | Above the first line of `range`, and the float grows up. If the space above is less than `max_height` and less than the space under the last line, the float goes under the last line and grows down. |
+| Column | The center of the current window. |
+| Highlight | The lines of `range` have the `DidymusInputContext` highlight while the float is open. It links to `Visual`. It covers full lines, also for a part of a line in a selection. It shows only in the current window, also when other windows show the buffer. An extmark shows in all windows of its buffer, so a decoration provider draws the highlight. |
+| Window | The float, with its border, stays in the current window, so it does not cover the agent split. If the window is too narrow for `width`, the float uses the window width. |
+| Wrapped line | The float goes above the first screen row of the first line, or under the last screen row of the last line. It does not cover the code. |
 | Size | One line at the start. It grows when the text wraps, up to `max_height`. Then it scrolls. |
 | Border | `'winborder'`. If it is empty or `none`, `rounded`, because a title needs a border. |
 | Footer | The keys, for example `<C-y> submit  q cancel`. Only if it fits in the width. |

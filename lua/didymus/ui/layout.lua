@@ -44,6 +44,14 @@ function M.border_size(border)
   return width, height
 end
 
+--- The offset that puts `size` in the center of `total`.
+---@param size integer
+---@param total integer
+---@return integer
+function M.center_offset(size, total)
+  return math.floor((total - size) / 2)
+end
+
 --- The position and size of a float in the center of `area`. If the float and its border do not
 --- fit, the float becomes smaller.
 ---@param area didymus.ui.layout.Area
@@ -56,8 +64,8 @@ function M.center(area, width, height, border)
   width = math.max(1, math.min(width, area.width - border_width))
   height = math.max(1, math.min(height, area.height - border_height))
   return {
-    row = area.row + math.floor((area.height - height - border_height) / 2),
-    col = area.col + math.floor((area.width - width - border_width) / 2),
+    row = area.row + M.center_offset(height + border_height, area.height),
+    col = area.col + M.center_offset(width + border_width, area.width),
     width = width,
     height = height,
   }

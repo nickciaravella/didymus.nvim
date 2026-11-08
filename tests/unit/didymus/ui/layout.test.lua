@@ -20,6 +20,12 @@ T["border_size()"] = function()
   eq({ layout.border_size(shadow) }, { 1, 1 })
 end
 
+T["center_offset()"] = function()
+  eq(layout.center_offset(20, 80), 30)
+  eq(layout.center_offset(21, 80), 29)
+  eq(layout.center_offset(80, 80), 0)
+end
+
 T["center()"] = function()
   local area = { row = 2, col = 10, width = 40, height = 20 }
   eq(layout.center(area, 20, 10, "none"), { row = 7, col = 20, width = 20, height = 10 })
