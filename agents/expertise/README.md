@@ -6,11 +6,14 @@ Each technology has one notebook, such as `neovim.md`, `gh.md`, `claude.md` or `
 
 ## What goes in a notebook
 
+A notebook keeps facts that save time and effort for the next agent. Do not add a fact only because it is true.
+
 Add a fact only if all of these are true:
 
-1. It is tricky or unexpected.
-2. It is not well documented. It is not in the docs of the technology, such as `:h`, and not in the docs of this repo.
-3. It has no natural place elsewhere, such as a code comment, `docs/DEVELOPMENT.md` or `docs/TESTING.md`.
+1. It will save effort in the future. For example, you tried more than one approach, or you ran tests or commands to find it.
+2. It is tricky or unexpected.
+3. It is not well documented. It is not in the docs of the technology, such as `:h`, and not in the docs of this repo.
+4. It has no natural place elsewhere, such as a code comment, `docs/DEVELOPMENT.md` or `docs/TESTING.md`.
 
 ## Add an entry
 

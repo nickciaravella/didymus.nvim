@@ -39,7 +39,7 @@ Each notebook in `agents/expertise/` keeps the tricky facts about one technology
 
 1. When you work with a technology, scan the headings of its notebook: `grep -n '^##' agents/expertise/neovim.md`.
 2. Read each entry whose heading applies to your work.
-3. When you find a tricky fact about a technology, add an entry. See [`agents/expertise/README.md`](agents/expertise/README.md).
+3. When a tricky fact about a technology took effort to find, add an entry. See [`agents/expertise/README.md`](agents/expertise/README.md).
 
 Do not keep these facts in a local memory, such as the Claude Code auto memory. A local memory is only for the preferences of one user.
 
