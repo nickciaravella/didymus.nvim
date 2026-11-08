@@ -43,7 +43,7 @@ flowchart TB
 | Agent backends | `terminal` and `test` in v1. The interface must also fit ACP. |
 | Agent views | A float, or a split on the right. |
 | Agent commands | `start`, `toggle` and `stop`. Most users only use `toggle`. |
-| Agent context | The location and the code in a fenced block. |
+| Agent context | The location and the code in a fenced block. Claude Code shows the paste as a short placeholder, also for a short context. |
 | Agent in end-to-end tests | The `test` backend for the flows. A fake agent CLI for the terminal backend. |
 | Text | STE100. See [`AGENTS.md`](../AGENTS.md#writing-rules-ste100). |
 | Format | stylua (`.stylua.toml`) |
@@ -54,7 +54,6 @@ flowchart TB
 - How do we get the PR code: a git worktree, or the current checkout?
 - Which integrations ship first?
 - What are the interfaces between core and the integrations?
-- Does Claude Code show a long paste as a short placeholder? If it does not, we can change the agent context format.
 - Do the integration tests for the GitHub provider use the real GitHub, or recorded output?
 
 ## Code structure

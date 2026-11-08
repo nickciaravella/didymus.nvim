@@ -10,6 +10,8 @@ local View = require("didymus.agent.view")
 --- A backend module returns `{ new = fun(opts: didymus.agent.BackendOpts): didymus.agent.Backend }`.
 --- `new()` throws an error if the agent cannot start.
 ---@class didymus.agent.Backend
+---@field append fun(self, prompt: didymus.agent.Prompt) Put the prompt in the agent input.
+---@field send fun(self, prompt: didymus.agent.Prompt) Put the prompt in the agent input and submit it.
 ---@field buf fun(self): integer? The buffer for the view. Nil means no view.
 ---@field focus? fun(self, win: integer) Called after the view focuses `win`.
 ---@field is_running fun(self): boolean
@@ -97,6 +99,20 @@ end
 ---@return boolean
 function Session:is_running()
   return self.backend ~= nil and self.backend:is_running()
+end
+
+---@param prompt didymus.agent.Prompt
+function Session:append(prompt)
+  if self.backend then
+    self.backend:append(prompt)
+  end
+end
+
+---@param prompt didymus.agent.Prompt
+function Session:send(prompt)
+  if self.backend then
+    self.backend:send(prompt)
+  end
 end
 
 --- Hide the view and stop the backend.

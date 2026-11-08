@@ -260,11 +260,12 @@ Explain this.
 | Step | Behavior |
 | --- | --- |
 | Start | Make a buffer with `bufhidden=hide`. Call `jobstart(cmd, { term = true, cwd = cwd, width = width, height = height })` in it with `nvim_buf_call()`. This works with no window, so `start` and send can start a hidden agent. Without `width` and `height`, the pty gets the size of a small hidden window. |
-| Ready | Queue input until the first output, plus `terminal.ready_delay`. |
-| Input | Write the text with `chansend()` in bracketed paste (`ESC[200~` … `ESC[201~`). Without bracketed paste, each newline submits. |
+| Ready | Queue input until the first output (`on_stdout`), plus `terminal.ready_delay`. The queue is serial, so the next prompt comes after the submit. |
+| Input | Write the text with `chansend()` in bracketed paste (`ESC[200~` … `ESC[201~`). Without bracketed paste, each newline submits. Remove `ESC[201~` from the text, because it ends the paste. Lines end with `\n`, as in the terminal paste of Neovim. |
 | Submit | Send `\r` after `terminal.submit_delay`. Some TUIs ignore an Enter that comes in the same write as the paste. |
 | Focus | `startinsert`. |
-| Exit | If the agent buffer is current in terminal mode, `stopinsert`. Call `on_exit` after the mode change, because the mode change clears the message area. |
+| Exit | Drop the queued input. If the agent buffer is current in terminal mode, `stopinsert`. Call `on_exit` after the mode change, because the mode change clears the message area. |
+| Stop | Drop the queued input. Stop the job and delete the buffer. |
 
 ## Test backend
 
@@ -277,9 +278,9 @@ Explain this.
 
 `tests/fixtures/fake_agent.lua` acts like an agent CLI. It runs with `nvim --clean -l`, so CI needs nothing new.
 
-- It turns on bracketed paste and shows a prompt.
-- It shows each key and each paste.
-- A `\r` outside a paste shows `submitted: <text>`.
+- It sets the pty to raw mode, turns on bracketed paste and shows a prompt. It does this before its first output.
+- It shows one row for each event: `paste: "<text>"` and `key: "<byte>"`. The text goes through `vim.inspect()`, so a newline shows as `\n`.
+- A `\r` or a `\n` outside a paste shows `submitted: "<text>"`. The `\n` makes sure that a test fails if a newline is not in a paste.
 
 ## Tests
 
