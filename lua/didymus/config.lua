@@ -4,6 +4,7 @@ M.defaults = {
   agent = {
     cmd = "claude",
     split = { width = 0.4 },
+    terminal = { ready_delay = 500, submit_delay = 50 }, -- milliseconds
   },
 }
 

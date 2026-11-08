@@ -92,9 +92,19 @@ See `tests/e2e/startup.test.lua` for an example.
 | Argument | Behavior |
 | --- | --- |
 | `--name <name>` | Show `fake agent <name>` as the banner. |
-| `--exit <code>` | Exit with `<code>` after the first line of input. |
+| `--exit <code>` | Exit with `<code>` after the first submit. |
 
-The agent starts in a separate process. Do not use a fixed delay. Poll the agent buffer until the text shows. See `tests/e2e/agent/session.test.lua`.
+The fake agent reads input in raw mode with bracketed paste. It shows one row for each event:
+
+| Input | Row |
+| --- | --- |
+| A bracketed paste | `paste: "<text>"` |
+| A `\r` or a `\n` outside a paste | `submitted: "<text>"`, with all the input since the last submit |
+| Another key | `key: "<byte>"` |
+
+The text goes through `vim.inspect()`. Make the terminal wide, so that each row fits. See `tests/e2e/agent/terminal_input.test.lua`.
+
+The agent starts in a separate process. Do not use a fixed delay. Poll the agent buffer until the text shows. The helpers are in `tests/e2e/agent/helpers.lua`.
 
 ### Integration tests
 

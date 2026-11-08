@@ -54,6 +54,10 @@ require("didymus").setup({
   agent = {
     cmd = "claude", -- a string runs through 'shell'
     split = { width = 0.4 }, -- below 1 is a fraction of the editor width
+    terminal = {
+      ready_delay = 500, -- ms to wait after the first output of the agent, before input
+      submit_delay = 50, -- ms to wait after the prompt text, before the Enter key
+    },
   },
 })
 ```

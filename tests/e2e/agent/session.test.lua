@@ -1,45 +1,20 @@
+local helpers = dofile("tests/e2e/agent/helpers.lua")
+
 local eq = MiniTest.expect.equality
 local no_eq = MiniTest.expect.no_equality
 
 local child = MiniTest.new_child_neovim()
 
-local fake_agent = vim.fn.fnamemodify("tests/fixtures/fake_agent.lua", ":p")
-
----@param ... string Arguments for the fake agent.
----@return string[]
-local function fake_cmd(...)
-  return { vim.v.progpath, "--clean", "-l", fake_agent, ... }
-end
-
----@param check fun(): boolean
----@param what string
-local function wait_for(check, what)
-  for _ = 1, 500 do
-    if check() then
-      return
-    end
-    vim.uv.sleep(10)
-  end
-  error("timeout: " .. what)
-end
+local fake_cmd, wait_for = helpers.fake_cmd, helpers.wait_for
 
 ---@return integer?
 local function agent_buf()
-  return child.lua_get([[
-    (function()
-      local session = require("didymus.agent").current()
-      return session and session.backend and session.backend:buf()
-    end)()
-  ]])
+  return helpers.agent_buf(child)
 end
 
 ---@param text string
 local function wait_for_text(text)
-  wait_for(function()
-    local buf = agent_buf()
-    local lines = buf and child.api.nvim_buf_get_lines(buf, 0, -1, false) or {}
-    return table.concat(lines, "\n"):find(text, 1, true) ~= nil
-  end, text)
+  helpers.wait_for_text(child, text)
 end
 
 ---@param mode string
