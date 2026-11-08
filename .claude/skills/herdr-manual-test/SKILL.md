@@ -48,10 +48,12 @@ Warning: the user can have unsaved changes in the test Neovim. Check before you 
 2. Find the buffers with unsaved changes. Empty output means none:
 
    ```sh
-   timeout 5 nvim --server "${XDG_RUNTIME_DIR:-/tmp}/didymus-manual-test-<issue>.sock" --remote-expr 'execute("ls +")'
+   sock="${XDG_RUNTIME_DIR:-/tmp}/didymus-manual-test-<issue>.sock"
+   timeout 5 nvim --server "$sock" --remote-expr 'execute("ls +")'
    ```
 
 3. If there are unsaved changes, tell the user the buffers. Close the tab only when the user agrees.
-4. Find the tab in the `herdr.tab` label: `hc get <terminal> --json | jq -r '.labels["herdr.tab"]'`.
-5. If the tab has only the test terminal, close it: `herdr-app do tab.close --id <tab> --confirmed true`. If the user added a terminal to the tab, keep the tab.
-6. End the terminal: `hc kill <terminal>; hc rm <terminal>`.
+4. Quit Neovim: `timeout 5 nvim --server "$sock" --remote-send '<Cmd>qa!<CR>'`. If a tab close ends Neovim, Neovim keeps the swap files of unsaved buffers.
+5. Find the tab in the `herdr.tab` label: `hc get <terminal> --json | jq -r '.labels["herdr.tab"]'`.
+6. If the tab has only the test terminal, close it: `herdr-app do tab.close --id <tab> --confirmed true`. If the user added a terminal to the tab, keep the tab.
+7. End the terminal: `hc kill <terminal>; hc rm <terminal>`.
