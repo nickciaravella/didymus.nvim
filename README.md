@@ -49,6 +49,8 @@ vim.keymap.set({ "n", "t" }, "<M-a>", "<Plug>(didymus-agent-toggle)")
 
 The mappings are `<Plug>(didymus-agent-toggle)`, `<Plug>(didymus-agent-start)` and `<Plug>(didymus-agent-stop)`.
 
+To check that the program of `agent.cmd` is on `$PATH`, run `:checkhealth didymus`.
+
 The defaults:
 
 ```lua
