@@ -3,8 +3,10 @@ local M = {}
 M.defaults = {
   agent = {
     cmd = "claude",
+    view = "split", -- "split" or "float"
     backend = "terminal", -- "terminal" or "test"
     split = { width = 0.4 },
+    float = { width = 0.85, height = 0.85 },
     terminal = { ready_delay = 500, submit_delay = 50 }, -- milliseconds
   },
 }

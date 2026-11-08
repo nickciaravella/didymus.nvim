@@ -38,7 +38,7 @@ function Session.format_cmd(cmd)
 end
 
 --- Start the backend.
----@param opts { cmd: string|string[], cwd: string, backend: string }
+---@param opts { cmd: string|string[], cwd: string, backend: string, view: didymus.agent.ViewKind }
 ---@return didymus.agent.Session
 function Session.new(opts)
   local self = setmetatable({ backend_name = opts.backend, view = View.new() }, Session)
@@ -47,13 +47,13 @@ function Session.new(opts)
 end
 
 --- Start a new backend. Delete the buffer of the old backend.
----@param opts { cmd: string|string[], cwd: string }
+---@param opts { cmd: string|string[], cwd: string, view: didymus.agent.ViewKind } `view` sets the size.
 function Session:restart(opts)
   local module = backends[self.backend_name]
   if not module then
     error(("unknown backend %q"):format(self.backend_name), 0)
   end
-  local width, height = View.size("split")
+  local width, height = View.size(opts.view)
   local backend
   backend = require(module).new({
     cmd = opts.cmd,
@@ -96,9 +96,17 @@ function Session:hide()
   self.view:hide()
 end
 
+--- With `kind`, true only if the view of that kind is visible.
+---@param kind didymus.agent.ViewKind?
 ---@return boolean
-function Session:is_visible()
-  return self.view:is_visible()
+function Session:is_visible(kind)
+  return self.view:is_visible(kind)
+end
+
+--- The kind of the last view that showed the agent.
+---@return didymus.agent.ViewKind?
+function Session:view_kind()
+  return self.view.kind
 end
 
 ---@return boolean

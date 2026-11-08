@@ -1,6 +1,6 @@
 local M = {}
 
-local views = { split = {} }
+local views = { float = {}, split = {} }
 
 local tree = {
   agent = { start = {}, toggle = views, stop = {} },

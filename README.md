@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent split works now.
+> **Early development.** Only the agent works now.
 
 ## Goals
 
@@ -29,13 +29,15 @@ vim.pack.add({ "https://github.com/nickciaravella/didymus.nvim" })
 
 ## Agent
 
-Run an agent CLI, such as Claude Code or Codex, in a split on the right.
+Run an agent CLI, such as Claude Code or Codex, in a split on the right or in a float.
 
 | Command | Behavior |
 | --- | --- |
-| `:Didymus agent toggle [split] [cmd]` | Show the agent, or hide it. Start it if it does not run. |
+| `:Didymus agent toggle [float\|split] [cmd]` | Show the agent, or hide it. Start it if it does not run. |
 | `:Didymus agent start [cmd]` | Start the agent, but do not show it. |
-| `:Didymus agent stop` | End the agent and close its split. |
+| `:Didymus agent stop` | End the agent and close its view. |
+
+`toggle float` shows or hides the float. If the split is visible, it closes, and the same agent shows in the float. `toggle split` does the same for the split. `toggle` with no view uses the last view, then `agent.view`.
 
 `[cmd]` overrides `agent.cmd`. If the agent runs, didymus does not use `[cmd]`. To change the agent, stop it first.
 
@@ -53,8 +55,10 @@ The defaults:
 require("didymus").setup({
   agent = {
     cmd = "claude", -- a string runs through 'shell'
+    view = "split", -- "split" or "float"
     backend = "terminal", -- "terminal", or "test" for tests
     split = { width = 0.4 }, -- below 1 is a fraction of the editor width
+    float = { width = 0.85, height = 0.85 }, -- below 1 is a fraction of the editor size
     terminal = {
       ready_delay = 500, -- ms to wait after the first output of the agent, before input
       submit_delay = 50, -- ms to wait after the prompt text, before the Enter key
