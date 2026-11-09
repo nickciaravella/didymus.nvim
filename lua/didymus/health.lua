@@ -27,13 +27,20 @@ end
 
 local function check_review()
   vim.health.start("didymus review")
+  local options = require("didymus.config").options.review
 
-  local adapter, err =
-    require("didymus.ui.picker").get(require("didymus.config").options.review.picker)
+  local adapter, picker_err = require("didymus.ui.picker").get(options.picker)
   if adapter then
     adapter.health()
   else
-    vim.health.error(("%s (review.picker)"):format(err), "Set `review.picker`.")
+    vim.health.error(("%s (review.picker)"):format(picker_err), "Set `review.picker`.")
+  end
+
+  local provider, provider_err = require("didymus.review.provider").get(options.provider)
+  if provider then
+    provider.health()
+  else
+    vim.health.error(("%s (review.provider)"):format(provider_err), "Set `review.provider`.")
   end
 end
 

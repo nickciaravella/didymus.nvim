@@ -13,6 +13,8 @@ local T = MiniTest.new_set({
 ---@param opts table
 ---@return string
 local function report(opts)
+  -- The default `github` provider runs `gh auth status`, which uses the network.
+  opts = vim.tbl_deep_extend("keep", opts, { review = { provider = "test" } })
   child.lua("require('didymus').setup(...)", { opts })
   child.cmd("checkhealth didymus")
   return table.concat(child.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
@@ -40,6 +42,21 @@ local function section(opts, name)
   end
   return table.concat(lines, "\n")
 end
+
+--- Make the $PATH of the child a new directory. If `script` is given, put a fake `gh` in it.
+---@param script string? The shell code of the fake `gh`.
+local function set_path(script)
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir, "p")
+  if script then
+    local path = vim.fs.joinpath(dir, "gh")
+    vim.fn.writefile({ "#!/bin/sh", script }, path)
+    vim.uv.fs_chmod(path, tonumber("755", 8))
+  end
+  child.lua("vim.env.PATH = ...", { dir })
+end
+
+local github = { review = { picker = "test", provider = "github" } }
 
 ---@param report string
 ---@param text string
@@ -84,6 +101,39 @@ end
 T["didymus review"]["shows an error for an unknown picker"] = function()
   local text = section({ review = { picker = "unknown" } }, "didymus review")
   expect_text(text, 'ERROR unknown picker "unknown". Use "snacks", "test" or an adapter table.')
+end
+
+T["didymus review"]["shows OK with the test provider"] = function()
+  local text = section({ review = { picker = "test" } }, "didymus review")
+  expect_text(text, "OK the test provider is configured (review.provider)")
+end
+
+T["didymus review"]["shows an error for an unknown provider"] = function()
+  local text = section({ review = { provider = "unknown" } }, "didymus review")
+  expect_text(text, 'ERROR unknown provider "unknown". Use "github", "test" or a provider table.')
+  expect_text(text, "Set `review.provider`.")
+end
+
+T["didymus review"]["shows an error if gh is not on $PATH"] = function()
+  set_path()
+  local text = section(github, "didymus review")
+  expect_text(text, "ERROR `gh` is not on $PATH (review.provider)")
+  expect_text(text, "Install the GitHub CLI, or set `review.provider`.")
+end
+
+T["didymus review"]["shows the message of gh if gh auth status fails"] = function()
+  set_path([[echo "fake gh: $*" >&2; exit 1]])
+  local text = section(github, "didymus review")
+  expect_text(text, "ERROR `gh auth status` failed (review.provider)")
+  expect_text(text, "fake gh: auth status --active")
+  expect_text(text, "Run `gh auth login`, or set `review.provider`.")
+end
+
+T["didymus review"]["shows OK if gh is authenticated"] = function()
+  set_path("exit 0")
+  local text = section(github, "didymus review")
+  expect_text(text, "OK `gh` is authenticated (review.provider)")
+  MiniTest.expect.equality(text:find("ERROR", 1, true), nil)
 end
 
 return T

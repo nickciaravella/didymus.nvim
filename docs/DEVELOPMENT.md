@@ -36,6 +36,7 @@ flowchart TB
 | Test Neovim version | The installed Neovim. CI uses stable. |
 | Network in tests | Unit and end-to-end tests do not use the network. Unit tests mock external dependencies. |
 | Code host in end-to-end tests | The test provider. In the MVP, people test the GitHub provider by hand. See [#50](https://github.com/nickciaravella/didymus.nvim/issues/50). |
+| GitHub provider in unit tests | A mock of `vim.system` gives recorded `gh` output from `tests/fixtures/github/`. |
 | Picker in end-to-end tests | The test picker. Integration tests use the real snacks.nvim. |
 | snacks.nvim in tests | A fixed commit: `SNACKS_COMMIT` in the `Makefile`. `make deps` checks it out. Only the integration tests put it on the `'runtimepath'`. |
 | Test commands | `make test` runs all kinds of tests. CI runs `make test`. |
@@ -48,6 +49,7 @@ flowchart TB
 | Pickers | Only snacks.nvim in the MVP. The picker interface keeps the select role and the panel role apart, so that other pickers can come later. The health check reports a missing picker. See [`architecture/review.md`](architecture/review.md#picker-interface). |
 | Review types | Only the fields that the MVP uses. A thread and a draft use a line range. A changed file has the raw patch from the code host. See [`architecture/review.md`](architecture/review.md#review-types). |
 | Test provider | It keeps changes in memory, and calls each `cb` in `vim.schedule()`, as a real provider does. Its `checkout` runs `git checkout` in a temporary repo. |
+| GitHub provider | `gh` with `vim.system`. A PR number or a PR URL. One GraphQL query and the REST files, at the same time. See [`architecture/review.md`](architecture/review.md#github-provider). |
 | Hunk display | Not in the MVP. The patch from the code host gives the first hunk and the commentable lines. See [#51](https://github.com/nickciaravella/didymus.nvim/issues/51). |
 | Agent scope | The agent works in all buffers, also outside a review. Only one agent session runs at a time. |
 | Agent backends | `terminal` and `test` in v1. The interface must also fit ACP. |
@@ -101,7 +103,7 @@ lua/didymus/health.lua       :checkhealth didymus
 lua/didymus/agent/           the agent. See architecture/agent.md.
 lua/didymus/ui/              UI parts for all epics, such as the input float and window layout
 lua/didymus/ui/picker/       the picker interface and its adapters: snacks, test
-lua/didymus/review/provider/ the review types, the provider interface and its providers: test
+lua/didymus/review/provider/ the review types, the provider interface and its providers: github, test
 tests/helpers.lua            helpers for all kinds of tests
 tests/unit/didymus/          unit tests, mirror lua/didymus/
 tests/e2e/                   end-to-end tests, by feature

@@ -36,6 +36,7 @@ tests/
   unit/didymus/       mirrors lua/didymus/
   e2e/                one file (or folder) for each feature
   integration/        one folder for each kind of integration, such as picker/
+  fixtures/           files for tests, such as the fake agent and recorded gh output
 ```
 
 All test files end in `.test.lua`.
@@ -162,6 +163,21 @@ The helpers in `tests/e2e/review/helpers.lua` run in the test process:
 
 The `files` of the change come from `git diff`, with the patch as GitHub gives it. The helpers do not use the git config of the user. Before you call `checkout`, set the directory of the child to the repo with `child.fn.chdir(repo.dir)`. See `tests/e2e/review/provider.test.lua`.
 
+### The GitHub provider
+
+The unit tests of the GitHub provider replace `vim.system` with a mock. The mock gives recorded `gh` output from `tests/fixtures/github/`, and calls `on_exit` in a fast event, as the real `vim.system` does. See `tests/unit/didymus/review/provider/github.test.lua`.
+
+| Fixture | Recorded from | Changes by hand |
+| --- | --- | --- |
+| `list.json` | `gh pr list` on neovim/neovim: one PR and one draft. | None. |
+| `fork_*.json` | neovim/neovim#38540: a fork head, renamed files, 2 pages of 2 files. | None. |
+| `no_patch_*.json` | neovim/neovim#27317: a large file with no `patch`. | Only 2 of the files. |
+| `pending_*.json` | nickciaravella/didymus.nvim#57. | Only 1 file, the first line of the body, and 2 pending reviews. |
+
+The REST fixtures (`*_files.json`) do not have the URL fields. To record again, run the query of `lua/didymus/review/provider/github/graphql.lua` and the REST call with `--paginate --slurp`. A smaller page size, such as `first: 2` and `per_page=2`, gives more than one page.
+
+The health tests in `tests/e2e/health.test.lua` set the `$PATH` of the child to a new directory, with a fake `gh` script or with no `gh`. So they do not use the network.
+
 ### Integration tests
 
 Integration tests check one provider or external dependency against the real thing. For example, a test checks the GitHub provider with the real `gh`. If necessary, a test can use more than one module, for a larger functional test.
@@ -172,7 +188,7 @@ Integration tests check one provider or external dependency against the real thi
 - snacks draws its windows in scheduled callbacks. Poll with `wait_for()` until the text shows.
 - To check that a thing does not happen, such as an auto close, let the child run its callbacks first. Call `vim.wait(50)` in the child.
 
-In the MVP, people test the GitHub provider by hand. See [#50](https://github.com/nickciaravella/didymus.nvim/issues/50).
+In the MVP, people test the GitHub provider with the real `gh` by hand. See [#50](https://github.com/nickciaravella/didymus.nvim/issues/50).
 
 ## Manual tests
 

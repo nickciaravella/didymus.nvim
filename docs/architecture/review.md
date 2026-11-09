@@ -17,9 +17,9 @@ The facts in this section were checked on 2026-11-08 with `gh` 2.103.2 and the l
 
 | Need | Command | Notes |
 | --- | --- | --- |
-| List PRs | `gh pr list --json number,title,author,updatedAt,isDraft,headRefName,baseRefName,reviewDecision` | `--search "review-requested:@me"` gives the PRs that wait for you. |
-| PR data | `gh api graphql`, one query | `id`, `title`, `body`, `url`, `state`, `baseRefOid`, `headRefOid`, `files { path changeType additions deletions viewerViewedState }`, `reviews(states: [PENDING]) { id }`. |
-| Commentable lines | `gh api --paginate repos/{owner}/{repo}/pulls/{n}/files` | Only REST gives `patch`. A large or binary file has no `patch`. |
+| List PRs | `gh pr list --json number,title,author,body,isDraft --limit 100` | The fields of `ChangeSummary`. `--search "review-requested:@me"` gives the PRs that wait for you. |
+| PR data | `gh api graphql --paginate --slurp`, one query | `id number title body isDraft author baseRefName headRefName baseRefOid headRefOid isCrossRepository headRepositoryOwner`, `files { path changeType additions deletions }`, `reviews(states: [PENDING]) { id viewerDidAuthor }`. Each page repeats the PR data. `viewerViewedState` of `files` is for [#49](https://github.com/nickciaravella/didymus.nvim/issues/49). |
+| Commentable lines | `gh api --paginate --slurp repos/{owner}/{repo}/pulls/{n}/files` | Only REST gives `patch`. A large or binary file, or a pure rename, has no `patch`. |
 | Threads | `gh api graphql`, `reviewThreads` | `id path line startLine diffSide startDiffSide isResolved isOutdated subjectType viewerCanReply viewerCanResolve`, and `comments { id author body createdAt state }`. |
 | General comments | `gh api graphql`, `comments` | Issue comments of the PR. |
 | Check out the PR | `gh pr checkout <n>` | Works for fork PRs. Git refuses if a local change conflicts. |
@@ -219,7 +219,7 @@ The types come from the [reference file](../reference/design-prompt.md#data-mode
 ---@field status "added"|"modified"|"deleted"|"renamed"
 ---@field additions integer
 ---@field deletions integer
----@field patch string?             The hunks of the unified diff, with no file header. Nil for a large or binary file.
+---@field patch string?             The hunks of the unified diff, with no file header. Nil for a large or binary file, or a pure rename.
 
 ---@class didymus.review.Thread
 ---@field id string
@@ -258,6 +258,20 @@ The MVP does not use these fields of the reference file:
 | `Comment.id`, `created_at` | No MVP feature uses them. |
 | `CommentDraft.side`, `file_level` | [More comment kinds](https://github.com/nickciaravella/didymus.nvim/issues/53) is after the MVP. |
 
+### GitHub provider
+
+The `github` provider is in `lua/didymus/review/provider/github/`. It runs the [`gh` commands](#gh-commands) with `vim.system`, in the current directory.
+
+1. `get_change` takes a PR number or a PR URL. A number is a PR of the current repo. `gh` finds the repo with the `{owner}` and `{repo}` placeholders. A URL gives the host, the owner and the repo. `checkout` then uses `--repo`.
+2. `get_change` runs the GraphQL query and the REST files at the same time. The files come from GraphQL. Each file gets the `patch` with the same path from REST. A renamed file has its new path.
+3. `change.id` is the PR number. The provider keeps its data in `change.github`: the number, the repo of a URL and the GraphQL `node_id`.
+4. For a PR from a fork, `head_branch` is `owner:branch`, as github.com shows it.
+5. `changeType` `CHANGED` (only the file mode changed) is `modified`. `COPIED` is `added`.
+6. `pending_review_id` is the first `PENDING` review with `viewerDidAuthor`.
+7. A deleted author is `ghost`, as on github.com. The provider changes `\r\n` in a body to `\n`.
+8. An error is `<command>: <the stderr of gh>`, for example `gh pr list: …`. The GraphQL error comes before the REST error, because it is clearer.
+9. `health()` runs `gh auth status --active`, and waits for 10 seconds at most. `:checkhealth` is synchronous.
+
 ## Tests
 
 | Part | Test |
@@ -266,7 +280,7 @@ The MVP does not use these fields of the reference file:
 | Review flows | End-to-end tests with the `test` provider and the `test` picker. |
 | Workspace flow | End-to-end tests in a temporary git repo, also with uncommitted changes. |
 | snacks adapter | Integration tests with the real snacks.nvim, in `tests/integration/`. `make deps` clones snacks at a fixed commit. CI runs them. |
-| GitHub provider | Manual tests on a throwaway PR. [Its long-term plan](https://github.com/nickciaravella/didymus.nvim/issues/50) is a post-MVP task. |
+| GitHub provider | Unit tests of the transforms, with recorded `gh` output. Manual tests on a throwaway PR. [Its long-term plan](https://github.com/nickciaravella/didymus.nvim/issues/50) is a post-MVP task. |
 
 
 ## Work plan

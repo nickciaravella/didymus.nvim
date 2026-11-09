@@ -30,7 +30,7 @@
 ---@field status "added"|"modified"|"deleted"|"renamed"
 ---@field additions integer
 ---@field deletions integer
----@field patch string? The hunks of the unified diff, with no file header. Nil for a large or binary file.
+---@field patch string? The hunks of the unified diff, with no file header. Nil for a large or binary file, or a pure rename.
 
 ---@class didymus.review.Thread
 ---@field id string
@@ -68,6 +68,7 @@
 local M = {}
 
 local builtin = {
+  github = "didymus.review.provider.github",
   test = "didymus.review.provider.test",
 }
 
@@ -81,7 +82,8 @@ function M.get(spec)
   end
   local module = builtin[spec]
   if not module then
-    return nil, ('unknown provider %q. Use "test" or a provider table.'):format(tostring(spec))
+    return nil,
+      ('unknown provider %q. Use "github", "test" or a provider table.'):format(tostring(spec))
   end
   return require(module)
 end
