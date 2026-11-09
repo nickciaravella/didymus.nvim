@@ -18,10 +18,12 @@
               "isResolved": false,
               "isOutdated": false,
               "subjectType": "LINE",
+              "viewerCanReply": true,
+              "viewerCanResolve": false,
+              "viewerCanUnresolve": false,
               "comments": {
                 "pageInfo": {
-                  "hasNextPage": false,
-                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wNlQxMzo1ODowOFrPAAAAAQvQatU="
+                  "hasNextPage": false
                 },
                 "nodes": [
                   {
@@ -44,10 +46,12 @@
               "isResolved": true,
               "isOutdated": true,
               "subjectType": "LINE",
+              "viewerCanReply": true,
+              "viewerCanResolve": false,
+              "viewerCanUnresolve": false,
               "comments": {
                 "pageInfo": {
-                  "hasNextPage": true,
-                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wNlQxNDo0OToyMFrPAAAAAQvYWcU="
+                  "hasNextPage": true
                 },
                 "nodes": [
                   {
@@ -112,10 +116,12 @@
               "isResolved": false,
               "isOutdated": false,
               "subjectType": "LINE",
+              "viewerCanReply": true,
+              "viewerCanResolve": false,
+              "viewerCanUnresolve": false,
               "comments": {
                 "pageInfo": {
-                  "hasNextPage": false,
-                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wNlQxNzoyODoyMFrPAAAAAQv0na8="
+                  "hasNextPage": false
                 },
                 "nodes": [
                   {

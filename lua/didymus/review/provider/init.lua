@@ -39,6 +39,9 @@
 ---@field range didymus.review.Range? Nil if the thread is outdated or on the file.
 ---@field resolved boolean
 ---@field outdated boolean
+---@field can_reply boolean The viewer can reply.
+---@field can_resolve boolean The viewer can resolve the thread now.
+---@field can_unresolve boolean The viewer can unresolve the thread now.
 ---@field comments didymus.review.Comment[]
 
 ---@class didymus.review.Comment
@@ -59,8 +62,8 @@
 ---@field checkout fun(self, change: didymus.review.Change, cb: fun(err: string?)) Make the change head the current checkout.
 ---@field get_threads fun(self, change: didymus.review.Change, cb: fun(err: string?, threads: didymus.review.Thread[]?))
 ---@field add_comment fun(self, change: didymus.review.Change, draft: didymus.review.CommentDraft, cb: fun(err: string?, thread: didymus.review.Thread?)) Start a pending review if there is none.
----@field reply fun(self, change: didymus.review.Change, thread_id: string, body: string, cb: fun(err: string?))
----@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?))
+---@field reply fun(self, change: didymus.review.Change, thread_id: string, body: string, cb: fun(err: string?, comment: didymus.review.Comment?)) Start a pending review if there is none.
+---@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?, thread: didymus.review.Thread?)) Give the thread with its new state.
 ---@field submit_review fun(self, change: didymus.review.Change, verdict: "approve"|"comment"|"request_changes", body: string?, cb: fun(err: string?))
 ---@field discard_review fun(self, change: didymus.review.Change, cb: fun(err: string?))
 ---@field health fun() Report the dependencies with `vim.health`.

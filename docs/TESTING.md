@@ -161,7 +161,7 @@ The helpers in `tests/e2e/review/helpers.lua` run in the test process:
 | `make_repo(opts)` | Make a temporary git repo with a base commit on `main` and a head commit on `feature`. `HEAD` is on `main`. Return the `dir` and a `change` that points to the two commits. |
 | `set_changes(child, changes)` | Give the changes to the test provider in the child. |
 | `set_threads(child, id, threads)` | Give the threads of the change `id` to the test provider in the child. |
-| `make_thread(id, path, fields)` | Make a thread with one comment on the head side. `fields` changes fields, such as `range`. With no `range`, the thread shows only in the panel. |
+| `make_thread(id, path, fields)` | Make a thread with one comment on the head side. `fields` changes fields, such as `range`. With no `range`, the thread shows only in the panel. The viewer can reply, and resolve or unresolve the thread. |
 | `wait_for_threads(child, count)` | Wait until the open review has `count` threads. The review gets its threads after the tabpage opens. |
 | `call(child, method, ...)` | Call a method of the configured provider in the child. Wait for its `cb`, and return `{ err, result }`. |
 | `review(child)`, `wait_for_review(child, id)` | Get the open review in the child, or wait for it. |
@@ -172,8 +172,10 @@ The test provider has two more fields:
 
 | Field | Behavior |
 | --- | --- |
-| `viewer` | The author of the comments that `add_comment()` adds. Default `"reviewer"`. |
+| `viewer` | The author of the comments that `add_comment()` and `reply()` add. Default `"reviewer"`. |
 | `errors` | An error for the next call of a method, such as `errors.add_comment = "no network"`. |
+
+`set_resolved()` of the test provider changes `resolved`. Then the viewer can do only the other action, as on GitHub. See `tests/e2e/review/reply.test.lua`.
 
 To test an error message of an async flow, send the last key with `child.api.nvim_input()`, not `child.type_keys()`. See the [notebook entry](../agents/expertise/neovim.md#childtype_keys-fails-the-test-on-an-error-message-also-from-a-later-callback). See `tests/e2e/review/comment.test.lua`.
 
@@ -197,6 +199,7 @@ The unit tests of the GitHub provider replace `vim.system` with a mock. The mock
 | `thread_comments_graphql.json` | The comments of the long thread of `threads_graphql.json`, with `first: 5`: 3 pages. | None. |
 | `base_threads_graphql.json` | The threads of neovim/neovim#42735: a thread on the base side, and outdated threads. | None. A test changes some fields after it reads the file. |
 | `comment_*_graphql.json` | `add_comment()` on nickciaravella/didymus.nvim#64, a throwaway PR: no pending review, a new review, a thread on one line, a range, and a line out of the diff. | Formatted with `jq`. |
+| `reply_graphql.json`, `resolve_graphql.json`, `unresolve_graphql.json` | `reply()` and `set_resolved()` on a submitted thread of #64, in the same pending review as the `comment_*` fixtures. | Formatted with `jq`. |
 
 The REST fixtures (`*_files.json`) do not have the URL fields. To record again, run the queries of `lua/didymus/review/provider/github/graphql.lua` and the REST call with `--paginate --slurp`. A smaller page size, such as `first: 2` and `per_page=2`, gives more than one page.
 

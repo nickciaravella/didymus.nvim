@@ -61,6 +61,20 @@ A second `addPullRequestReview` with no `event` fails with `User can only have o
 - Proof: on nickciaravella/didymus.nvim#64, run `addPullRequestReview` with `pullRequestId` and `commitOID` two times. The second call exits with 1, with that message.
 - Checked: gh 2.103.2
 
+### `viewerCanResolve` and `viewerCanUnresolve` depend on the state, and are false on a pending thread
+
+On a submitted thread, `viewerCanResolve` is true only if the thread is not resolved, and `viewerCanUnresolve` only if it is resolved. So read the fields again after a change: the payload of `resolveReviewThread` has `thread`. On a thread of a pending review, both fields are always false, but `resolveReviewThread` and `unresolveReviewThread` still work. github.com shows no resolve button there. `viewerCanReply` is true on both.
+
+- Proof: on nickciaravella/didymus.nvim#64, submit a review with `event: COMMENT` and one thread. `resolveReviewThread` gives `viewerCanResolve: false, viewerCanUnresolve: true`, and `unresolveReviewThread` gives the opposite. In a pending review, `addPullRequestReviewThread`, then `resolveReviewThread`, give `isResolved: true` with both fields false.
+- Checked: gh 2.103.2
+
+### `addPullRequestReviewThreadReply` gives only the comment, with no link to its thread
+
+`PullRequestReviewComment` has no field for its thread. To get the thread after a reply, query `node(id:)` of the thread again, or add the comment to the thread yourself.
+
+- Proof: `gh api graphql -f query='{ __type(name: "PullRequestReviewComment") { fields { name } } }'` lists `pullRequestReview` and `replyTo`, but no thread field.
+- Checked: gh 2.103.2
+
 ### `deletePullRequestReview` removes the threads of the review some seconds later
 
 The reply comes at once, but `reviewThreads` of the PR still has the threads for a short time. So a get of the threads just after a discard can give the deleted threads.

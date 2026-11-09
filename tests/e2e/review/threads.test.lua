@@ -244,10 +244,12 @@ T[":Didymus review thread opens the float with all comments"] = function()
   local float_buf = child.api.nvim_win_get_buf(assert(float_win()))
   eq(child.api.nvim_get_option_value("filetype", { buf = float_buf }), "markdown")
 
-  -- A second call focuses the float. A move of the cursor in the code window closes it.
+  -- A second call focuses the float, and a third call goes back. A move of the cursor in the code
+  -- window closes it.
   child.cmd("Didymus review thread")
   eq(child.api.nvim_get_current_win(), float_win())
-  child.cmd("wincmd p")
+  child.cmd("Didymus review thread")
+  eq(child.api.nvim_get_current_win(), code_win)
   child.api.nvim_win_set_cursor(0, { 5, 0 })
   child.cmd("doautocmd CursorMoved")
   eq(float_win(), nil)

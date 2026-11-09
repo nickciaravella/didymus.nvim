@@ -18,10 +18,12 @@
               "isResolved": true,
               "isOutdated": false,
               "subjectType": "LINE",
+              "viewerCanReply": true,
+              "viewerCanResolve": false,
+              "viewerCanUnresolve": false,
               "comments": {
                 "pageInfo": {
-                  "hasNextPage": false,
-                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wN1QwNDoxOToxNFrPAAAAAQw5dsA="
+                  "hasNextPage": false
                 },
                 "nodes": [
                   {
@@ -51,10 +53,12 @@
               "isResolved": true,
               "isOutdated": true,
               "subjectType": "LINE",
+              "viewerCanReply": true,
+              "viewerCanResolve": false,
+              "viewerCanUnresolve": false,
               "comments": {
                 "pageInfo": {
-                  "hasNextPage": false,
-                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wN1QwNzoxNzoxOFrPAAAAAQxCMMQ="
+                  "hasNextPage": false
                 },
                 "nodes": [
                   {
@@ -84,10 +88,12 @@
               "isResolved": true,
               "isOutdated": true,
               "subjectType": "LINE",
+              "viewerCanReply": true,
+              "viewerCanResolve": false,
+              "viewerCanUnresolve": false,
               "comments": {
                 "pageInfo": {
-                  "hasNextPage": false,
-                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wN1QwNzoxNzoyMVrPAAAAAQxCMSM="
+                  "hasNextPage": false
                 },
                 "nodes": [
                   {
@@ -117,10 +123,12 @@
               "isResolved": true,
               "isOutdated": true,
               "subjectType": "LINE",
+              "viewerCanReply": true,
+              "viewerCanResolve": false,
+              "viewerCanUnresolve": false,
               "comments": {
                 "pageInfo": {
-                  "hasNextPage": false,
-                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wN1QwNzoxNzoyM1rPAAAAAQxCMW8="
+                  "hasNextPage": false
                 },
                 "nodes": [
                   {

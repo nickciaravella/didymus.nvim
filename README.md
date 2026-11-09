@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel, the review threads (with navigation) and new comments work now.
+> **Early development.** Only the agent, the start of a review, the files panel, the review threads (with navigation), new comments, replies and resolve work now.
 
 ## Goals
 
@@ -122,6 +122,8 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review thread` | Open the thread at the cursor in a float, with all its comments. |
 | `:Didymus review next`, `:Didymus review prev` | Go to the next or the previous thread, also in a different file. |
 | `:[range]Didymus review comment` | Add a comment on the current line, the selection or the range. The comment goes into your pending review. |
+| `:Didymus review reply` | Reply to the thread at the cursor. The reply goes into your pending review. |
+| `:Didymus review resolve` | Resolve the thread at the cursor. On a resolved thread, unresolve it. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
 
@@ -151,6 +153,12 @@ didymus refuses a comment, and shows the reason, in these cases:
 
 If GitHub does not add the comment, the error shows. The next `comment` on the same lines starts with your text.
 
+`reply` and `resolve` use the thread at the cursor line. In the thread float, they use the thread of the float. If more than one thread is at the line, the picker asks which one. In the thread float, `r` replies and `x` resolves or unresolves. The footer of the float shows these keys if it is wide enough. For a thread that shows only in the panel, press `<CR>` two times on its row, then use the keys.
+
+`reply` opens a float at the cursor line. Type the reply, then press `<C-s>` to add it, or `q` in normal mode to cancel. The reply goes into your pending review, as a comment does. It stays pending until you submit the review on github.com. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
+
+After a resolve, the thread is dim in the panel and at its line. If GitHub does not let you do the action, a message shows. For example, GitHub does not let you resolve a thread of your pending review.
+
 The highlight groups are `DidymusThread` (default: `DiagnosticInfo`), `DidymusThreadResolved` (default: `Comment`) and `DidymusThreadPending` (default: `DiagnosticHint`).
 
 `close` does not check out the branch from before the review. Its message names that branch. `:tabclose` of the review tabpage also closes the review.
@@ -165,11 +173,13 @@ vim.keymap.set("n", "<leader>rt", "<Plug>(didymus-review-thread)")
 vim.keymap.set("n", "<leader>rn", "<Plug>(didymus-review-next)")
 vim.keymap.set("n", "<leader>rp", "<Plug>(didymus-review-prev)")
 vim.keymap.set({ "n", "x" }, "<leader>rm", "<Plug>(didymus-review-comment)")
+vim.keymap.set("n", "<leader>rr", "<Plug>(didymus-review-reply)")
+vim.keymap.set("n", "<leader>rx", "<Plug>(didymus-review-resolve)")
 ```
 
 | Mapping | Modes |
 | --- | --- |
-| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)`, `<Plug>(didymus-review-next)`, `<Plug>(didymus-review-prev)` | Normal |
+| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)`, `<Plug>(didymus-review-next)`, `<Plug>(didymus-review-prev)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)` | Normal |
 | `<Plug>(didymus-review-comment)` | Normal, visual |
 
 To check snacks.nvim and `gh`, run `:checkhealth didymus`.
@@ -181,10 +191,13 @@ require("didymus").setup({
   review = {
     picker = "snacks", -- "snacks", "test" for tests, or an adapter table
     provider = "github", -- "github", "test" for tests, or a provider table
-    input = { -- the float of comment
+    input = { -- the float of comment and reply
       width = 60, -- below 1 is a fraction of the window width
       max_height = 10, -- the float grows to this height, then it scrolls
-      keys = { comment = "<C-s>", cancel = "q" }, -- cancel is in normal mode
+      keys = { comment = "<C-s>", cancel = "q" }, -- comment also adds a reply. cancel is in normal mode
+    },
+    thread = { -- the thread float
+      keys = { reply = "r", resolve = "x" }, -- false turns a key off
     },
   },
 })

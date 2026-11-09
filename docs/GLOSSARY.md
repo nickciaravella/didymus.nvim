@@ -30,7 +30,9 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Picker adapter | The integration that connects didymus to a picker. |
 | Prompt | The text for the agent, and its context. |
 | Provider | An integration for a code host, such as GitHub. |
+| Reply | A new comment in a thread. |
 | Reference file | `docs/reference/design-prompt.md`. A first pass at the design. Not a spec. |
+| Resolve | Mark a thread as done. A resolved thread is dim. Unresolve makes it open again. |
 | Review session | One open review: the change, its tabpage, its files panel, and the branch from before the review. |
 | Review tabpage | The tabpage of one review, with the files panel and the code. |
 | Send | Submit a prompt with its context. Do not show the agent. |

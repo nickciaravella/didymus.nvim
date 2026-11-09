@@ -22,6 +22,7 @@ local threads = require("didymus.review.threads")
 ---@field threads didymus.review.Thread[] In the order of the panel.
 ---@field provider didymus.review.Provider
 ---@field failed_draft didymus.review.CommentDraft? The last comment that the provider did not add. The next comment at its lines starts with its text.
+---@field failed_reply { thread_id: string, body: string }? The last reply that the provider did not add. The next reply to its thread starts with its text.
 ---@field cwd string
 ---@field merge_base string?
 ---@field old_branch string?
@@ -227,14 +228,52 @@ function Session:add_thread(thread)
   self:set_threads(vim.list_extend(vim.list_slice(self.threads), { thread }))
 end
 
---- Open the thread at the cursor in a float. If more than one thread is at the line, ask which one.
-function Session:show_thread_at_cursor()
-  local found = threads.at_cursor(self.threads)
+---@param id string
+---@return didymus.review.Thread?
+function Session:get_thread(id)
+  for _, thread in ipairs(self.threads) do
+    if thread.id == id then
+      return thread
+    end
+  end
+end
+
+--- Replace the thread with the same id. Show it in the panel and in the loaded files.
+---@param thread didymus.review.Thread
+function Session:update_thread(thread)
+  self:set_threads(vim.tbl_map(function(old)
+    return old.id == thread.id and thread or old
+  end, self.threads))
+end
+
+--- Add a reply to the thread with `thread_id`. Show it in the panel and in the loaded files.
+---@param thread_id string
+---@param comment didymus.review.Comment
+function Session:add_reply(thread_id, comment)
+  local thread = self:get_thread(thread_id)
+  if thread then
+    table.insert(thread.comments, comment)
+    self:update_thread(thread)
+  end
+end
+
+--- Call `cb` with the thread at the cursor: the thread of the thread float if it is the current
+--- window, else the thread with a mark on the cursor line. If more than one thread is at the line,
+--- ask which one.
+---@param cb fun(thread: didymus.review.Thread)
+function Session:pick_thread_at_cursor(cb)
+  local found
+  local float_thread_id = threads.get_float_thread_id()
+  if float_thread_id then
+    found = { self:get_thread(float_thread_id) }
+  else
+    found = threads.at_cursor(self.threads)
+  end
   local line = vim.api.nvim_win_get_cursor(0)[1]
   if #found == 0 then
     vim.notify(("didymus: no thread at line %d"):format(line), vim.log.levels.WARN)
   elseif #found == 1 then
-    threads.open_float(found[1])
+    cb(found[1])
   else
     local ok, err = pcall(self.adapter.select, {
       title = ("Threads at line %d"):format(line),
@@ -243,7 +282,7 @@ function Session:show_thread_at_cursor()
         return { text = picker.join_segments(segments), segments = segments, value = thread }
       end, found),
       on_choose = function(item)
-        threads.open_float(item.value)
+        cb(item.value)
       end,
     })
     if not ok then
@@ -251,6 +290,11 @@ function Session:show_thread_at_cursor()
       vim.notify(tostring(err), vim.log.levels.ERROR)
     end
   end
+end
+
+--- Open the thread at the cursor in a float. If more than one thread is at the line, ask which one.
+function Session:show_thread_at_cursor()
+  self:pick_thread_at_cursor(threads.open_float)
 end
 
 ---@param win integer

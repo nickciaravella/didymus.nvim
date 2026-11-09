@@ -88,10 +88,71 @@ function M:add_comment(change, draft, cb)
     range = vim.deepcopy(draft.range),
     resolved = false,
     outdated = false,
+    -- GitHub does not let the viewer resolve a thread of a pending review.
+    can_reply = true,
+    can_resolve = false,
+    can_unresolve = false,
     comments = { { author = self.viewer, body = draft.body, pending = true } },
   }
   self.threads[change.id] = self.threads[change.id] or {}
   table.insert(self.threads[change.id], thread)
+  local copy = vim.deepcopy(thread)
+  vim.schedule(function()
+    cb(nil, copy)
+  end)
+end
+
+--- The thread of the change with `thread_id`. Call `cb` with an error if there is none.
+---@param change didymus.review.Change
+---@param thread_id string
+---@param cb fun(err: string?)
+---@return didymus.review.Thread?
+local function find_thread(change, thread_id, cb)
+  for _, thread in ipairs(M.threads[change.id] or {}) do
+    if thread.id == thread_id then
+      return thread
+    end
+  end
+  vim.schedule(function()
+    cb(("no thread %q"):format(thread_id))
+  end)
+end
+
+--- Add a pending comment of `viewer` to the thread.
+---@param change didymus.review.Change
+---@param thread_id string
+---@param body string
+---@param cb fun(err: string?, comment: didymus.review.Comment?)
+function M:reply(change, thread_id, body, cb)
+  if fail("reply", cb) then
+    return
+  end
+  local thread = find_thread(change, thread_id, cb)
+  if not thread then
+    return
+  end
+  local comment = { author = self.viewer, body = body, pending = true }
+  table.insert(thread.comments, comment)
+  local copy = vim.deepcopy(comment)
+  vim.schedule(function()
+    cb(nil, copy)
+  end)
+end
+
+--- Resolve or unresolve the thread. As on GitHub, the viewer can then do only the other action.
+---@param change didymus.review.Change
+---@param thread_id string
+---@param resolved boolean
+---@param cb fun(err: string?, thread: didymus.review.Thread?)
+function M:set_resolved(change, thread_id, resolved, cb)
+  if fail("set_resolved", cb) then
+    return
+  end
+  local thread = find_thread(change, thread_id, cb)
+  if not thread then
+    return
+  end
+  thread.resolved, thread.can_resolve, thread.can_unresolve = resolved, not resolved, resolved
   local copy = vim.deepcopy(thread)
   vim.schedule(function()
     cb(nil, copy)

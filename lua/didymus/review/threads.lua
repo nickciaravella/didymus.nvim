@@ -2,7 +2,18 @@
 --- float. The marks show only in the windows of the review tabpage. It does not call the provider.
 --- See docs/architecture/review.md#inline-threads.
 
+local config = require("didymus.config")
+
 local M = {}
+
+---@class didymus.review.threads.Float
+---@field win integer
+---@field origin_win integer The window that was current when the float opened.
+---@field thread_id string
+
+--- The last thread float.
+---@type didymus.review.threads.Float?
+local float
 
 --- The one namespace of the review.
 M.namespace = vim.api.nvim_create_namespace("didymus.review")
@@ -121,13 +132,21 @@ function M.at_cursor(threads)
   return result
 end
 
+--- The path and the line of the thread in messages, such as `file.txt:19`. Only the path if the
+--- thread has no line.
+---@param thread didymus.review.Thread
+---@return string
+function M.get_location(thread)
+  if thread.range then
+    return ("%s:%d"):format(thread.path, thread.range.last)
+  end
+  return thread.path
+end
+
 ---@param thread didymus.review.Thread
 ---@return string
 local function get_title(thread)
-  local title = thread.path
-  if thread.range then
-    title = ("%s:%d"):format(title, thread.range.last)
-  end
+  local title = M.get_location(thread)
   local tags = {}
   if thread.side == "base" then
     table.insert(tags, "base")
@@ -161,11 +180,54 @@ function M.get_lines(thread)
   return lines
 end
 
+--- Set the keys of `review.thread.keys` in the float. Show them in the footer if it fits.
+---@param buf integer
+---@param win integer
+---@param thread didymus.review.Thread
+local function set_keys(buf, win, thread)
+  local keys = config.options.review.thread.keys
+  -- The review API loads this module, so load the review API only when a key runs.
+  local actions = {
+    {
+      key = keys.reply,
+      name = "reply",
+      fn = function()
+        require("didymus.review").reply()
+      end,
+    },
+    {
+      key = keys.resolve,
+      name = thread.resolved and "unresolve" or "resolve",
+      fn = function()
+        require("didymus.review").resolve()
+      end,
+    },
+  }
+  local footer_parts = {}
+  for _, action in ipairs(actions) do
+    if action.key then
+      vim.keymap.set(
+        "n",
+        action.key,
+        action.fn,
+        { buffer = buf, nowait = true, desc = "didymus: review " .. action.name }
+      )
+      table.insert(footer_parts, ("%s %s"):format(action.key, action.name))
+    end
+  end
+  local footer = (" %s "):format(table.concat(footer_parts, "  "))
+  -- Neovim cuts a long footer from the start.
+  if #footer_parts > 0 and vim.api.nvim_strwidth(footer) <= vim.api.nvim_win_get_width(win) then
+    vim.api.nvim_win_set_config(win, { footer = footer, footer_pos = "right" })
+  end
+end
+
 --- Open the thread in a float next to the cursor, as a hover. It closes when the cursor moves. A
 --- second call focuses it.
 ---@param thread didymus.review.Thread
 function M.open_float(thread)
-  vim.lsp.util.open_floating_preview(M.get_lines(thread), "markdown", {
+  local origin_win = vim.api.nvim_get_current_win()
+  local buf, win = vim.lsp.util.open_floating_preview(M.get_lines(thread), "markdown", {
     focus_id = "didymus.review.thread",
     -- A title needs a border.
     border = (vim.o.winborder == "" or vim.o.winborder == "none") and "rounded" or nil,
@@ -173,6 +235,33 @@ function M.open_float(thread)
     max_width = 80,
     max_height = math.max(1, math.floor(vim.o.lines * 0.6)),
   })
+  if float and float.win == win then
+    -- The call focused the open float, or went back from it.
+    return
+  end
+  float = { win = win, origin_win = origin_win, thread_id = thread.id }
+  set_keys(buf, win, thread)
+end
+
+--- The id of the thread of the thread float, if the float is the current window.
+---@return string?
+function M.get_float_thread_id()
+  if float and vim.api.nvim_get_current_win() == float.win then
+    return float.thread_id
+  end
+end
+
+--- Close the thread float. If it is the current window, go back to the window where it opened.
+function M.close_float()
+  if not (float and vim.api.nvim_win_is_valid(float.win)) then
+    return
+  end
+  if
+    vim.api.nvim_get_current_win() == float.win and vim.api.nvim_win_is_valid(float.origin_win)
+  then
+    vim.api.nvim_set_current_win(float.origin_win)
+  end
+  vim.api.nvim_win_close(float.win, true)
 end
 
 return M
