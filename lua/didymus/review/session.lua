@@ -118,29 +118,66 @@ function Session:toggle_files()
   end
 end
 
---- Open a file of the change in the code window, and focus that window. If the user closed the
---- code window, open a new one on the right.
+---@param win integer
+---@param path string
+---@return boolean
+local function shows_file(win, path)
+  local real_path = vim.uv.fs_realpath(path)
+  local name = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(win))
+  return real_path ~= nil and name ~= "" and vim.uv.fs_realpath(name) == real_path
+end
+
+--- Put the cursor of `win` on the first non-blank character of `line`. A line after the end goes
+--- to the last line, because the file in the checkout can be different from the change head.
+---@param win integer
+---@param line integer
+local function set_cursor(win, line)
+  local buf = vim.api.nvim_win_get_buf(win)
+  line = math.min(line, vim.api.nvim_buf_line_count(buf))
+  local text = vim.api.nvim_buf_get_lines(buf, line - 1, line, true)[1]
+  vim.api.nvim_win_set_cursor(win, { line, (text:find("%S") or 1) - 1 })
+end
+
+--- Open a file of the change in the code window at `line`, and focus that window. If the user
+--- closed the code window, open a new one on the right.
 ---@param path string Relative to `cwd`.
-function Session:open_file(path)
+---@param line integer
+function Session:open_file(path, line)
   if not self:is_open() then
     return
   end
+  local previous_win = vim.api.nvim_get_current_win()
   self:focus()
-  local command = "edit "
+  local full_path = vim.fs.joinpath(self.cwd, path)
+  ---@type vim.api.keyset.cmd?
+  local command = { cmd = "edit", args = { full_path }, magic = { file = false } }
   if
     vim.api.nvim_win_is_valid(self.code_win)
     and vim.api.nvim_win_get_tabpage(self.code_win) == self.tabpage
   then
     vim.api.nvim_set_current_win(self.code_win)
+    -- `:edit` of the file in the window gives E37 if the buffer is modified.
+    if shows_file(self.code_win, full_path) then
+      command = nil
+    end
   else
-    command = "botright vsplit "
+    command.mods = { split = "botright" }
+    command.cmd = "vsplit"
   end
-  local ok, err = pcall(vim.cmd, command .. vim.fn.fnameescape(vim.fs.joinpath(self.cwd, path)))
-  if not ok then
-    vim.notify(("didymus: cannot open %s: %s"):format(path, err), vim.log.levels.ERROR)
-    return
+  if command then
+    local ok, err = pcall(vim.api.nvim_cmd, command, {})
+    if not ok then
+      -- For example E37, if 'hidden' is off and the code window has a modified buffer.
+      if vim.api.nvim_win_is_valid(previous_win) then
+        vim.api.nvim_set_current_win(previous_win)
+      end
+      local message = tostring(err):gsub("^Vim:", "")
+      vim.notify(("didymus: cannot open %s: %s"):format(path, message), vim.log.levels.ERROR)
+      return
+    end
   end
   self.code_win = vim.api.nvim_get_current_win()
+  set_cursor(self.code_win, line)
 end
 
 --- Close the files panel and the review tabpage. `on_close` then ends the review.

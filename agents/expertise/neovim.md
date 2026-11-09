@@ -47,6 +47,19 @@ Facts about Neovim that are tricky and not well documented. For the rules, see [
 
 - Checked: Neovim 0.12.5
 
+### The error of `vim.cmd()` has a long prefix, but the error of `nvim_cmd()` is `Vim:E37: …`
+
+An error of `vim.cmd("edit x")` starts with the Lua location and `nvim_exec2()`, then `Vim(edit):`. This text is too long for a message to the user. `vim.api.nvim_cmd()` gives only `Vim:` and the Vim error. So run the command with `nvim_cmd()`, and remove `Vim:` before you show the error.
+
+- Proof: this command prints `[string "vim/_core/editor"]:353: command line..script nvim_exec2() called at command line:0, line 1: Vim(edit):E37: No write since last change (add ! to override)`, then `Vim:E37: No write since last change (add ! to override)`.
+
+  ```sh
+  nvim --clean --headless -c 'set nohidden' -c 'lua vim.cmd("normal! ix") io.write(select(2, pcall(vim.cmd, "edit other")), "\n",
+  select(2, pcall(vim.api.nvim_cmd, { cmd = "edit", args = { "other" } }, {})), "\n")' -c 'qa!'
+  ```
+
+- Checked: Neovim 0.12.5
+
 ## Lua scripts (`nvim -l`)
 
 ### A script that blocks in `io.read` does not exit on SIGTERM or SIGHUP

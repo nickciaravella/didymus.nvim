@@ -16,17 +16,24 @@ local T = MiniTest.new_set({
   },
 })
 
+---@class didymus.test.OpenOpts
+---@field base table<string, string>? The files of the base commit.
+---@field head table<string, string|false>? The files of the head commit. False deletes a file.
+---@field edit fun(change: didymus.review.Change)? Change the change before the review opens.
+
 --- Make a repo where the change modifies file.txt, adds new.txt and deletes old.txt. Make it the
 --- directory of the child, and give its change to the test provider. Then open the review.
----@param edit (fun(change: didymus.review.Change))? Change the change before the review opens.
+---@param opts didymus.test.OpenOpts?
 ---@return didymus.test.Review
-local function open_review(edit)
+local function open_review(opts)
+  opts = opts or {}
   local repo = helpers.make_repo({
-    base = { ["file.txt"] = "one\ntwo\nthree\n", ["old.txt"] = "old\n" },
-    head = { ["file.txt"] = "one\n2\nthree\n", ["new.txt"] = "new\n", ["old.txt"] = false },
+    base = opts.base or { ["file.txt"] = "one\ntwo\nthree\n", ["old.txt"] = "old\n" },
+    head = opts.head
+      or { ["file.txt"] = "one\n2\nthree\n", ["new.txt"] = "new\n", ["old.txt"] = false },
   })
-  if edit then
-    edit(repo.change)
+  if opts.edit then
+    opts.edit(repo.change)
   end
   child.fn.chdir(repo.dir)
   helpers.set_changes(child, { repo.change })
@@ -76,10 +83,12 @@ end
 local header = { "#1 Change the second line", "@octocat main ← feature" }
 
 T["the panel shows the header and one row for each file, in the order of the provider"] = function()
-  open_review(function(change)
-    -- git gives the files in the order of the paths. A code host can use a different order.
-    change.files = { change.files[3], change.files[1], change.files[2] }
-  end)
+  open_review({
+    edit = function(change)
+      -- git gives the files in the order of the paths. A code host can use a different order.
+      change.files = { change.files[3], change.files[1], change.files[2] }
+    end,
+  })
 
   local calls = panels()
   eq(#calls, 1)
@@ -155,6 +164,93 @@ T["if the code window is closed, the file opens in a new window on the right"] =
   choose("A new.txt +1 -0")
   eq(child.api.nvim_tabpage_list_wins(0), wins)
   eq(child.api.nvim_get_current_win(), wins[2])
+  eq(current_path(), "new.txt")
+end
+
+--- Open a review where the change modifies line 6 and line 18 of long.txt. Line 6 has an indent.
+--- The patch has a hunk for each change.
+local function open_long_review()
+  local base, head = {}, {}
+  for line = 1, 20 do
+    base[line] = "line " .. line
+    head[line] = base[line]
+  end
+  head[6], head[18] = "  six", "eighteen"
+  open_review({
+    base = { ["long.txt"] = table.concat(base, "\n") .. "\n" },
+    head = { ["long.txt"] = table.concat(head, "\n") .. "\n" },
+  })
+end
+
+T["to choose a file puts the cursor on the first change of its first hunk"] = function()
+  open_long_review()
+  open_left_window()
+  choose("M long.txt +2 -2")
+  eq(current_path(), "long.txt")
+  eq(child.api.nvim_win_get_cursor(0), { 6, 2 })
+end
+
+T["to choose the file of the code window again moves the cursor, also in a modified buffer"] = function()
+  open_long_review()
+  local code_win = child.api.nvim_get_current_win()
+  choose("M long.txt +2 -2")
+  child.api.nvim_buf_set_lines(0, 0, 1, true, { "edited" })
+  child.api.nvim_win_set_cursor(0, { 20, 0 })
+
+  open_left_window()
+  choose("M long.txt +2 -2")
+  eq(child.api.nvim_get_current_win(), code_win)
+  eq(child.api.nvim_win_get_cursor(0), { 6, 2 })
+  eq(child.bo.modified, true)
+  eq(child.api.nvim_buf_get_lines(0, 0, 1, true), { "edited" })
+  eq(child.cmd_capture("messages"):find("cannot open"), nil)
+end
+
+T["a file with no patch opens at line 1"] = function()
+  open_review({
+    edit = function(change)
+      change.files[1].patch = nil
+    end,
+  })
+  choose("M file.txt +1 -1")
+  child.api.nvim_win_set_cursor(0, { 3, 0 })
+  choose("M file.txt +1 -1")
+  eq(child.api.nvim_win_get_cursor(0), { 1, 0 })
+end
+
+T["if the file is shorter than the patch, the cursor goes to the last line"] = function()
+  open_review({
+    edit = function(change)
+      change.files[1].patch = "@@ -8,3 +8,4 @@\n eight\n+new\n nine\n ten"
+    end,
+  })
+  choose("M file.txt +1 -1")
+  eq(child.api.nvim_win_get_cursor(0), { 3, 0 })
+end
+
+T["if Neovim cannot open the file, the error shows and the focus goes back"] = function()
+  open_review()
+  local code_win = child.api.nvim_get_current_win()
+  choose("M file.txt +1 -1")
+  child.api.nvim_buf_set_lines(0, 0, 1, true, { "edited" })
+  child.o.hidden = false
+  local left_win = open_left_window()
+
+  choose("A new.txt +1 -0")
+  expect_message(
+    "didymus: cannot open new.txt: E37: No write since last change (add ! to override)"
+  )
+  eq(child.api.nvim_get_current_win(), left_win)
+  child.api.nvim_set_current_win(code_win)
+  eq(current_path(), "file.txt")
+  eq(#panels(), 1)
+  eq(panels()[1].open, true)
+
+  -- After a write, the file opens in the same code window.
+  child.cmd("write")
+  child.api.nvim_set_current_win(left_win)
+  choose("A new.txt +1 -0")
+  eq(child.api.nvim_get_current_win(), code_win)
   eq(current_path(), "new.txt")
 end
 

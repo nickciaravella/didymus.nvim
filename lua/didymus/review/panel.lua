@@ -1,6 +1,7 @@
 --- The files panel: the header and the changed files of a review, as picker items. The picker
 --- adapter draws them. See docs/architecture/review.md#parts.
 
+local patch = require("didymus.review.patch")
 local picker = require("didymus.ui.picker")
 
 local M = {}
@@ -89,7 +90,8 @@ local function choose(session, item)
     vim.notify(("didymus: %s is deleted in %s"):format(value.file.path, session.label))
     return
   end
-  session:open_file(value.file.path)
+  local first_hunk = patch.parse(value.file.patch).hunks[1]
+  session:open_file(value.file.path, first_hunk and first_hunk.first_change or 1)
 end
 
 --- Open the files panel of `session` in the current tabpage.
