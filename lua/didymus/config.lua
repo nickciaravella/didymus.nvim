@@ -15,6 +15,9 @@ M.defaults = {
     },
     terminal = { ready_delay = 500, submit_delay = 50 }, -- milliseconds
   },
+  review = {
+    picker = "snacks", -- "snacks", "test" or an adapter table. See lua/didymus/ui/picker/.
+  },
 }
 
 M.options = vim.deepcopy(M.defaults)

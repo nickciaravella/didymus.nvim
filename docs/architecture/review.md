@@ -120,6 +120,7 @@ The MVP needs no diff provider. The patch from the code host gives the first hun
 ```lua
 ---@class didymus.picker.Item
 ---@field text string           Plain text, for search and for pickers with no highlights.
+---@field id? string            A stable key. `update()` uses it to keep the cursor on the same item. Default `text`.
 ---@field segments? [string, string?][] Text and highlight group, for pickers with highlights.
 ---@field depth? integer        The indent in a tree. 0 is the top level. Default 0.
 ---@field location? { path: string, line: integer? } A file to show in the preview.
@@ -129,21 +130,21 @@ The MVP needs no diff provider. The patch from the code host gives the first hun
 ---@class didymus.picker.Action
 ---@field key string
 ---@field name string
----@field fn fun(item: didymus.picker.Item)
+---@field fn fun(item: didymus.picker.Item?) The item under the cursor. Nil if the panel is empty.
 
 ---@class didymus.picker.SelectOpts
 ---@field title string
 ---@field items didymus.picker.Item[]
----@field on_choose fun(item: didymus.picker.Item)
+---@field on_choose fun(item: didymus.picker.Item) The picker closes first.
 ---@field on_cancel? fun()
 
 ---@class didymus.picker.PanelOpts
 ---@field title string
 ---@field items fun(): didymus.picker.Item[] The panel calls it on open and on `update()`.
----@field on_choose fun(item: didymus.picker.Item) The panel stays open.
+---@field on_choose fun(item: didymus.picker.Item) The panel stays open, and its window stays current.
 ---@field actions? didymus.picker.Action[] Keys in the panel, such as `R` for refresh.
 ---@field position? "left"|"right" Default "left".
----@field width? number
+---@field width? number Below 1, a fraction of the editor width. Else columns. Default 40.
 
 ---@class didymus.picker.Panel
 ---@field update fun(self) Call `items()` again and show the new items. Keep the cursor on the same item.
@@ -157,9 +158,13 @@ The MVP needs no diff provider. The patch from the code host gives the first hun
 ---@field health fun() Report the dependencies with `vim.health`.
 ```
 
-1. `review.picker` in the config is `"snacks"` (the default) or an adapter table. A table lets users add a picker with no change to didymus.
+1. `review.picker` in the config is `"snacks"` (the default), `"test"` or an adapter table. A table lets users add a picker with no change to didymus.
 2. The health check calls `health()` of the configured adapter. The snacks adapter reports an error if `Snacks.picker` is not available.
-3. The `test` adapter records the calls, and lets end-to-end tests choose an item. It is the same idea as the test backend of the agent.
+3. The `test` adapter records the calls, and lets end-to-end tests choose an item or press the key of an action. It is the same idea as the test backend of the agent. See [`TESTING.md`](../TESTING.md#the-test-picker).
+4. `on_choose` of the panel does not move the focus. The caller opens the file in its code window, because the review session owns the tabpage.
+5. The panel has no preview. A preview in the sidebar shows in the code window, and changes it at each move of the cursor.
+6. The keys of the actions work only in the list of the panel, not in its search input.
+7. The snacks panel is a split, so it shows only in the tabpage where it opened.
 
 ## Provider interface
 
