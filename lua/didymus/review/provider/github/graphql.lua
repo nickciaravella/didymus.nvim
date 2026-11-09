@@ -33,6 +33,9 @@ query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
 }
 ]]
 
+--- The fields of a review comment.
+local comment_fields = "author { login } body state"
+
 --- The fields of a review thread, with its first comments.
 local thread_fields = [[
 id
@@ -44,9 +47,12 @@ startDiffSide
 isResolved
 isOutdated
 subjectType
+viewerCanReply
+viewerCanResolve
+viewerCanUnresolve
 comments(first: 100) {
   pageInfo { hasNextPage }
-  nodes { author { login } body state }
+  nodes { ]] .. comment_fields .. [[ }
 }
 ]]
 
@@ -74,7 +80,7 @@ query($id: ID!, $endCursor: String) {
     ... on PullRequestReviewThread {
       comments(first: 100, after: $endCursor) {
         pageInfo { hasNextPage endCursor }
-        nodes { author { login } body state }
+        nodes { ]] .. comment_fields .. [[ }
       }
     }
   }
@@ -125,6 +131,41 @@ mutation(
     startLine: $startLine
     startSide: $startSide
   }) {
+    thread {
+]] .. thread_fields .. [[
+    }
+  }
+}
+]]
+
+--- Add a reply to a thread, in a pending review.
+M.reply = [[
+mutation($reviewId: ID!, $threadId: ID!, $body: String!) {
+  addPullRequestReviewThreadReply(input: {
+    pullRequestReviewId: $reviewId
+    pullRequestReviewThreadId: $threadId
+    body: $body
+  }) {
+    comment { ]] .. comment_fields .. [[ }
+  }
+}
+]]
+
+--- Resolve a thread, and `M.unresolve` unresolves it. The reply has the thread, because the
+--- `viewerCan…` fields can change.
+M.resolve = [[
+mutation($threadId: ID!) {
+  resolveReviewThread(input: { threadId: $threadId }) {
+    thread {
+]] .. thread_fields .. [[
+    }
+  }
+}
+]]
+
+M.unresolve = [[
+mutation($threadId: ID!) {
+  unresolveReviewThread(input: { threadId: $threadId }) {
     thread {
 ]] .. thread_fields .. [[
     }

@@ -263,6 +263,9 @@ local function to_thread(thread, comments)
     range = range,
     resolved = thread.isResolved,
     outdated = thread.isOutdated,
+    can_reply = thread.viewerCanReply,
+    can_resolve = thread.viewerCanResolve,
+    can_unresolve = thread.viewerCanUnresolve,
     comments = vim.tbl_map(to_comment, comments),
   }
 end
@@ -287,13 +290,56 @@ local function get_graphql_args(target, query, fields)
   return vim.list_extend(args, get_host_args(target))
 end
 
+--- Get all comments of each thread that has more comments than the first page, at the same time.
+--- Then change the threads into review threads.
+---@param target didymus.review.provider.github.Target
+---@param nodes table[] Threads from GraphQL.
+---@param cb fun(err: string?, threads: didymus.review.Thread[]?)
+local function complete_threads(target, nodes, cb)
+  local comments, waiting, failed = {}, 0, false
+  local function finish()
+    cb(
+      nil,
+      vim.tbl_map(function(thread)
+        return to_thread(thread, comments[thread.id] or thread.comments.nodes)
+      end, nodes)
+    )
+  end
+  for _, thread in ipairs(nodes) do
+    if thread.comments.pageInfo.hasNextPage then
+      waiting = waiting + 1
+      local args = get_node_args(target, graphql.thread_comments, thread.id)
+      run_json("gh api graphql", args, function(err, comment_pages)
+        if failed then
+          return
+        end
+        if err then
+          failed = true
+          return cb(err)
+        end
+        comments[thread.id] = {}
+        for _, page in ipairs(comment_pages) do
+          vim.list_extend(comments[thread.id], page.data.node.comments.nodes)
+        end
+        waiting = waiting - 1
+        if waiting == 0 then
+          finish()
+        end
+      end)
+    end
+  end
+  if waiting == 0 then
+    finish()
+  end
+end
+
 --- Get the threads, then all comments of each thread that has more comments, at the same time.
 ---@param change didymus.review.provider.github.Change
 ---@param cb fun(err: string?, threads: didymus.review.Thread[]?)
 function M:get_threads(change, cb)
   local target = change.github
-  local label = "gh api graphql"
-  run_json(label, get_node_args(target, graphql.threads, target.node_id), function(err, pages)
+  local args = get_node_args(target, graphql.threads, target.node_id)
+  run_json("gh api graphql", args, function(err, pages)
     if err then
       return cb(err)
     end
@@ -301,41 +347,7 @@ function M:get_threads(change, cb)
     for _, page in ipairs(pages) do
       vim.list_extend(threads, page.data.node.reviewThreads.nodes)
     end
-    local comments, waiting, failed = {}, 0, false
-    local function finish()
-      cb(
-        nil,
-        vim.tbl_map(function(thread)
-          return to_thread(thread, comments[thread.id] or thread.comments.nodes)
-        end, threads)
-      )
-    end
-    for _, thread in ipairs(threads) do
-      if thread.comments.pageInfo.hasNextPage then
-        waiting = waiting + 1
-        local args = get_node_args(target, graphql.thread_comments, thread.id)
-        run_json(label, args, function(comments_err, comment_pages)
-          if failed then
-            return
-          end
-          if comments_err then
-            failed = true
-            return cb(comments_err)
-          end
-          comments[thread.id] = {}
-          for _, page in ipairs(comment_pages) do
-            vim.list_extend(comments[thread.id], page.data.node.comments.nodes)
-          end
-          waiting = waiting - 1
-          if waiting == 0 then
-            finish()
-          end
-        end)
-      end
-    end
-    if waiting == 0 then
-      finish()
-    end
+    complete_threads(target, threads, cb)
   end)
 end
 
@@ -399,6 +411,62 @@ function M:add_comment(change, draft, cb)
         return cb(("%s: GitHub did not add the thread. Are the lines in the diff?"):format(label))
       end
       cb(nil, to_thread(thread, thread.comments.nodes))
+    end)
+  end)
+end
+
+--- Add a reply to the pending review of the viewer. Start the review if there is none.
+---@param change didymus.review.provider.github.Change
+---@param thread_id string
+---@param body string
+---@param cb fun(err: string?, comment: didymus.review.Comment?)
+function M:reply(change, thread_id, body, cb)
+  local label = "gh api graphql"
+  get_pending_review(change, function(err, review_id)
+    if err then
+      return cb(err)
+    end
+    change.pending_review_id = review_id
+    local args = get_graphql_args(change.github, graphql.reply, {
+      "-f",
+      "reviewId=" .. review_id,
+      "-f",
+      "threadId=" .. thread_id,
+      "-f",
+      "body=" .. body,
+    })
+    run_json(label, args, function(reply_err, result)
+      if reply_err then
+        return cb(reply_err)
+      end
+      local comment = result.data.addPullRequestReviewThreadReply.comment
+      if not comment then
+        return cb(("%s: GitHub did not add the reply"):format(label))
+      end
+      cb(nil, to_comment(comment))
+    end)
+  end)
+end
+
+--- Resolve or unresolve a thread. Give the thread with its new state.
+---@param change didymus.review.provider.github.Change
+---@param thread_id string
+---@param resolved boolean
+---@param cb fun(err: string?, thread: didymus.review.Thread?)
+function M:set_resolved(change, thread_id, resolved, cb)
+  local label = "gh api graphql"
+  local query = resolved and graphql.resolve or graphql.unresolve
+  local args = get_graphql_args(change.github, query, { "-f", "threadId=" .. thread_id })
+  run_json(label, args, function(err, result)
+    if err then
+      return cb(err)
+    end
+    local payload = result.data[resolved and "resolveReviewThread" or "unresolveReviewThread"]
+    if not (payload and payload.thread) then
+      return cb(("%s: GitHub did not change the thread"):format(label))
+    end
+    complete_threads(change.github, { payload.thread }, function(threads_err, threads)
+      cb(threads_err, threads and threads[1])
     end)
   end)
 end

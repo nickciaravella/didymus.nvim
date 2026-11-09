@@ -333,6 +333,9 @@ T["get_threads()"]["gives the threads of all pages, and all comments of a long t
     range = { first = 323, last = 323 },
     resolved = false,
     outdated = false,
+    can_reply = true,
+    can_resolve = false,
+    can_unresolve = false,
     comments = { { author = "lewis6991", body = ":+1:", pending = false } },
   })
   eq(
@@ -470,7 +473,7 @@ T["add_comment()"]["starts a pending review if there is none, and adds a thread 
   local change = make_comment_change()
   local reply = call("add_comment", change, make_draft(25, 25))
 
-  local review_id = "PRR_kwDOVmiVUM8AAAABWx95Dg"
+  local review_id = "PRR_kwDOVmiVUM8AAAABWyIVtw"
   eq(commands, {
     {
       "gh",
@@ -510,12 +513,16 @@ T["add_comment()"]["starts a pending review if there is none, and adds a thread 
   })
   eq(reply, {
     result = {
-      id = "PRRT_kwDOVmiVUM61MQcu",
+      id = "PRRT_kwDOVmiVUM61MkAU",
       path = "lua/didymus/init.lua",
       side = "head",
       range = { first = 25, last = 25 },
       resolved = false,
       outdated = false,
+      -- GitHub does not let the viewer resolve a thread of a pending review.
+      can_reply = true,
+      can_resolve = false,
+      can_unresolve = false,
       comments = {
         {
           author = "nickciaravella",
@@ -546,7 +553,7 @@ T["add_comment()"]["adds a range to the pending review of the viewer, on the hos
   eq(vim.list_slice(commands[1], 8), { "--hostname", "github.com" })
   eq(vim.list_slice(commands[2], 6), {
     "-f",
-    "reviewId=PRR_kwDOVmiVUM8AAAABWx95Dg",
+    "reviewId=PRR_kwDOVmiVUM8AAAABWyIVtw",
     "-f",
     "path=lua/didymus/init.lua",
     "-f",
@@ -592,6 +599,142 @@ T["add_comment()"]["gives the error of gh, and stops"] = function()
     err = "gh api graphql: User can only have one pending review per pull request",
   })
   eq(#commands, 2)
+end
+
+T["reply()"] = MiniTest.new_set()
+
+-- The thread of nickciaravella/didymus.nvim#64 in the fixtures of `reply()` and `set_resolved()`.
+local reply_thread_id = "PRRT_kwDOVmiVUM61Mj43"
+
+T["reply()"]["starts a pending review if there is none, and adds the reply to it"] = function()
+  mock_comment({
+    pending_reviews = fixture_reply("comment_no_review_graphql"),
+    start_review = fixture_reply("comment_start_review_graphql"),
+    reply = fixture_reply("reply_graphql"),
+  })
+  local change = make_comment_change()
+  local body = "Recorded for the unit tests of didymus: a reply."
+  local reply = call("reply", change, reply_thread_id, body)
+
+  local review_id = "PRR_kwDOVmiVUM8AAAABWyIVtw"
+  eq(#commands, 3)
+  eq(commands[3], {
+    "gh",
+    "api",
+    "graphql",
+    "-f",
+    "query=" .. graphql.reply,
+    "-f",
+    "reviewId=" .. review_id,
+    "-f",
+    "threadId=" .. reply_thread_id,
+    "-f",
+    "body=" .. body,
+  })
+  eq(reply, { result = { author = "nickciaravella", body = body, pending = true } })
+  eq(change.pending_review_id, review_id)
+end
+
+T["reply()"]["adds the reply to the pending review of the viewer, on the host of a URL"] = function()
+  mock_comment({
+    pending_reviews = fixture_reply("comment_pending_review_graphql"),
+    reply = fixture_reply("reply_graphql"),
+  })
+  local change = make_comment_change({
+    number = 64,
+    host = "github.com",
+    owner = "nickciaravella",
+    repo = "didymus.nvim",
+    node_id = comment_node_id,
+  })
+  eq(call("reply", change, reply_thread_id, "A reply.").err, nil)
+  eq(#commands, 2)
+  eq(vim.list_slice(commands[2], 6, 7), { "-f", "reviewId=PRR_kwDOVmiVUM8AAAABWyIVtw" })
+  eq(vim.list_slice(commands[2], 12), { "--hostname", "github.com" })
+end
+
+T["reply()"]["gives the error of gh, or an error if GitHub adds no reply"] = function()
+  mock_comment({
+    pending_reviews = fixture_reply("comment_pending_review_graphql"),
+    reply = { code = 1, stderr = "gh: Could not resolve to a node with the global id of 'x'.\n" },
+  })
+  eq(call("reply", make_comment_change(), "x", "A reply."), {
+    err = "gh api graphql: Could not resolve to a node with the global id of 'x'.",
+  })
+
+  mock_comment({
+    pending_reviews = fixture_reply("comment_pending_review_graphql"),
+    reply = { stdout = '{"data":{"addPullRequestReviewThreadReply":{"comment":null}}}' },
+  })
+  eq(call("reply", make_comment_change(), reply_thread_id, "A reply."), {
+    err = "gh api graphql: GitHub did not add the reply",
+  })
+end
+
+T["set_resolved()"] = MiniTest.new_set()
+
+T["set_resolved()"]["resolves and unresolves the thread, and gives its new state"] = function()
+  mock_comment({
+    resolve = fixture_reply("resolve_graphql"),
+    unresolve = fixture_reply("unresolve_graphql"),
+  })
+  local reply = call("set_resolved", make_comment_change(), reply_thread_id, true)
+
+  eq(commands, {
+    {
+      "gh",
+      "api",
+      "graphql",
+      "-f",
+      "query=" .. graphql.resolve,
+      "-f",
+      "threadId=" .. reply_thread_id,
+    },
+  })
+  eq(reply.err, nil)
+  eq(reply.result.id, reply_thread_id)
+  eq(reply.result.range, { first = 3, last = 3 })
+  -- The viewer can do only the other action.
+  eq(
+    { reply.result.resolved, reply.result.can_resolve, reply.result.can_unresolve },
+    { true, false, true }
+  )
+  eq(reply.result.comments[1].author, "nickciaravella")
+
+  reply = call("set_resolved", make_comment_change(), reply_thread_id, false)
+  eq(commands[2][5], "query=" .. graphql.unresolve)
+  eq(
+    { reply.result.resolved, reply.result.can_resolve, reply.result.can_unresolve },
+    { false, true, false }
+  )
+end
+
+T["set_resolved()"]["gets all comments of a long thread"] = function()
+  local result = vim.json.decode(read_fixture("resolve_graphql"))
+  result.data.resolveReviewThread.thread.comments.pageInfo.hasNextPage = true
+  mock_gh(function(args)
+    if args[6] == "query=" .. graphql.thread_comments then
+      return { stdout = read_fixture("thread_comments_graphql") }
+    end
+    return { stdout = vim.json.encode(result) }
+  end)
+  local reply = call("set_resolved", make_comment_change(), reply_thread_id, true)
+
+  eq(#commands, 2)
+  eq(vim.list_slice(commands[2], 8), { "-f", "id=" .. reply_thread_id })
+  eq(#reply.result.comments, 14)
+end
+
+T["set_resolved()"]["gives the error of gh, or an error if GitHub gives no thread"] = function()
+  mock_comment({ resolve = { code = 1, stderr = "gh: Resource not accessible by integration\n" } })
+  eq(call("set_resolved", make_comment_change(), reply_thread_id, true), {
+    err = "gh api graphql: Resource not accessible by integration",
+  })
+
+  mock_comment({ unresolve = { stdout = '{"data":{"unresolveReviewThread":null}}' } })
+  eq(call("set_resolved", make_comment_change(), reply_thread_id, false), {
+    err = "gh api graphql: GitHub did not change the thread",
+  })
 end
 
 T["checkout()"] = MiniTest.new_set()

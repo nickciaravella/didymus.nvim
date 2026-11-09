@@ -20,7 +20,7 @@ The facts in this section were checked on 2026-11-08 with `gh` 2.103.2 and the l
 | List PRs | `gh pr list --json number,title,author,body,isDraft --limit 100` | The fields of `ChangeSummary`. `--search "review-requested:@me"` gives the PRs that wait for you. |
 | PR data | `gh api graphql --paginate --slurp`, one query | `id number title body isDraft author baseRefName headRefName baseRefOid headRefOid isCrossRepository headRepositoryOwner`, `files { path changeType additions deletions }`, `reviews(states: [PENDING]) { id viewerDidAuthor }`. Each page repeats the PR data. `viewerViewedState` of `files` is for [#49](https://github.com/nickciaravella/didymus.nvim/issues/49). |
 | Commentable lines | `gh api --paginate --slurp repos/{owner}/{repo}/pulls/{n}/files` | Only REST gives `patch`. A large or binary file, or a pure rename, has no `patch`. |
-| Threads | `gh api graphql --paginate --slurp`, `node(id:)` of the PR, `reviewThreads` | `id path line startLine diffSide startDiffSide isResolved isOutdated subjectType`, and `comments { author body state }`. A thread with more than 100 comments gets a second query, `node(id:)` of the thread. `gh` reads the first `pageInfo`, so the `pageInfo` of the threads comes before the comments. |
+| Threads | `gh api graphql --paginate --slurp`, `node(id:)` of the PR, `reviewThreads` | `id path line startLine diffSide startDiffSide isResolved isOutdated subjectType viewerCanReply viewerCanResolve viewerCanUnresolve`, and `comments { author body state }`. A thread with more than 100 comments gets a second query, `node(id:)` of the thread. `gh` reads the first `pageInfo`, so the `pageInfo` of the threads comes before the comments. |
 | General comments | `gh api graphql`, `comments` | Issue comments of the PR. |
 | Check out the PR | `gh pr checkout <n>` | Works for fork PRs. Git refuses if a local change conflicts. |
 
@@ -160,7 +160,7 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 7. The marks show only in the windows of the review tabpage, because the review buffers are the normal buffers of the user. See rule 8.
 8. The scope uses `nvim__ns_set(ns, { wins = … })`. Neovim 0.12 marks it as experimental. The session gives it all windows of the review tabpage, at the start and on `WinNew`. The list is never empty, because an empty list shows the marks in all windows. If `vim.api.nvim__ns_set` does not exist, the marks show in all windows, with no error.
 9. With `signcolumn=auto`, a window outside the review tabpage that shows a review buffer has an empty sign column. The sign column counts the signs of the buffer, not of the window.
-10. `thread` opens the float with `vim.lsp.util.open_floating_preview()`, as a hover: next to the cursor, closed by a move of the cursor, focused by a second call, closed by `q`. The float is markdown. Each comment is `**@author**`, with `*pending*` for a pending comment, then the body. A line separates the comments. The title is the path, the line, and the tags `base`, `resolved` and `outdated`.
+10. `thread` opens the float with `vim.lsp.util.open_floating_preview()`, as a hover: next to the cursor, closed by a move of the cursor, focused by a second call, closed by `q`. In the focused float, `thread` goes back to the window under the float. The float is markdown. Each comment is `**@author**`, with `*pending*` for a pending comment, then the body. A line separates the comments. The title is the path, the line, and the tags `base`, `resolved` and `outdated`.
 11. A float that opens from the panel is not wider than the panel, because the float of Neovim is not wider than the current window.
 12. If more than one thread is at the line, `thread` asks which one with the select role of the picker.
 13. The order of the threads is the order of the panel: the files in the order of the provider. In each file, the threads with a line come first, by line. The other threads stay in the order of the provider.
@@ -192,6 +192,21 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 8. If the first comment of a thread is pending, the thread has the `[pending]` tag, in the panel and at the line.
 9. If the provider fails, the error shows on one line, because a longer message makes the user press Enter. The session keeps the draft. The next comment on the same file and lines starts with its text.
 10. The session keeps the provider that gave the change, because only that provider knows its own fields of the change.
+
+### Replies and resolve
+
+`M.reply()` and `M.resolve()` in `lua/didymus/review/init.lua` act on the thread at the cursor. `Session:pick_thread_at_cursor()` finds it.
+
+1. If the thread float is the current window, the thread is the thread of the float. Else, it is the thread with a mark at the cursor line. If more than one thread is at the line, the select role asks which one, as `thread` does.
+2. In the panel, the commands find no thread. `<CR>` on a thread row opens the float, and a second `<CR>` focuses it. Then the float keys work.
+3. The thread float has the keys of `review.thread.keys`: `r` replies, and `x` resolves or unresolves. They call the same functions as the commands. `false` turns a key off. The footer shows the keys only if it fits, because Neovim cuts a long footer from the start.
+4. Before an action, didymus checks `can_reply`, `can_resolve` or `can_unresolve` of the thread. If the viewer cannot do the action, a warning shows, and the provider gets no call. On a resolved thread, `resolve` unresolves it.
+5. Each action closes the thread float first. If the float is the current window, the focus goes back to the window where the float opened.
+6. `reply` opens the input float at the cursor line of that window: the code window or the panel. The title is `Reply to path:19`, or `Reply to path` for a thread with no line. It uses `review.input`. The submit key is `keys.comment`, because a reply is a comment.
+7. A reply has no line numbers, so didymus does not check the file on disk. Replies also work on outdated threads and on threads on the base side.
+8. On submit, `provider:reply()` runs with a progress message. The session adds the comment to the thread, and updates the panel and the marks. If the provider fails, the session keeps the text. The next reply to the same thread starts with it.
+9. `provider:set_resolved()` gives the thread with its new state, because the `can_…` fields change. The session replaces the thread, and updates the panel and the marks. A resolved thread is dim.
+10. If the review closed before the provider replies, only the message shows.
 
 ## Parts
 
@@ -283,8 +298,8 @@ All methods are async. Each one takes a final `cb(err, result)` and does not blo
 ---@field checkout fun(self, change: didymus.review.Change, cb: fun(err: string?)) Make the change head the current checkout.
 ---@field get_threads fun(self, change: didymus.review.Change, cb: fun(err: string?, threads: didymus.review.Thread[]?))
 ---@field add_comment fun(self, change: didymus.review.Change, draft: didymus.review.CommentDraft, cb: fun(err: string?, thread: didymus.review.Thread?)) Start a pending review if there is none.
----@field reply fun(self, change: didymus.review.Change, thread_id: string, body: string, cb: fun(err: string?))
----@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?))
+---@field reply fun(self, change: didymus.review.Change, thread_id: string, body: string, cb: fun(err: string?, comment: didymus.review.Comment?)) Start a pending review if there is none.
+---@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?, thread: didymus.review.Thread?)) Give the thread with its new state.
 ---@field submit_review fun(self, change: didymus.review.Change, verdict: "approve"|"comment"|"request_changes", body: string?, cb: fun(err: string?))
 ---@field discard_review fun(self, change: didymus.review.Change, cb: fun(err: string?))
 ---@field health fun() Report the dependencies with `vim.health`.
@@ -293,7 +308,7 @@ All methods are async. Each one takes a final `cb(err, result)` and does not blo
 - `review.provider` is `"github"` (the default), `"test"` or a provider table.
 - The GitHub provider keeps all GraphQL documents as string constants in one module.
 - The `test` provider keeps its changes and threads in memory. Tests give it the data. Its `checkout` runs `git checkout` in a temporary repo of the test. It calls each `cb` in `vim.schedule()`, as a real provider does.
-- The `add_comment` of the `test` provider adds a thread with one pending comment of `viewer`. `errors.<method>` makes the next call of that method fail.
+- The `add_comment` of the `test` provider adds a thread with one pending comment of `viewer`. Its `reply` adds a pending comment of `viewer`. Its `set_resolved` changes `resolved`, and then lets the viewer do only the other action, as GitHub does. `errors.<method>` makes the next call of that method fail.
 
 ### Review types
 
@@ -335,6 +350,9 @@ The types come from the [reference file](../reference/design-prompt.md#data-mode
 ---@field range didymus.review.Range? Nil if the thread is outdated or on the file.
 ---@field resolved boolean
 ---@field outdated boolean
+---@field can_reply boolean          The viewer can reply.
+---@field can_resolve boolean        The viewer can resolve the thread now.
+---@field can_unresolve boolean      The viewer can unresolve the thread now.
 ---@field comments didymus.review.Comment[]
 
 ---@class didymus.review.Comment
@@ -352,6 +370,7 @@ The types come from the [reference file](../reference/design-prompt.md#data-mode
 2. `ChangedFile` has the raw `patch`, not the commentable ranges. The patch parser makes the hunks and the commentable ranges from it.
 3. A thread and a draft use a `Range`, not `line` and `start_line`. Then a draft and a commentable range have the same type.
 4. A thread on the base side cannot show at a line of the head file. So `Thread` has `side`. A draft is always on the head side in the MVP.
+5. The `can_…` fields come from the code host, because only it knows the permissions of the viewer. On GitHub, they also depend on the state: a resolved thread has `can_resolve` false.
 
 The MVP does not use these fields of the reference file:
 
@@ -383,6 +402,9 @@ The `github` provider is in `lua/didymus/review/provider/github/`. It runs the [
 12. `add_comment` gets the pending review of the viewer before each comment. It does not use `change.pending_review_id`, because the user can start, submit or discard a review on github.com after the open. If there is no pending review, `addPullRequestReview` with `commitOID` of `head_sha` and no `event` starts one. Then `change.pending_review_id` is its id.
 13. `addPullRequestReviewThread` gets `side: RIGHT` and `line`. A range also gets `startLine` and `startSide: RIGHT`. The reply has the new thread with the fields of `get_threads`.
 14. For a line out of the diff, GitHub gives `thread: null` and no error. Then `add_comment` gives an error.
+15. `reply` finds or starts the pending review, as `add_comment` does. Then `addPullRequestReviewThreadReply` gets `pullRequestReviewId`. The reply of GitHub has only the new comment, because a comment has no link to its thread.
+16. `set_resolved` runs `resolveReviewThread` or `unresolveReviewThread`. The reply has the thread with the fields of `get_threads`. A thread with more than 100 comments gets its other comments from a second query, as in `get_threads`.
+17. `viewerCanReply`, `viewerCanResolve` and `viewerCanUnresolve` give the `can_…` fields. On a thread of a pending review, `viewerCanResolve` and `viewerCanUnresolve` are false, but the mutations work. didymus obeys the fields, as github.com does.
 
 ## Tests
 

@@ -2,7 +2,7 @@
   "data": {
     "addPullRequestReviewThread": {
       "thread": {
-        "id": "PRRT_kwDOVmiVUM61MQeM",
+        "id": "PRRT_kwDOVmiVUM61MkCG",
         "path": "lua/didymus/init.lua",
         "line": 4,
         "startLine": 2,
@@ -11,6 +11,9 @@
         "isResolved": false,
         "isOutdated": false,
         "subjectType": "LINE",
+        "viewerCanReply": true,
+        "viewerCanResolve": false,
+        "viewerCanUnresolve": false,
         "comments": {
           "pageInfo": {
             "hasNextPage": false
