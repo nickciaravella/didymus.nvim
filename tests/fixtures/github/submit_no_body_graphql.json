@@ -1,0 +1,20 @@
+{
+  "data": {
+    "addPullRequestReview": null
+  },
+  "errors": [
+    {
+      "type": "UNPROCESSABLE",
+      "path": [
+        "addPullRequestReview"
+      ],
+      "locations": [
+        {
+          "line": 7,
+          "column": 3
+        }
+      ],
+      "message": ""
+    }
+  ]
+}

@@ -136,9 +136,26 @@ local function on_close(session)
   vim.notify(("didymus: closed the review of %s.%s"):format(label(session.change.id), before))
 end
 
+--- The threads with their pending comments removed, and with no empty threads.
+---@param list didymus.review.Thread[]
+---@return didymus.review.Thread[]
+local function remove_pending(list)
+  local kept = {}
+  for _, thread in ipairs(list) do
+    thread.comments = vim.tbl_filter(function(comment)
+      return not comment.pending
+    end, thread.comments)
+    if #thread.comments > 0 then
+      table.insert(kept, thread)
+    end
+  end
+  return kept
+end
+
 --- Get the threads, and show them in the session. A close or a newer review ignores the result.
 ---@param session didymus.review.Session
-local function load_threads(session)
+---@param after_discard boolean? Remove the pending comments. GitHub gives the threads of a discarded review for a few seconds.
+local function load_threads(session, after_discard)
   track(("get the threads of %s"):format(session.label), function(done)
     session.provider:get_threads(session.change, done)
   end, function(err, list)
@@ -148,7 +165,7 @@ local function load_threads(session)
     if err then
       return show_error(("cannot get the threads of %s: %s"):format(session.label, err))
     end
-    session:set_threads(list)
+    session:set_threads(after_discard and remove_pending(list) or list)
   end)
 end
 
@@ -655,6 +672,158 @@ function M.resolve()
       vim.notify(("didymus: %sd the thread at %s"):format(action, location))
     end)
   end)
+end
+
+---@class didymus.review.VerdictInfo
+---@field verdict didymus.review.Verdict
+---@field text string The text in the picker.
+---@field title string The title of the input float. `%s` is the change, such as "#12".
+---@field done string The message after the submit. `%s` is the change.
+
+--- The verdicts in the order of github.com.
+---@type didymus.review.VerdictInfo[]
+local verdicts = {
+  { verdict = "comment", text = "Comment", title = "Comment on %s", done = "commented on %s" },
+  { verdict = "approve", text = "Approve", title = "Approve %s", done = "approved %s" },
+  {
+    verdict = "request_changes",
+    text = "Request changes",
+    title = "Request changes on %s",
+    done = "requested changes on %s",
+  },
+}
+
+--- Submit the review with the provider. Then get the threads again. If the provider fails, keep
+--- the body for the next submit.
+---@param session didymus.review.Session
+---@param info didymus.review.VerdictInfo
+---@param body string Empty for no body.
+local function submit_review(session, info, body)
+  track(("submit the review of %s"):format(session.label), function(done)
+    session.provider:submit_review(session.change, info.verdict, body ~= "" and body or nil, done)
+  end, function(err)
+    if err then
+      local message = ("cannot submit the review of %s: %s"):format(session.label, err)
+      if session:is_open() and body ~= "" then
+        session.failed_review_body = body
+        -- One line, because a message with more lines makes the user press Enter.
+        message = ("%s. The next submit starts with its text."):format((message:gsub("%.$", "")))
+      end
+      return show_error(message)
+    end
+    vim.notify("didymus: " .. info.done:format(session.label))
+    if session:is_open() then
+      load_threads(session)
+    end
+  end)
+end
+
+--- Open the input float for the body of the review. A comment and a request for changes need a
+--- body if the review has no pending comments, as on GitHub.
+---@param session didymus.review.Session
+---@param info didymus.review.VerdictInfo
+local function open_submit_input(session, info)
+  local options = config.options.review.input
+  local text = session.failed_review_body
+  session.failed_review_body = nil
+  threads.close_float()
+  input.open({
+    title = info.title:format(session.label),
+    text = text,
+    width = options.width,
+    max_height = options.max_height,
+    keys = { cancel = options.keys.cancel },
+    allow_empty = info.verdict == "approve" or #session:get_pending_comments() > 0,
+    on_empty = function()
+      show_warning(("a %q review needs a body or a pending comment"):format(info.text))
+    end,
+    actions = {
+      {
+        -- The body of a review is a comment, so it uses the key of a comment.
+        key = options.keys.comment,
+        name = "submit",
+        on_submit = function(body)
+          submit_review(session, info, body)
+        end,
+      },
+    },
+  })
+end
+
+--- Submit the pending review with a verdict and an optional body. With no pending review, submit
+--- a review with no comments. With no verdict, ask for one in the picker.
+---@param opts { verdict: didymus.review.Verdict? }?
+function M.submit(opts)
+  opts = opts or {}
+  local info
+  if opts.verdict then
+    for _, item in ipairs(verdicts) do
+      if item.verdict == opts.verdict then
+        info = item
+      end
+    end
+    if not info then
+      return show_error(
+        ("unknown verdict %q. Use approve, comment or request_changes."):format(opts.verdict)
+      )
+    end
+  end
+  local session = get_open_review()
+  if not session then
+    return
+  end
+  if info then
+    return open_submit_input(session, info)
+  end
+  call_picker(session.adapter.select, {
+    title = ("Submit the review of %s"):format(session.label),
+    items = vim.tbl_map(function(item)
+      return { text = item.text, value = item }
+    end, verdicts),
+    on_choose = function(item)
+      if session:is_open() then
+        open_submit_input(session, item.value)
+      end
+    end,
+  })
+end
+
+--- Ask to confirm. Then delete the pending review with its comments, and get the threads again.
+function M.discard()
+  local session = get_open_review()
+  if not session then
+    return
+  end
+  local lines = vim.tbl_map(function(pending)
+    local first_line = vim.trim(pending.comment.body):match("^[^\n]*")
+    return ("%s: %s"):format(threads.get_location(pending.thread), first_line)
+  end, session:get_pending_comments())
+  if #lines == 0 then
+    lines = { ("%s has no pending comments."):format(session.label) }
+  end
+  call_picker(picker.confirm, session.adapter, {
+    title = ("Discard your pending review of %s?"):format(session.label),
+    choice = "Discard",
+    preview = { lines = lines },
+    cb = function(confirmed)
+      if not confirmed then
+        return
+      end
+      track(("discard the pending review of %s"):format(session.label), function(done)
+        session.provider:discard_review(session.change, done)
+      end, function(err)
+        if err then
+          return show_error(
+            ("cannot discard the pending review of %s: %s"):format(session.label, err)
+          )
+        end
+        vim.notify(("didymus: discarded the pending review of %s"):format(session.label))
+        if session:is_open() then
+          load_threads(session, true)
+        end
+      end)
+    end,
+  })
 end
 
 return M

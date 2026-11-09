@@ -351,15 +351,14 @@ function M:get_threads(change, cb)
   end)
 end
 
---- Get the pending review of the viewer, or start one at the change head. Do not use
+--- Get the pending review of the viewer. Nil if there is none. Do not use
 --- `change.pending_review_id`, because the user can start, submit or discard a review on github.com.
 ---@param change didymus.review.provider.github.Change
 ---@param cb fun(err: string?, review_id: string?)
-local function get_pending_review(change, cb)
+local function find_pending_review(change, cb)
   local target = change.github
-  local label = "gh api graphql"
   local args = get_graphql_args(target, graphql.pending_reviews, { "-f", "id=" .. target.node_id })
-  run_json(label, args, function(err, result)
+  run_json("gh api graphql", args, function(err, result)
     if err then
       return cb(err)
     end
@@ -368,7 +367,21 @@ local function get_pending_review(change, cb)
         return cb(nil, review.id)
       end
     end
-    args = get_graphql_args(target, graphql.start_review, {
+    cb(nil, nil)
+  end)
+end
+
+--- Get the pending review of the viewer, or start one at the change head.
+---@param change didymus.review.provider.github.Change
+---@param cb fun(err: string?, review_id: string?)
+local function get_pending_review(change, cb)
+  local target = change.github
+  local label = "gh api graphql"
+  find_pending_review(change, function(err, review_id)
+    if err or review_id then
+      return cb(err, review_id)
+    end
+    local args = get_graphql_args(target, graphql.start_review, {
       "-f",
       "pullRequestId=" .. target.node_id,
       "-f",
@@ -467,6 +480,75 @@ function M:set_resolved(change, thread_id, resolved, cb)
     end
     complete_threads(change.github, { payload.thread }, function(threads_err, threads)
       cb(threads_err, threads and threads[1])
+    end)
+  end)
+end
+
+---@type table<didymus.review.Verdict, string>
+local events = { approve = "APPROVE", comment = "COMMENT", request_changes = "REQUEST_CHANGES" }
+
+--- Submit the pending review of the viewer with the verdict. With no pending review, add a review
+--- at the change head.
+---@param change didymus.review.provider.github.Change
+---@param verdict didymus.review.Verdict
+---@param body string? Nil or empty for no body.
+---@param cb fun(err: string?)
+function M:submit_review(change, verdict, body, cb)
+  local target = change.github
+  local label = "gh api graphql"
+  find_pending_review(change, function(err, review_id)
+    if err then
+      return cb(err)
+    end
+    local fields = { "-f", "event=" .. events[verdict], "-f", "body=" .. (body or "") }
+    local query, mutation = graphql.submit_review, "submitPullRequestReview"
+    if review_id then
+      vim.list_extend(fields, { "-f", "reviewId=" .. review_id })
+    else
+      query, mutation = graphql.add_review, "addPullRequestReview"
+      vim.list_extend(fields, { "-f", "pullRequestId=" .. target.node_id })
+      vim.list_extend(fields, { "-f", "commitOID=" .. change.head_sha })
+    end
+    run_json(label, get_graphql_args(target, query, fields), function(submit_err, result)
+      if submit_err then
+        return cb(submit_err)
+      end
+      -- GitHub can give an error with no message. Then `gh` exits with 0.
+      if not (result.data and result.data[mutation]) then
+        return cb(("%s: GitHub did not submit the review"):format(label))
+      end
+      change.pending_review_id = nil
+      cb(nil)
+    end)
+  end)
+end
+
+--- Delete the pending review of the viewer and its comments. Give an error if there is none.
+---@param change didymus.review.provider.github.Change
+---@param cb fun(err: string?)
+function M:discard_review(change, cb)
+  local label = "gh api graphql"
+  find_pending_review(change, function(err, review_id)
+    if err then
+      return cb(err)
+    end
+    if not review_id then
+      change.pending_review_id = nil
+      return cb("you have no pending review")
+    end
+    local args = get_graphql_args(change.github, graphql.delete_review, {
+      "-f",
+      "reviewId=" .. review_id,
+    })
+    run_json(label, args, function(delete_err, result)
+      if delete_err then
+        return cb(delete_err)
+      end
+      if not (result.data and result.data.deletePullRequestReview) then
+        return cb(("%s: GitHub did not delete the review"):format(label))
+      end
+      change.pending_review_id = nil
+      cb(nil)
     end)
   end)
 end

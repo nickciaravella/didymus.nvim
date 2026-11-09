@@ -47,11 +47,13 @@ end
 ---@return { err: string?, result: any }
 local function call(method, ...)
   local reply
+  -- An argument can be nil, such as the body of `submit_review()`.
+  local count = select("#", ...)
   local args = { ... }
-  table.insert(args, function(err, result)
+  args[count + 1] = function(err, result)
     reply = { err = err, result = result, fast = vim.in_fast_event() }
-  end)
-  github[method](github, unpack(args))
+  end
+  github[method](github, unpack(args, 1, count + 1))
   assert(
     vim.wait(1000, function()
       return reply ~= nil
@@ -734,6 +736,141 @@ T["set_resolved()"]["gives the error of gh, or an error if GitHub gives no threa
   mock_comment({ unresolve = { stdout = '{"data":{"unresolveReviewThread":null}}' } })
   eq(call("set_resolved", make_comment_change(), reply_thread_id, false), {
     err = "gh api graphql: GitHub did not change the thread",
+  })
+end
+
+T["submit_review()"] = MiniTest.new_set()
+
+T["submit_review()"]["submits the pending review of the viewer with the verdict and the body"] = function()
+  mock_comment({
+    pending_reviews = fixture_reply("comment_pending_review_graphql"),
+    submit_review = fixture_reply("submit_graphql"),
+  })
+  local change = make_comment_change()
+  change.pending_review_id = "PRR_kwDOVmiVUM8AAAABWyIVtw"
+  eq(call("submit_review", change, "request_changes", "Please fix the two threads."), {})
+  eq(#commands, 2)
+  eq(commands[2], {
+    "gh",
+    "api",
+    "graphql",
+    "-f",
+    "query=" .. graphql.submit_review,
+    "-f",
+    "event=REQUEST_CHANGES",
+    "-f",
+    "body=Please fix the two threads.",
+    "-f",
+    "reviewId=PRR_kwDOVmiVUM8AAAABWyIVtw",
+  })
+  eq(change.pending_review_id, nil)
+end
+
+T["submit_review()"]["with no pending review, adds a review at the change head, on the host of a URL"] = function()
+  mock_comment({
+    pending_reviews = fixture_reply("comment_no_review_graphql"),
+    add_review = { stdout = '{"data":{"addPullRequestReview":{"pullRequestReview":{"id":"x"}}}}' },
+  })
+  local change = make_comment_change({
+    number = 64,
+    host = "github.com",
+    owner = "nickciaravella",
+    repo = "didymus.nvim",
+    node_id = comment_node_id,
+  })
+  eq(call("submit_review", change, "approve", nil), {})
+  eq(#commands, 2)
+  eq(commands[2], {
+    "gh",
+    "api",
+    "graphql",
+    "-f",
+    "query=" .. graphql.add_review,
+    "-f",
+    "event=APPROVE",
+    "-f",
+    "body=",
+    "-f",
+    "pullRequestId=" .. comment_node_id,
+    "-f",
+    "commitOID=e7923fbc3f3e4806ed079d00eb44b0fa1894809b",
+    "--hostname",
+    "github.com",
+  })
+end
+
+T["submit_review()"]["gives the error of gh, or an error if GitHub submits no review"] = function()
+  -- GitHub does not let the author of a PR approve it or request changes.
+  mock_comment({
+    pending_reviews = fixture_reply("comment_pending_review_graphql"),
+    submit_review = {
+      code = 1,
+      stderr = "gh: Could not approve for pull request review. Can not approve your own pull request\n",
+    },
+  })
+  eq(call("submit_review", make_comment_change(), "approve", nil), {
+    err = "gh api graphql: Could not approve for pull request review. "
+      .. "Can not approve your own pull request",
+  })
+
+  -- A comment with no body and no pending review gives an error with no message, and exit code 0.
+  mock_comment({
+    pending_reviews = fixture_reply("comment_no_review_graphql"),
+    add_review = fixture_reply("submit_no_body_graphql"),
+  })
+  local change = make_comment_change()
+  eq(call("submit_review", change, "comment", nil), {
+    err = "gh api graphql: GitHub did not submit the review",
+  })
+
+  mock_comment({ pending_reviews = { code = 1, stderr = "gh: HTTP 502\n" } })
+  eq(call("submit_review", change, "comment", "A body."), { err = "gh api graphql: HTTP 502" })
+  eq(#commands, 1)
+end
+
+T["discard_review()"] = MiniTest.new_set()
+
+T["discard_review()"]["deletes the pending review of the viewer"] = function()
+  mock_comment({
+    pending_reviews = fixture_reply("comment_pending_review_graphql"),
+    delete_review = fixture_reply("discard_graphql"),
+  })
+  local change = make_comment_change()
+  change.pending_review_id = "PRR_kwDOVmiVUM8AAAABWyIVtw"
+  eq(call("discard_review", change), {})
+  eq(#commands, 2)
+  eq(commands[2], {
+    "gh",
+    "api",
+    "graphql",
+    "-f",
+    "query=" .. graphql.delete_review,
+    "-f",
+    "reviewId=PRR_kwDOVmiVUM8AAAABWyIVtw",
+  })
+  eq(change.pending_review_id, nil)
+end
+
+T["discard_review()"]["gives an error with no pending review, or the error of gh"] = function()
+  mock_comment({ pending_reviews = fixture_reply("comment_no_review_graphql") })
+  local change = make_comment_change()
+  change.pending_review_id = "PRR_kwDOVmiVUM8AAAABWyIVtw"
+  eq(call("discard_review", change), { err = "you have no pending review" })
+  eq(#commands, 1)
+  eq(change.pending_review_id, nil)
+
+  mock_comment({
+    pending_reviews = fixture_reply("comment_pending_review_graphql"),
+    delete_review = { code = 1, stderr = "gh: HTTP 502\n" },
+  })
+  eq(call("discard_review", make_comment_change()), { err = "gh api graphql: HTTP 502" })
+
+  mock_comment({
+    pending_reviews = fixture_reply("comment_pending_review_graphql"),
+    delete_review = { stdout = '{"data":{"deletePullRequestReview":null}}' },
+  })
+  eq(call("discard_review", make_comment_change()), {
+    err = "gh api graphql: GitHub did not delete the review",
   })
 end
 

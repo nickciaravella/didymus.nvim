@@ -27,6 +27,13 @@ stdout still has the JSON body, with `errors` and a `null` in `data`. Show the m
 - Proof: `gh api graphql -F owner='{owner}' -F repo='{repo}' -F number=99999 -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){id}}}'` gives `gh: Could not resolve to a PullRequest with the number of 99999.` on stderr, and exit code 1.
 - Checked: gh 2.103.2
 
+### A GraphQL error with an empty message exits with 0, and writes nothing on stderr
+
+GitHub can give an error with `"message": ""`. Then `gh` thinks that the call worked. stdout has `errors` and a `null` payload. So after a mutation, check that the payload is not `null`, also with exit code 0.
+
+- Proof: on nickciaravella/didymus.nvim#64, with no pending review, `addPullRequestReview` with `event: COMMENT` and no body gives `{"data":{"addPullRequestReview":null},"errors":[{"type":"UNPROCESSABLE",…,"message":""}]}`, an empty stderr, and exit code 0. See `tests/fixtures/github/submit_no_body_graphql.json`.
+- Checked: gh 2.103.2
+
 ## PR files
 
 ### The REST files of a PR have no `patch` for a large file or a pure rename
@@ -77,9 +84,16 @@ On a submitted thread, `viewerCanResolve` is true only if the thread is not reso
 
 ### `deletePullRequestReview` removes the threads of the review some seconds later
 
-The reply comes at once, but `reviewThreads` of the PR still has the threads for a short time. So a get of the threads just after a discard can give the deleted threads.
+The reply comes at once, but `reviewThreads` of the PR still has the threads for a short time. Their comments still have `state: PENDING`. So a get of the threads just after a discard can give the deleted threads. Remove the pending comments from that result.
 
-- Proof: on nickciaravella/didymus.nvim#64, after `deletePullRequestReview` of a review with 4 threads, `reviewThreads { totalCount }` gave 4, then 1, then 0 in the next seconds.
+- Proof: on nickciaravella/didymus.nvim#64, after `deletePullRequestReview` of a review with 4 threads, `reviewThreads { totalCount }` gave 4, then 1, then 0 in the next seconds. After the discard of a review with 1 thread, the first get gave the thread with a `PENDING` comment, and the second get 0.5 seconds later did not.
+- Checked: gh 2.103.2
+
+### A comment review needs a body or a comment, and the author of a PR cannot approve it or request changes
+
+`event: COMMENT` with no body and no comment fails. On a pending review, the error is `You need to leave a comment indicating the requested changes.` With `addPullRequestReview`, the message is empty. A comment review with comments and an empty body works. The docs say that `REQUEST_CHANGES` also needs a body. On your own PR, you cannot check this, because GitHub refuses `APPROVE` and `REQUEST_CHANGES` before it checks the body.
+
+- Proof: on nickciaravella/didymus.nvim#64, as its author, `submitPullRequestReview` of an empty pending review gives `Could not comment for pull request review. You need to leave a comment indicating the requested changes.` for `COMMENT`, and `… Can not approve your own pull request` for `APPROVE`. `REQUEST_CHANGES` with a body gives `Review Can not request changes on your own pull request`. See [the REST docs](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request): the body is "Required when using REQUEST_CHANGES or COMMENT".
 - Checked: gh 2.103.2
 
 ## `gh pr checkout`

@@ -200,6 +200,7 @@ The unit tests of the GitHub provider replace `vim.system` with a mock. The mock
 | `base_threads_graphql.json` | The threads of neovim/neovim#42735: a thread on the base side, and outdated threads. | None. A test changes some fields after it reads the file. |
 | `comment_*_graphql.json` | `add_comment()` on nickciaravella/didymus.nvim#64, a throwaway PR: no pending review, a new review, a thread on one line, a range, and a line out of the diff. | Formatted with `jq`. |
 | `reply_graphql.json`, `resolve_graphql.json`, `unresolve_graphql.json` | `reply()` and `set_resolved()` on a submitted thread of #64, in the same pending review as the `comment_*` fixtures. | Formatted with `jq`. |
+| `submit_graphql.json`, `submit_no_body_graphql.json`, `discard_graphql.json` | `submit_review()` and `discard_review()` on #64: a submit of a pending review, a comment with no body and no pending review, and a discard. | Formatted with `jq`. |
 
 The REST fixtures (`*_files.json`) do not have the URL fields. To record again, run the queries of `lua/didymus/review/provider/github/graphql.lua` and the REST call with `--paginate --slurp`. A smaller page size, such as `first: 2` and `per_page=2`, gives more than one page.
 

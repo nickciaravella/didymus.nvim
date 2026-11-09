@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel, the review threads (with navigation), new comments, replies and resolve work now.
+> **Early development.** Only the agent, the start of a review, the files panel, the review threads (with navigation), new comments, replies, resolve, and the submit or the discard of the review work now.
 
 ## Goals
 
@@ -124,6 +124,8 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:[range]Didymus review comment` | Add a comment on the current line, the selection or the range. The comment goes into your pending review. |
 | `:Didymus review reply` | Reply to the thread at the cursor. The reply goes into your pending review. |
 | `:Didymus review resolve` | Resolve the thread at the cursor. On a resolved thread, unresolve it. |
+| `:Didymus review submit [approve\|comment\|request_changes]` | Submit your pending review with a verdict and a body. With no verdict, choose one in the picker. |
+| `:Didymus review discard` | Delete your pending review and its comments. The picker asks you to confirm. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
 
@@ -143,7 +145,7 @@ Outdated threads, threads on deleted lines and threads on the file show only in 
 
 `next` and `prev` go through the threads in the order of the panel, from the cursor. If the current window does not show a file of the pull request, they start at the cursor of the code window. They skip the threads that show only in the panel, and the threads at the same line are one stop. At the last or the first thread, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. In a different tabpage, `next` and `prev` go to the review tabpage first.
 
-`comment` opens a float above the lines, with the location as the title. Type the comment, then press `<C-s>` to add it, or `q` in normal mode to cancel. The comment goes into your pending review. If you have no pending review, didymus starts one. A pending review that you started on github.com also works. The new thread shows in the panel and at the line, with the `[pending]` tag. It stays pending until you submit the review on github.com.
+`comment` opens a float above the lines, with the location as the title. Type the comment, then press `<C-s>` to add it, or `q` in normal mode to cancel. The comment goes into your pending review. If you have no pending review, didymus starts one. A pending review that you started on github.com also works. The new thread shows in the panel and at the line, with the `[pending]` tag. It stays pending until you submit the review.
 
 didymus refuses a comment, and shows the reason, in these cases:
 
@@ -155,9 +157,15 @@ If GitHub does not add the comment, the error shows. The next `comment` on the s
 
 `reply` and `resolve` use the thread at the cursor line. In the thread float, they use the thread of the float. If more than one thread is at the line, the picker asks which one. In the thread float, `r` replies and `x` resolves or unresolves. The footer of the float shows these keys if it is wide enough. For a thread that shows only in the panel, press `<CR>` two times on its row, then use the keys.
 
-`reply` opens a float at the cursor line. Type the reply, then press `<C-s>` to add it, or `q` in normal mode to cancel. The reply goes into your pending review, as a comment does. It stays pending until you submit the review on github.com. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
+`reply` opens a float at the cursor line. Type the reply, then press `<C-s>` to add it, or `q` in normal mode to cancel. The reply goes into your pending review, as a comment does. It stays pending until you submit the review. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
 
 After a resolve, the thread is dim in the panel and at its line. If GitHub does not let you do the action, a message shows. For example, GitHub does not let you resolve a thread of your pending review.
+
+`submit` opens a float for the body of the review, with the verdict and the pull request as the title. Type the body, then press `<C-s>` to submit, or `q` in normal mode to cancel. An approval does not need a body. A comment or a request for changes needs a body, or a pending comment. With no pending review, `submit` gives a review with only the body. GitHub does not let you approve your own pull request or request changes on it. If GitHub does not submit the review, the error shows. The next `submit` starts with your text.
+
+`discard` shows your pending comments in the preview of the picker. After you confirm, didymus deletes the pending review, and its comments go away.
+
+After a submit or a discard, didymus gets the threads again. The review stays open.
 
 The highlight groups are `DidymusThread` (default: `DiagnosticInfo`), `DidymusThreadResolved` (default: `Comment`) and `DidymusThreadPending` (default: `DiagnosticHint`).
 
@@ -175,11 +183,13 @@ vim.keymap.set("n", "<leader>rp", "<Plug>(didymus-review-prev)")
 vim.keymap.set({ "n", "x" }, "<leader>rm", "<Plug>(didymus-review-comment)")
 vim.keymap.set("n", "<leader>rr", "<Plug>(didymus-review-reply)")
 vim.keymap.set("n", "<leader>rx", "<Plug>(didymus-review-resolve)")
+vim.keymap.set("n", "<leader>rs", "<Plug>(didymus-review-submit)")
+vim.keymap.set("n", "<leader>rd", "<Plug>(didymus-review-discard)")
 ```
 
 | Mapping | Modes |
 | --- | --- |
-| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)`, `<Plug>(didymus-review-next)`, `<Plug>(didymus-review-prev)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)` | Normal |
+| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)`, `<Plug>(didymus-review-next)`, `<Plug>(didymus-review-prev)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-submit)`, `<Plug>(didymus-review-discard)` | Normal |
 | `<Plug>(didymus-review-comment)` | Normal, visual |
 
 To check snacks.nvim and `gh`, run `:checkhealth didymus`.
@@ -191,10 +201,10 @@ require("didymus").setup({
   review = {
     picker = "snacks", -- "snacks", "test" for tests, or an adapter table
     provider = "github", -- "github", "test" for tests, or a provider table
-    input = { -- the float of comment and reply
+    input = { -- the float of comment, reply and submit
       width = 60, -- below 1 is a fraction of the window width
       max_height = 10, -- the float grows to this height, then it scrolls
-      keys = { comment = "<C-s>", cancel = "q" }, -- comment also adds a reply. cancel is in normal mode
+      keys = { comment = "<C-s>", cancel = "q" }, -- comment also adds a reply and submits. cancel is in normal mode
     },
     thread = { -- the thread float
       keys = { reply = "r", resolve = "x" }, -- false turns a key off

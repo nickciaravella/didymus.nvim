@@ -14,6 +14,8 @@ local tree = {
     comment = {},
     reply = {},
     resolve = {},
+    submit = { approve = {}, comment = {}, request_changes = {} },
+    discard = {},
   },
 }
 
@@ -92,6 +94,12 @@ local review_actions = {
   resolve = function()
     require("didymus.review").resolve()
   end,
+  submit = function(rest)
+    require("didymus.review").submit({ verdict = non_empty(rest) })
+  end,
+  discard = function()
+    require("didymus.review").discard()
+  end,
 }
 
 local groups = {
@@ -101,7 +109,8 @@ local groups = {
   },
   review = {
     actions = review_actions,
-    usage = "Use :Didymus review open, close, files, thread, next, prev, comment, reply or resolve.",
+    usage = "Use :Didymus review open, close, files, thread, next, prev, comment, reply, resolve, "
+      .. "submit or discard.",
   },
 }
 
