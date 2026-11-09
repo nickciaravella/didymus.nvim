@@ -83,4 +83,30 @@ function M.find(items, id)
   end
 end
 
+---@class didymus.picker.ConfirmOpts
+---@field title string The question.
+---@field choice string The text of the item that confirms, such as "Check out".
+---@field preview? { lines: string[], filetype: string? } The preview of both items.
+---@field cb fun(confirmed: boolean)
+
+--- Ask a question with the select role, because `vim.fn.confirm()` blocks the UI. The items are
+--- `choice` and "Cancel". A close with no choice is a cancel.
+---@param adapter didymus.picker.Adapter
+---@param opts didymus.picker.ConfirmOpts
+function M.confirm(adapter, opts)
+  adapter.select({
+    title = opts.title,
+    items = {
+      { text = opts.choice, value = true, preview = opts.preview },
+      { text = "Cancel", value = false, preview = opts.preview },
+    },
+    on_choose = function(item)
+      opts.cb(item.value)
+    end,
+    on_cancel = function()
+      opts.cb(false)
+    end,
+  })
+end
+
 return M

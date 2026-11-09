@@ -87,6 +87,18 @@ The MVP uses the current checkout.
 
 didymus does not stash the uncommitted changes. `:Didymus review close` does not check out the branch from before the review. Its message names that branch.
 
+These rules apply to `open` and `close`:
+
+1. Only one review is open at a time. `open` of the open change goes to its tabpage. `open` of a different change asks to close the open review first.
+2. With no argument, `open` shows the picker first. Then rule 1 applies to the choice.
+3. Each question uses the select role of the picker, because `vim.fn.confirm()` blocks the UI. The items are the action and "Cancel". A close of the picker with no choice is a cancel.
+4. The uncommitted changes are the tracked files with changes, staged or not. Untracked files stay after a checkout, and git refuses the checkout if one of them conflicts.
+5. The question about uncommitted changes shows the files in its preview. A warning message also lists them, so that they show after the picker closes.
+6. If git cannot find the merge-base, the review opens with a warning. No MVP feature uses the merge-base yet.
+7. A progress message shows while the provider works.
+8. A newer `open` wins. The callbacks of an older `open` do nothing.
+9. The review tabpage starts with an unlisted scratch buffer. `:tabclose` of the review tabpage also ends the review.
+
 Comments need the line numbers of the PR head. So didymus refuses a new comment on a file with local changes: a modified buffer, or a file that is different from `HEAD`.
 
 ## Parts
@@ -165,6 +177,7 @@ The MVP needs no diff provider. The patch from the code host gives the first hun
 5. The panel has no preview. A preview in the sidebar shows in the code window, and changes it at each move of the cursor.
 6. The keys of the actions work only in the list of the panel, not in its search input.
 7. The snacks panel is a split, so it shows only in the tabpage where it opened.
+8. `picker.confirm()` in `ui/picker/init.lua` asks a question with the select role. The workspace flow uses it in place of `vim.fn.confirm()`.
 
 ## Provider interface
 

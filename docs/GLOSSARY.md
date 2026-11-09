@@ -28,6 +28,7 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Prompt | The text for the agent, and its context. |
 | Provider | An integration for a code host, such as GitHub. |
 | Reference file | `docs/reference/design-prompt.md`. A first pass at the design. Not a spec. |
+| Review session | One open review: the change, its tabpage, and the branch from before the review. |
 | Review tabpage | The tabpage of one review, with the files panel and the code. |
 | Send | Submit a prompt with its context. Do not show the agent. |
 | Test backend | A backend without a process. End-to-end tests use it for the agent flows. |
@@ -36,3 +37,4 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Thread | A list of comments on one line or range. |
 | Unit test | A test of a pure function, or of a function that uses only Neovim. It has no external dependencies. |
 | View | The window that shows an agent session: a float or a split. |
+| Workspace | The git checkout of a review. In the MVP, the current checkout. |
