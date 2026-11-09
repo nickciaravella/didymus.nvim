@@ -232,6 +232,103 @@ function M:get_change(id, cb)
   run_json("gh api", get_files_args(target), on_result("files"))
 end
 
+---@param comment table A comment from GraphQL.
+---@return didymus.review.Comment
+local function to_comment(comment)
+  return {
+    author = get_login(comment.author),
+    body = ((comment.body or ""):gsub("\r\n", "\n")),
+    pending = comment.state == "PENDING",
+  }
+end
+
+---@param thread table A thread from GraphQL.
+---@param comments table[] All comments of the thread.
+---@return didymus.review.Thread
+local function to_thread(thread, comments)
+  local range
+  -- GitHub gives no line for an outdated thread or a thread on the file.
+  if thread.line and not thread.isOutdated then
+    local first = thread.startLine or thread.line
+    -- A range can start on the other side. Only the last line is on the side of the thread.
+    if thread.startDiffSide and thread.startDiffSide ~= thread.diffSide then
+      first = thread.line
+    end
+    range = { first = first, last = thread.line }
+  end
+  return {
+    id = thread.id,
+    path = thread.path,
+    side = thread.diffSide == "LEFT" and "base" or "head",
+    range = range,
+    resolved = thread.isResolved,
+    outdated = thread.isOutdated,
+    comments = vim.tbl_map(to_comment, comments),
+  }
+end
+
+---@param target didymus.review.provider.github.Target
+---@param query string
+---@param id string The GraphQL id of the node.
+---@return string[]
+local function get_node_args(target, query, id)
+  local args = { "api", "graphql", "--paginate", "--slurp", "-f", "query=" .. query }
+  vim.list_extend(args, { "-f", "id=" .. id })
+  return vim.list_extend(args, get_host_args(target))
+end
+
+--- Get the threads, then all comments of each thread that has more comments, at the same time.
+---@param change didymus.review.provider.github.Change
+---@param cb fun(err: string?, threads: didymus.review.Thread[]?)
+function M:get_threads(change, cb)
+  local target = change.github
+  local label = "gh api graphql"
+  run_json(label, get_node_args(target, graphql.threads, target.node_id), function(err, pages)
+    if err then
+      return cb(err)
+    end
+    local threads = {}
+    for _, page in ipairs(pages) do
+      vim.list_extend(threads, page.data.node.reviewThreads.nodes)
+    end
+    local comments, waiting, failed = {}, 0, false
+    local function finish()
+      cb(
+        nil,
+        vim.tbl_map(function(thread)
+          return to_thread(thread, comments[thread.id] or thread.comments.nodes)
+        end, threads)
+      )
+    end
+    for _, thread in ipairs(threads) do
+      if thread.comments.pageInfo.hasNextPage then
+        waiting = waiting + 1
+        local args = get_node_args(target, graphql.thread_comments, thread.id)
+        run_json(label, args, function(comments_err, comment_pages)
+          if failed then
+            return
+          end
+          if comments_err then
+            failed = true
+            return cb(comments_err)
+          end
+          comments[thread.id] = {}
+          for _, page in ipairs(comment_pages) do
+            vim.list_extend(comments[thread.id], page.data.node.comments.nodes)
+          end
+          waiting = waiting - 1
+          if waiting == 0 then
+            finish()
+          end
+        end)
+      end
+    end
+    if waiting == 0 then
+      finish()
+    end
+  end)
+end
+
 ---@param change didymus.review.provider.github.Change
 ---@param cb fun(err: string?)
 function M:checkout(change, cb)

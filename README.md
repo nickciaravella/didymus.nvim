@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review and the files panel work now.
+> **Early development.** Only the agent, the start of a review, the files panel and the review threads (read only) work now.
 
 ## Goals
 
@@ -119,6 +119,7 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review open [n\|url]` | Open a pull request in the review tabpage. With no argument, choose a pull request in the picker. The preview shows its description. |
 | `:Didymus review close` | Close the files panel and the review tabpage. |
 | `:Didymus review files` | Show the files panel, or hide it. |
+| `:Didymus review thread` | Open the thread at the cursor in a float, with all its comments. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
 
@@ -128,6 +129,16 @@ The files panel opens on the left of the review tabpage. It shows the title, the
 
 `files` in a different tabpage goes to the review tabpage and shows the panel.
 
+Under each file, the panel shows its review threads: the author, the first line of the first comment, and the state. A resolved thread is dim. An outdated thread has the `[outdated]` tag. `<CR>` on a thread goes to its line in the code window. The file row shows the thread count.
+
+In the file, each thread has a sign with its comment count, and a summary under its line. A thread on a range shows at the last line of the range. The signs and the summaries show only in the windows of the review tabpage. In a window outside the review tabpage, the file can have an empty sign column.
+
+Outdated threads, threads on deleted lines and threads on the file show only in the panel. `<CR>` on one of them opens its float next to the panel.
+
+`thread` opens a float next to the cursor. The float closes when the cursor moves. A second `thread` moves the focus into the float, and `q` closes it. If more than one thread is at the line, the picker asks which one to open.
+
+The highlight groups are `DidymusThread` (default: `DiagnosticInfo`) and `DidymusThreadResolved` (default: `Comment`).
+
 `close` does not check out the branch from before the review. Its message names that branch. `:tabclose` of the review tabpage also closes the review.
 
 There are no default keymaps. For example:
@@ -136,11 +147,12 @@ There are no default keymaps. For example:
 vim.keymap.set("n", "<leader>ro", "<Plug>(didymus-review-open)")
 vim.keymap.set("n", "<leader>rc", "<Plug>(didymus-review-close)")
 vim.keymap.set("n", "<leader>rf", "<Plug>(didymus-review-files)")
+vim.keymap.set("n", "<leader>rt", "<Plug>(didymus-review-thread)")
 ```
 
 | Mapping | Modes |
 | --- | --- |
-| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)` | Normal |
+| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)` | Normal |
 
 To check snacks.nvim and `gh`, run `:checkhealth didymus`.
 

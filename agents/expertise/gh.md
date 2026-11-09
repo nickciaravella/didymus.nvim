@@ -13,6 +13,13 @@ The raw output of a REST array endpoint with `--paginate` is one JSON array. But
   - `gh api graphql --paginate` with `files(first: 4, after: $endCursor)` on the same PR gives `…}}}}}{"data"…`.
 - Checked: gh 2.103.2
 
+### `--paginate` of GraphQL reads the first `pageInfo` in the reply
+
+`gh` takes `hasNextPage` and `endCursor` from the first `pageInfo` object in the JSON reply. With a nested connection, such as the comments of each review thread, put the `pageInfo` of the outer connection before `nodes`. Else `gh` reads the `pageInfo` of the first nested connection. Then it can stop after page 1 with no error, or use a wrong cursor.
+
+- Proof: on neovim/neovim#42726 (3 threads), the query `reviewThreads(first: 2, after: $endCursor) { pageInfo { hasNextPage endCursor } nodes { id comments(first: 5) { pageInfo { hasNextPage endCursor } } } }` gives 2 pages. With the `pageInfo` of the threads after `nodes`, it gives only 1 page, and exit code 0.
+- Checked: gh 2.103.2
+
 ### A GraphQL error exits with 1, and puts `gh: <message>` on stderr
 
 stdout still has the JSON body, with `errors` and a `null` in `data`. Show the message from stderr. An error of a REST call also gives `gh: <message>` on stderr, such as `gh: Not Found (HTTP 404)`.

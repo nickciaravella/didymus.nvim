@@ -20,6 +20,7 @@ local T = MiniTest.new_set({
 ---@field base table<string, string>? The files of the base commit.
 ---@field head table<string, string|false>? The files of the head commit. False deletes a file.
 ---@field edit fun(change: didymus.review.Change)? Change the change before the review opens.
+---@field threads didymus.review.Thread[]? The threads of the change.
 
 --- Make a repo where the change modifies file.txt, adds new.txt and deletes old.txt. Make it the
 --- directory of the child, and give its change to the test provider. Then open the review.
@@ -37,6 +38,7 @@ local function open_review(opts)
   end
   child.fn.chdir(repo.dir)
   helpers.set_changes(child, { repo.change })
+  helpers.set_threads(child, "1", opts.threads or {})
   child.cmd("Didymus review open 1")
   return helpers.wait_for_review(child, "1")
 end
@@ -255,23 +257,28 @@ T["if Neovim cannot open the file, the error shows and the focus goes back"] = f
 end
 
 T["a file row shows the thread count only if it is above 0"] = function()
-  open_review()
-  -- The providers do not give threads yet.
-  child.lua([[
-    require("didymus.review").current().threads =
-      { { path = "file.txt" }, { path = "file.txt" }, { path = "new.txt" } }
-  ]])
-  child.cmd("Didymus review files")
-  child.cmd("Didymus review files")
+  open_review({
+    threads = {
+      helpers.make_thread("1", "file.txt"),
+      helpers.make_thread("2", "new.txt"),
+      helpers.make_thread("3", "file.txt"),
+    },
+  })
+  helpers.wait_for_threads(child, 3)
+  local files = vim.tbl_filter(function(item)
+    return (item.depth or 0) == 0
+  end, panels()[1].items)
   eq(
-    texts(panels()[2]),
+    vim.tbl_map(function(item)
+      return item.text
+    end, files),
     vim.list_extend(vim.deepcopy(header), {
       "M file.txt +1 -1 2 threads",
       "A new.txt +1 -0 1 thread",
       "D old.txt +0 -1",
     })
   )
-  eq(panels()[2].items[3].segments[5], { " 2 threads", "Comment" })
+  eq(files[3].segments[5], { " 2 threads", "Comment" })
 end
 
 T[":Didymus review files hides the panel, and shows it again"] = function()

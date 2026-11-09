@@ -20,7 +20,7 @@ The facts in this section were checked on 2026-11-08 with `gh` 2.103.2 and the l
 | List PRs | `gh pr list --json number,title,author,body,isDraft --limit 100` | The fields of `ChangeSummary`. `--search "review-requested:@me"` gives the PRs that wait for you. |
 | PR data | `gh api graphql --paginate --slurp`, one query | `id number title body isDraft author baseRefName headRefName baseRefOid headRefOid isCrossRepository headRepositoryOwner`, `files { path changeType additions deletions }`, `reviews(states: [PENDING]) { id viewerDidAuthor }`. Each page repeats the PR data. `viewerViewedState` of `files` is for [#49](https://github.com/nickciaravella/didymus.nvim/issues/49). |
 | Commentable lines | `gh api --paginate --slurp repos/{owner}/{repo}/pulls/{n}/files` | Only REST gives `patch`. A large or binary file, or a pure rename, has no `patch`. |
-| Threads | `gh api graphql`, `reviewThreads` | `id path line startLine diffSide startDiffSide isResolved isOutdated subjectType viewerCanReply viewerCanResolve`, and `comments { id author body createdAt state }`. |
+| Threads | `gh api graphql --paginate --slurp`, `node(id:)` of the PR, `reviewThreads` | `id path line startLine diffSide startDiffSide isResolved isOutdated subjectType`, and `comments { author body state }`. A thread with more than 100 comments gets a second query, `node(id:)` of the thread. `gh` reads the first `pageInfo`, so the `pageInfo` of the threads comes before the comments. |
 | General comments | `gh api graphql`, `comments` | Issue comments of the PR. |
 | Check out the PR | `gh pr checkout <n>` | Works for fork PRs. Git refuses if a local change conflicts. |
 
@@ -110,6 +110,7 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 | Header 1 | `#12 <title>` | `Number`, `Title` |
 | Header 2 | `@author main ← feature` | `Comment` |
 | File | `M path +12 -3 2 threads`, in the order of the provider | `Added`, `Changed`, `Removed`, `Comment` |
+| Thread, at depth 1 under its file | `@author <first line of the first comment> [resolved] [outdated]` | `DidymusThread` for the author. A resolved thread is all `DidymusThreadResolved`. `[outdated]` is `DiagnosticWarn`. |
 
 1. The status letters are `A`, `M`, `D` and `R`. The full path comes before the counts. A long path can hide the counts in a narrow panel.
 2. The thread count shows only if it is above 0. A count of 0 on each row makes the rows long.
@@ -120,6 +121,8 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 7. If the panel cannot open, for example with no snacks.nvim, the review opens without it, and the error shows.
 8. If the code window already shows the file, `<CR>` only moves the cursor. `:edit` of a modified buffer gives E37.
 9. If Neovim cannot open the file, the error shows, and the focus goes back to the panel. For example, with 'nohidden', a modified buffer in the code window gives E37.
+10. The thread count counts all threads of the file, also the resolved and outdated threads.
+11. `<CR>` on a thread with a line opens its file at that line, as rule 4. `<CR>` on a thread that shows only in the panel opens the thread float next to the panel. See [Inline threads](#inline-threads).
 
 ### Patch parser
 
@@ -144,6 +147,24 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 6. The panel parses the patch when it opens a file. There is no cache, because a refresh replaces the change.
 7. The cursor goes to the first non-blank character of `first_change` of the first hunk, or to line 1 with no hunks. If the buffer is shorter, the cursor goes to the last line. The file in the checkout can be different from the change head.
 
+### Inline threads
+
+`lua/didymus/review/threads.lua` draws the threads in the files, and opens the thread float.
+
+1. The review gets the threads after the review tabpage opens, with a progress message. Then the session updates the panel and the marks. On an error, the message shows and the review stays open. A close or a newer review ignores the result.
+2. A thread shows in the file at the last line of its range, as on GitHub. The `<CR>` of the panel and `thread` use this line.
+3. Outdated threads, threads on the base side and threads on the file show only in the panel.
+4. Each thread has one extmark in the namespace `didymus.review`. It has a sign with the comment count (`9+` above 9), and a summary in `virt_lines` under the line, with the indent of the line. The summary is the text of the panel row.
+5. The id of an extmark is the index of its thread in the session. `thread` reads the extmarks at the cursor line, so it follows edits of the text.
+6. The session draws the marks in all loaded buffers of files with threads, and again on `BufReadPost`, also after `:checktime` or `:edit!`. The close of the review removes all marks.
+7. The marks show only in the windows of the review tabpage, because the review buffers are the normal buffers of the user. See rule 8.
+8. The scope uses `nvim__ns_set(ns, { wins = … })`. Neovim 0.12 marks it as experimental. The session gives it all windows of the review tabpage, at the start and on `WinNew`. The list is never empty, because an empty list shows the marks in all windows. If `vim.api.nvim__ns_set` does not exist, the marks show in all windows, with no error.
+9. With `signcolumn=auto`, a window outside the review tabpage that shows a review buffer has an empty sign column. The sign column counts the signs of the buffer, not of the window.
+10. `thread` opens the float with `vim.lsp.util.open_floating_preview()`, as a hover: next to the cursor, closed by a move of the cursor, focused by a second call, closed by `q`. The float is markdown. Each comment is `**@author**`, with `*pending*` for a pending comment, then the body. A line separates the comments. The title is the path, the line, and the tags `base`, `resolved` and `outdated`.
+11. A float that opens from the panel is not wider than the panel, because the float of Neovim is not wider than the current window.
+12. If more than one thread is at the line, `thread` asks which one with the select role of the picker.
+13. The order of the threads is the order of the panel: the files in the order of the provider. In each file, the threads with a line come first, by line. The other threads stay in the order of the provider.
+
 ## Parts
 
 ```mermaid
@@ -165,7 +186,7 @@ flowchart LR
 | Picker adapter | Show items and call back with the choice. | Know about reviews. It gets plain items. |
 | Files panel | Make picker items from the review session, and the actions on them. | Draw a buffer. The picker adapter draws it. |
 | Patch parser | Make the hunks and the commentable ranges from the patch of a file. | Use editor state. |
-| Inline threads | Extmarks for the threads, and the thread float. | Call the provider. |
+| Inline threads | Extmarks for the threads, their window scope, and the thread float. | Call the provider. |
 
 The picker adapter goes in `lua/didymus/ui/picker/`, because it does not know about reviews.
 
@@ -328,6 +349,8 @@ The `github` provider is in `lua/didymus/review/provider/github/`. It runs the [
 7. A deleted author is `ghost`, as on github.com. The provider changes `\r\n` in a body to `\n`.
 8. An error is `<command>: <the stderr of gh>`, for example `gh pr list: …`. The GraphQL error comes before the REST error, because it is clearer.
 9. `health()` runs `gh auth status --active`, and waits for 10 seconds at most. `:checkhealth` is synchronous.
+10. `get_threads` uses the GraphQL `node_id` of the PR. A thread with more comments than the first page gets all its comments from a second query. These queries run at the same time.
+11. `diffSide` `RIGHT` is `head`, and `LEFT` is `base`. The range is `startLine` (or `line`) to `line`. If the range starts on the other side, the range is only `line`. The range is nil if GitHub gives no `line`, or if the thread is outdated. `pending` is `state == PENDING`.
 
 ## Tests
 

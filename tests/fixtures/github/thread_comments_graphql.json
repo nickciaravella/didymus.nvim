@@ -1,0 +1,142 @@
+[
+  {
+    "data": {
+      "node": {
+        "comments": {
+          "pageInfo": {
+            "hasNextPage": true,
+            "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wNlQxNDo0OToyMFrPAAAAAQvYWcU="
+          },
+          "nodes": [
+            {
+              "author": {
+                "login": "lewis6991"
+              },
+              "body": "Can we avoid these doc changes? The ctrl-c handling is an Nvim specific policy. Maybe this can be mentioned somewhere else?",
+              "state": "SUBMITTED"
+            },
+            {
+              "author": {
+                "login": "justinmk"
+              },
+              "body": ":( this is the right place for these notes in Nvim...",
+              "state": "SUBMITTED"
+            },
+            {
+              "author": {
+                "login": "lewis6991"
+              },
+              "body": "I get the friction. If we want to continue to keep async.nvim as a separate project then I think we'll need to treat `vim.async` similar to `vim.uv` and pull the docs as honestly as we can. Otherwise keeping things in sync will be messy (it already is messy, but AI helps).\r\n\r\nOtherwise maybe we should consider dropping async.nvim as its own project.\r\n\r\nOpen to ideas...",
+              "state": "SUBMITTED"
+            },
+            {
+              "author": {
+                "login": "justinmk"
+              },
+              "body": "I don't see the separate async.nvim repo as part of Neovim's goals. I'm happy to upstream to it as a good faith exercise, but I assumed it was something you personally wanted to keep separated.",
+              "state": "SUBMITTED"
+            },
+            {
+              "author": {
+                "login": "lewis6991"
+              },
+              "body": "I want `vim.async` to be a pure async library, without unrelated editor concepts leaking into it. I think that fits Nvim's goal of composability. CTRL-C is a good example: Nvim can handle it through the runtime integration while keeping the async model generic. Developing the library outside Nvim helped me build a model I'm confident in and remove assumptions that caused problems in earlier versions.\r\n\r\nThe model is what makes `vim.async` novel, and it's what I care about developing. Changes like this erode it by making editor-specific concepts part of how the library is understood. I'm maintaining async.nvim to keep that model coherent. If we keep tailoring it to Nvim, I worry I'll end up just saying yes to changes to keep the two versions in sync, rather than thinking through how they fit the model. Over time, that would make me less motivated to keep working on it.",
+              "state": "SUBMITTED"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "data": {
+      "node": {
+        "comments": {
+          "pageInfo": {
+            "hasNextPage": true,
+            "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wNlQxNToxNzozM1rPAAAAAQvdPMA="
+          },
+          "nodes": [
+            {
+              "author": {
+                "login": "justinmk"
+              },
+              "body": "Makes sense, I was only responding to \"If we want to continue to keep async.nvim as a separate project\", which implied something else.\r\n\r\nI really think ctrl-c should be mentioned in the async docs, and it is rather awkward if Nvim can't talk about Nvim stuff in its own docs.\r\n\r\nMeanwhile, I doubt this will lead to a conflict upstream...?",
+              "state": "SUBMITTED"
+            },
+            {
+              "author": {
+                "login": "lewis6991"
+              },
+              "body": "Nvim doesn't talk about Nvim in Luv docs? At least it won't with https://github.com/neovim/neovim/pull/42213 other than the doc header which is an appropriate place to document integration policies.",
+              "state": "SUBMITTED"
+            },
+            {
+              "author": {
+                "login": "justinmk"
+              },
+              "body": "Nvim owns vim.async, it doesn't own luv. But we certainly have made many changes to luaref.txt. \r\n\r\nIn any case, we will endeavor to avoid changes to vim.async's docs, but can we make an exception here? CTRL-C handling is important.",
+              "state": "SUBMITTED"
+            },
+            {
+              "author": {
+                "login": "lewis6991"
+              },
+              "body": "I guess we'll need to upstream it then. Your original patch is probably closer to what works, though I'm still not sure about the extra return value.",
+              "state": "SUBMITTED"
+            },
+            {
+              "author": {
+                "login": "lewis6991"
+              },
+              "body": "> But we certainly have made many changes to luaref.txt.\r\n\r\nhttps://github.com/neovim/neovim/pull/42213 will undo all that and make doc updates completely mechanical.\r\n\r\nEDIT: Sorry, I meant luvref.txt.  luaref.txt refers to a frozen dep so making changes there is different since there will never be any upstream updates to merge.",
+              "state": "SUBMITTED"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "data": {
+      "node": {
+        "comments": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wNlQxNjoxNjoyNFrPAAAAAQvoPN0="
+          },
+          "nodes": [
+            {
+              "author": {
+                "login": "justinmk"
+              },
+              "body": "I will followup https://github.com/neovim/neovim/issues/42729 , do you mind if I merge this to unblock other work?",
+              "state": "SUBMITTED"
+            },
+            {
+              "author": {
+                "login": "lewis6991"
+              },
+              "body": "sure",
+              "state": "SUBMITTED"
+            },
+            {
+              "author": {
+                "login": "lewis6991"
+              },
+              "body": "what other work out of interest?",
+              "state": "SUBMITTED"
+            },
+            {
+              "author": {
+                "login": "justinmk"
+              },
+              "body": "remote-ssh stuff. actually, it's not blocked, i can just rebase. though i do have a change to `vim.system` that will need your review",
+              "state": "SUBMITTED"
+            }
+          ]
+        }
+      }
+    }
+  }
+]

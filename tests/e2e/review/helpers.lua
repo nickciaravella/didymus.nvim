@@ -128,6 +128,45 @@ function M.set_changes(child, changes)
   child.lua("require('didymus.review.provider.test').changes = ...", { changes })
 end
 
+--- Give the threads of the change `id` to the test provider in the child.
+---@param child MiniTest.child
+---@param id string
+---@param threads didymus.review.Thread[]
+function M.set_threads(child, id, threads)
+  child.lua(
+    "local id, threads = ... require('didymus.review.provider.test').threads[id] = threads",
+    {
+      id,
+      threads,
+    }
+  )
+end
+
+--- Make a thread for the test provider: one comment from octocat on the head side.
+---@param id string
+---@param path string
+---@param fields table? The fields to change, such as `range` or `comments`.
+---@return didymus.review.Thread
+function M.make_thread(id, path, fields)
+  return vim.tbl_extend("force", {
+    id = id,
+    path = path,
+    side = "head",
+    resolved = false,
+    outdated = false,
+    comments = { { author = "octocat", body = "A comment.", pending = false } },
+  }, fields or {})
+end
+
+--- Wait until the open review has `count` threads.
+---@param child MiniTest.child
+---@param count integer
+function M.wait_for_threads(child, count)
+  wait_for(function()
+    return child.lua_get("#require('didymus.review').current().threads") == count
+  end, ("%d threads"):format(count))
+end
+
 ---@class didymus.test.Review
 ---@field id string
 ---@field tabpage integer
