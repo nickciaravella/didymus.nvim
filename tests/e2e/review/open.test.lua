@@ -36,37 +36,20 @@ local function head(repo)
   return vim.trim(helpers.git(repo.dir, { "rev-parse", "HEAD" }))
 end
 
----@return { id: string, tabpage: integer, merge_base: string? }?
+---@return didymus.test.Review?
 local function review()
-  local session = child.lua_get([[
-    (function()
-      local session = require("didymus.review").current()
-      return session and {
-        id = session.change.id,
-        tabpage = session.tabpage,
-        merge_base = session.merge_base,
-      }
-    end)()
-  ]])
-  return session ~= vim.NIL and session or nil
+  return helpers.review(child)
 end
 
 ---@param id string?
 local function wait_for_review(id)
-  wait_for(function()
-    local session = review()
-    return session ~= nil and (id == nil or session.id == id)
-  end, "the review of " .. (id or "a change"))
+  helpers.wait_for_review(child, id)
 end
 
---- The calls of the test picker, with no functions, so that they go through RPC.
----@return { kind: string, title: string, items: didymus.picker.Item[], open: boolean }[]
+--- The calls of the select role. Each review also opens a panel. `files.test.lua` tests it.
+---@return didymus.test.PickerCall[]
 local function picker_calls()
-  return child.lua_get([[
-    vim.tbl_map(function(call)
-      return { kind = call.kind, title = call.opts.title, items = call.items, open = call.open }
-    end, require("didymus.ui.picker.test").calls)
-  ]])
+  return helpers.picker_calls(child, "select")
 end
 
 ---@param count integer
@@ -402,8 +385,9 @@ T["a newer open wins over an older open"] = function()
   wait_for_picker(1)
   child.cmd("Didymus review open 1")
   wait_for_review("1")
+  -- Hide the panel, so that `choose()` acts on the picker of the older open. It is still open.
+  child.cmd("Didymus review files")
 
-  -- The picker of the older open is still open.
   choose(2)
   eq(review().id, "1")
   eq(#picker_calls(), 1)
@@ -437,14 +421,14 @@ T["the mappings run the commands"] = function()
 end
 
 T["the command completes the review actions"] = function()
-  eq(child.fn.getcompletion("Didymus review ", "cmdline"), { "close", "open" })
+  eq(child.fn.getcompletion("Didymus review ", "cmdline"), { "close", "files", "open" })
   eq(child.fn.getcompletion("Didymus ", "cmdline"), { "agent", "review" })
 end
 
 T["an unknown review action shows the usage"] = function()
   -- An error message in a command is an error of `child.cmd()`.
   child.lua("require('didymus.command').run('review foo')")
-  expect_message("didymus: unknown command. Use :Didymus review open or close.")
+  expect_message("didymus: unknown command. Use :Didymus review open, close or files.")
 end
 
 return T

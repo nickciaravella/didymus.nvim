@@ -71,6 +71,16 @@ function M.id(item)
   return item.id or item.text
 end
 
+--- The plain text of the segments of an item.
+---@param segments [string, string?][]
+---@return string
+function M.join_segments(segments)
+  local texts = vim.tbl_map(function(segment)
+    return segment[1]
+  end, segments)
+  return table.concat(texts)
+end
+
 --- The index of the item with `id`, else nil.
 ---@param items didymus.picker.Item[]
 ---@param id string?
