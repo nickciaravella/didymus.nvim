@@ -160,6 +160,9 @@ The helpers in `tests/e2e/review/helpers.lua` run in the test process:
 | --- | --- |
 | `make_repo(opts)` | Make a temporary git repo with a base commit on `main` and a head commit on `feature`. `HEAD` is on `main`. Return the `dir` and a `change` that points to the two commits. |
 | `set_changes(child, changes)` | Give the changes to the test provider in the child. |
+| `set_threads(child, id, threads)` | Give the threads of the change `id` to the test provider in the child. |
+| `make_thread(id, path, fields)` | Make a thread with one comment on the head side. `fields` changes fields, such as `range`. With no `range`, the thread shows only in the panel. |
+| `wait_for_threads(child, count)` | Wait until the open review has `count` threads. The review gets its threads after the tabpage opens. |
 | `call(child, method, ...)` | Call a method of the configured provider in the child. Wait for its `cb`, and return `{ err, result }`. |
 | `review(child)`, `wait_for_review(child, id)` | Get the open review in the child, or wait for it. |
 | `picker_calls(child, kind)` | Get the calls of the test picker, with no functions. `kind` is `"select"` or `"panel"`. Nil gives all calls. |
@@ -181,8 +184,11 @@ The unit tests of the GitHub provider replace `vim.system` with a mock. The mock
 | `fork_*.json` | neovim/neovim#38540: a fork head, renamed files, 2 pages of 2 files. | None. |
 | `no_patch_*.json` | neovim/neovim#27317: a large file with no `patch`. | Only 2 of the files. |
 | `pending_*.json` | nickciaravella/didymus.nvim#57. | Only 1 file, the first line of the body, and 2 pending reviews. |
+| `threads_graphql.json` | The threads of neovim/neovim#42726, with `first: 2` threads and `first: 5` comments: 2 pages, and a thread with more comments. | None. |
+| `thread_comments_graphql.json` | The comments of the long thread of `threads_graphql.json`, with `first: 5`: 3 pages. | None. |
+| `base_threads_graphql.json` | The threads of neovim/neovim#42735: a thread on the base side, and outdated threads. | None. A test changes some fields after it reads the file. |
 
-The REST fixtures (`*_files.json`) do not have the URL fields. To record again, run the query of `lua/didymus/review/provider/github/graphql.lua` and the REST call with `--paginate --slurp`. A smaller page size, such as `first: 2` and `per_page=2`, gives more than one page.
+The REST fixtures (`*_files.json`) do not have the URL fields. To record again, run the queries of `lua/didymus/review/provider/github/graphql.lua` and the REST call with `--paginate --slurp`. A smaller page size, such as `first: 2` and `per_page=2`, gives more than one page.
 
 The health tests in `tests/e2e/health.test.lua` set the `$PATH` of the child to a new directory, with a fake `gh` script or with no `gh`. So they do not use the network.
 

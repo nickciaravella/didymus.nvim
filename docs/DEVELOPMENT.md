@@ -52,6 +52,8 @@ flowchart TB
 | Review types | Only the fields that the MVP uses. A thread and a draft use a line range. A changed file has the raw patch from the code host. See [`architecture/review.md`](architecture/review.md#review-types). |
 | Test provider | It keeps changes in memory, and calls each `cb` in `vim.schedule()`, as a real provider does. Its `checkout` runs `git checkout` in a temporary repo. |
 | GitHub provider | `gh` with `vim.system`. A PR number or a PR URL. One GraphQL query and the REST files, at the same time. See [`architecture/review.md`](architecture/review.md#github-provider). |
+| Review threads | A sign and a one-line summary at the line of each thread, and a hover float with all comments. Outdated threads, threads on the base side and threads on the file show only in the panel. See [`architecture/review.md`](architecture/review.md#inline-threads). |
+| Thread marks scope | The marks show only in the windows of the review tabpage, with `nvim__ns_set()`. Risk: Neovim 0.12 marks this API as experimental. The call is in one function. Without the API, the marks show in all windows, with no error. Outside the review tabpage, a buffer can have an empty sign column. |
 | Hunk display | Not in the MVP. The patch from the code host gives the first hunk and the commentable lines. See [#51](https://github.com/nickciaravella/didymus.nvim/issues/51). |
 | Agent scope | The agent works in all buffers, also outside a review. Only one agent session runs at a time. |
 | Agent backends | `terminal` and `test` in v1. The interface must also fit ACP. |
@@ -105,7 +107,7 @@ lua/didymus/health.lua       :checkhealth didymus
 lua/didymus/agent/           the agent. See architecture/agent.md.
 lua/didymus/ui/              UI parts for all epics, such as the input float and window layout
 lua/didymus/ui/picker/       the picker interface and its adapters: snacks, test
-lua/didymus/review/          the review API, the review session, the files panel, the patch parser and the workspace. See architecture/review.md.
+lua/didymus/review/          the review API, the review session, the files panel, the inline threads, the patch parser and the workspace. See architecture/review.md.
 lua/didymus/review/provider/ the review types, the provider interface and its providers: github, test
 tests/helpers.lua            helpers for all kinds of tests
 tests/unit/didymus/          unit tests, mirror lua/didymus/

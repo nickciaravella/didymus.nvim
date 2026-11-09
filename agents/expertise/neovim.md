@@ -60,6 +60,33 @@ An error of `vim.cmd("edit x")` starts with the Lua location and `nvim_exec2()`,
 
 - Checked: Neovim 0.12.5
 
+## Extmarks
+
+### Only the experimental `nvim__ns_set()` scopes a namespace to windows, and it has traps
+
+Neovim 0.12 has no `nvim_win_add_ns()`. `nvim__ns_set(ns, { wins = { … } })` shows the extmarks of `ns` only in `wins`, also signs and `virt_lines`. `:h nvim__ns_set()` marks it as experimental. These are the traps:
+
+- `wins = {}` turns the scope off. Then the extmarks show in all windows.
+- If a window of the list closes, the scope stays on. The extmarks then show in no window.
+- `<C-w>T` gives the window a new id. The new window is not in the scope.
+- An invalid window id gives the error `Invalid window id`.
+- With `signcolumn=auto`, a window outside the scope still gets an empty sign column, because the sign column counts the signs of the buffer.
+
+- Proof: run this command in the repo root after `make deps`. It prints the first screen row: the sign shows only in the right window, then in both, then in no window, with an empty sign column.
+
+  ```sh
+  nvim --clean --headless -n -c 'set rtp+=deps/mini.nvim' -c 'lua local c = require("mini.test").new_child_neovim() c.start({ "--clean", "-n" }) c.o.columns = 30
+  c.lua([[_G.ns = vim.api.nvim_create_namespace("x") vim.api.nvim_buf_set_lines(0, 0, -1, true, { "a" })
+  vim.api.nvim_buf_set_extmark(0, _G.ns, 0, 0, { sign_text = "S" }) _G.w = vim.api.nvim_get_current_win() vim.cmd("vsplit")]])
+  local function row(label) io.write(label, ": ", table.concat(c.get_screenshot().text[1]), "\n") end
+  c.lua("vim.api.nvim__ns_set(_G.ns, { wins = { _G.w } })") row("wins = { right }")
+  c.lua("vim.api.nvim__ns_set(_G.ns, { wins = {} })") row("wins = {}")
+  c.lua("vim.api.nvim__ns_set(_G.ns, { wins = { _G.w } }) vim.api.nvim_win_close(_G.w, true)") row("right closed")
+  c.stop()' -c qa
+  ```
+
+- Checked: Neovim 0.12.5
+
 ## Lua scripts (`nvim -l`)
 
 ### A script that blocks in `io.read` does not exit on SIGTERM or SIGHUP

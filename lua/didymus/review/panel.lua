@@ -1,14 +1,16 @@
---- The files panel: the header and the changed files of a review, as picker items. The picker
+--- The files panel: the header, the changed files and their threads, as picker items. The picker
 --- adapter draws them. See docs/architecture/review.md#parts.
 
 local patch = require("didymus.review.patch")
 local picker = require("didymus.ui.picker")
+local threads = require("didymus.review.threads")
 
 local M = {}
 
 ---@class didymus.review.panel.Value
----@field kind "header"|"file"
+---@field kind "header"|"file"|"thread"
 ---@field file? didymus.review.ChangedFile
+---@field thread? didymus.review.Thread
 
 --- The letter and the highlight of each file status.
 ---@type table<string, [string, string]>
@@ -63,17 +65,35 @@ local function get_file_item(file, thread_count)
   return make_item("file:" .. file.path, segments, { kind = "file", file = file })
 end
 
---- The header, then a row for each changed file, in the order of the provider.
+---@param thread didymus.review.Thread
+---@return didymus.picker.Item
+local function get_thread_item(thread)
+  local item = make_item(
+    "thread:" .. thread.id,
+    threads.get_summary(thread),
+    { kind = "thread", thread = thread }
+  )
+  item.depth = 1
+  return item
+end
+
+--- The header, then a row for each changed file, in the order of the provider. The threads of
+--- each file come under it, in the order of the session.
 ---@param session didymus.review.Session
 ---@return didymus.picker.Item[]
 local function get_items(session)
-  local thread_counts = {}
+  local file_threads = {}
   for _, thread in ipairs(session.threads) do
-    thread_counts[thread.path] = (thread_counts[thread.path] or 0) + 1
+    file_threads[thread.path] = file_threads[thread.path] or {}
+    table.insert(file_threads[thread.path], thread)
   end
   local items = get_header_items(session)
   for _, file in ipairs(session.change.files) do
-    table.insert(items, get_file_item(file, thread_counts[file.path] or 0))
+    local list = file_threads[file.path] or {}
+    table.insert(items, get_file_item(file, #list))
+    for _, thread in ipairs(list) do
+      table.insert(items, get_thread_item(thread))
+    end
   end
   return items
 end
@@ -83,6 +103,14 @@ end
 local function choose(session, item)
   ---@type didymus.review.panel.Value
   local value = item.value
+  if value.kind == "thread" then
+    local line = threads.get_line(value.thread)
+    if line then
+      return session:open_file(value.thread.path, line)
+    end
+    -- The thread has no line in the file. The float is the only place that shows it.
+    return threads.open_float(value.thread)
+  end
   if value.kind ~= "file" then
     return
   end

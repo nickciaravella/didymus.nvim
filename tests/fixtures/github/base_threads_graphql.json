@@ -1,0 +1,148 @@
+[
+  {
+    "data": {
+      "node": {
+        "reviewThreads": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wN1QwNToyMTowMFrOtMok-Q=="
+          },
+          "nodes": [
+            {
+              "id": "PRRT_kwDOAPphoM60x3bL",
+              "path": "runtime/lua/vim/treesitter/highlighter.lua",
+              "line": 433,
+              "startLine": 433,
+              "diffSide": "LEFT",
+              "startDiffSide": null,
+              "isResolved": true,
+              "isOutdated": false,
+              "subjectType": "LINE",
+              "comments": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wN1QwNDoxOToxNFrPAAAAAQw5dsA="
+                },
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "justinmk"
+                    },
+                    "body": "why doesn't `intercepts()` work? semantically, it's suppose to do (roughly?) what appears to be intended by the new code.\n\ncommit msg / pr desc should mention why `intercepts()` isn't applicable",
+                    "state": "SUBMITTED"
+                  },
+                  {
+                    "author": {
+                      "login": "b84330808"
+                    },
+                    "body": "You're right, it does work, so I switched back to it. I'd split it for two reasons: the old call built a table per tree, and `intercepts()` returns false for trees both above and below the range, but only trees below should move the skip position.\n\nNow the range table is built once per call, and the false branch checks that the tree is below. That costs about 5% against the open-coded version (6.8ms vs 6.4ms at 50x120, 43ms vs 41ms at 300x120), which seems worth it for the simpler code. The commit message and PR description are updated.\n",
+                    "state": "SUBMITTED"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_kwDOAPphoM60yeCe",
+              "path": "runtime/lua/vim/treesitter/highlighter.lua",
+              "line": null,
+              "startLine": null,
+              "diffSide": "RIGHT",
+              "startDiffSide": null,
+              "isResolved": true,
+              "isOutdated": true,
+              "subjectType": "LINE",
+              "comments": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wN1QwNzoxNzoxOFrPAAAAAQxCMMQ="
+                },
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "ribru17"
+                    },
+                    "body": "Can we just move this within the `if` statement below, which is now the only place where it's used?",
+                    "state": "SUBMITTED"
+                  },
+                  {
+                    "author": {
+                      "login": "b84330808"
+                    },
+                    "body": "Done in ea0667e.",
+                    "state": "SUBMITTED"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_kwDOAPphoM60yfef",
+              "path": "runtime/lua/vim/treesitter/highlighter.lua",
+              "line": null,
+              "startLine": null,
+              "diffSide": "RIGHT",
+              "startDiffSide": null,
+              "isResolved": true,
+              "isOutdated": true,
+              "subjectType": "LINE",
+              "comments": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wN1QwNzoxNzoyMVrPAAAAAQxCMSM="
+                },
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "ribru17"
+                    },
+                    "body": "Super nit: I would personally prefer \"before\" to \"above\" here, since \"above\" might make readers think in terms of a vertical parent/child tree relationship, rather than a flat \"region precedes other region\" concept, which is what we are checking for IIUC",
+                    "state": "SUBMITTED"
+                  },
+                  {
+                    "author": {
+                      "login": "b84330808"
+                    },
+                    "body": "Done in ea0667e.",
+                    "state": "SUBMITTED"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_kwDOAPphoM60yiT5",
+              "path": "test/functional/treesitter/highlight_spec.lua",
+              "line": null,
+              "startLine": null,
+              "diffSide": "RIGHT",
+              "startDiffSide": null,
+              "isResolved": true,
+              "isOutdated": true,
+              "subjectType": "LINE",
+              "comments": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wN1QwNzoxNzoyM1rPAAAAAQxCMW8="
+                },
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "ribru17"
+                    },
+                    "body": "same nit here",
+                    "state": "SUBMITTED"
+                  },
+                  {
+                    "author": {
+                      "login": "b84330808"
+                    },
+                    "body": "Done in ea0667e.",
+                    "state": "SUBMITTED"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+]

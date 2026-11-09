@@ -1,4 +1,4 @@
---- The review API: open a change in the review tabpage, and close it.
+--- The review API: open a change in the review tabpage, show its threads, and close it.
 --- See docs/architecture/review.md#workspace-flow.
 
 local config = require("didymus.config")
@@ -128,6 +128,23 @@ local function on_close(session)
   vim.notify(("didymus: closed the review of %s.%s"):format(label(session.change.id), before))
 end
 
+--- Get the threads, and show them in the session. A close or a newer review ignores the result.
+---@param provider didymus.review.Provider
+---@param session didymus.review.Session
+local function load_threads(provider, session)
+  track(("get the threads of %s"):format(session.label), function(done)
+    provider:get_threads(session.change, done)
+  end, function(err, list)
+    if current ~= session then
+      return
+    end
+    if err then
+      return show_error(("cannot get the threads of %s: %s"):format(session.label, err))
+    end
+    session:set_threads(list)
+  end)
+end
+
 --- Get the merge-base, and open the review tabpage.
 ---@param flow didymus.review.Flow
 ---@param change didymus.review.Change
@@ -156,6 +173,8 @@ local function start_session(flow, change, status)
         on_close = on_close,
       })
       vim.notify(("didymus: opened the review of %s: %s"):format(label(change.id), change.title))
+      -- The review opens first, so that the user can read the files while the threads load.
+      load_threads(flow.provider, current)
     end)
   )
 end
@@ -333,6 +352,14 @@ function M.files()
   local session = get_open_review()
   if session then
     session:toggle_files()
+  end
+end
+
+--- Open the thread at the cursor in a float, with all its comments.
+function M.thread()
+  local session = get_open_review()
+  if session then
+    session:show_thread_at_cursor()
   end
 end
 

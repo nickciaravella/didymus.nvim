@@ -266,6 +266,155 @@ T["the methods give an error if gh is not on $PATH"] = function()
   eq(call("get_change", "1"), { err = "gh api graphql: `gh` is not on $PATH" })
 end
 
+T["get_threads()"] = MiniTest.new_set()
+
+-- The change of neovim/neovim#42726, by number. `get_threads()` uses only `github`.
+local threads_change =
+  { id = "42726", github = { number = 42726, node_id = "PR_kwDOAPphoM8AAAABNUMiSA" } }
+
+--- Reply to the threads query with the recorded output of `name`, after `edit` changes it, and to
+--- the comments query with `thread_comments`.
+---@param name string
+---@param edit fun(pages: table[])?
+local function mock_threads(name, edit)
+  local pages = vim.json.decode(read_fixture(name))
+  if edit then
+    edit(pages)
+  end
+  mock_gh(function(args)
+    if args[6] == "query=" .. graphql.thread_comments then
+      return { stdout = read_fixture("thread_comments_graphql") }
+    end
+    return { stdout = vim.json.encode(pages) }
+  end)
+end
+
+---@param change table
+---@return didymus.review.Thread[]
+local function get_threads(change)
+  local reply = call("get_threads", change)
+  eq(reply.err, nil)
+  return reply.result
+end
+
+T["get_threads()"]["gives the threads of all pages, and all comments of a long thread"] = function()
+  mock_threads("threads_graphql")
+  local threads = get_threads(threads_change)
+
+  eq(commands, {
+    {
+      "gh",
+      "api",
+      "graphql",
+      "--paginate",
+      "--slurp",
+      "-f",
+      "query=" .. graphql.threads,
+      "-f",
+      "id=PR_kwDOAPphoM8AAAABNUMiSA",
+    },
+    {
+      "gh",
+      "api",
+      "graphql",
+      "--paginate",
+      "--slurp",
+      "-f",
+      "query=" .. graphql.thread_comments,
+      "-f",
+      "id=PRRT_kwDOAPphoM60iFrl",
+    },
+  })
+  eq(#threads, 3)
+  eq(threads[1], {
+    id = "PRRT_kwDOAPphoM60iDI1",
+    path = "runtime/lua/vim/async.lua",
+    side = "head",
+    range = { first = 323, last = 323 },
+    resolved = false,
+    outdated = false,
+    comments = { { author = "lewis6991", body = ":+1:", pending = false } },
+  })
+  eq(
+    { threads[2].range, threads[2].resolved, threads[2].outdated, #threads[2].comments },
+    { nil, true, true, 14 }
+  )
+  eq(threads[2].comments[14].author, "justinmk")
+  -- The recorded body has `\r\n`.
+  eq(
+    threads[2].comments[10].body:sub(1, 60),
+    "> But we certainly have made many changes to luaref.txt.\n\nht"
+  )
+  eq(
+    { threads[3].path, threads[3].range },
+    { "runtime/doc/lua-async.txt", { first = 579, last = 580 } }
+  )
+end
+
+T["get_threads()"]["a thread on the base side, by URL"] = function()
+  mock_threads("base_threads_graphql")
+  local change = {
+    id = "https://github.com/neovim/neovim/pull/42735",
+    github = {
+      number = 42735,
+      host = "github.com",
+      owner = "neovim",
+      repo = "neovim",
+      node_id = "PR_x",
+    },
+  }
+  local threads = get_threads(change)
+
+  eq(vim.list_slice(commands[1], 8), { "-f", "id=PR_x", "--hostname", "github.com" })
+  eq(#commands, 1)
+  eq(
+    { threads[1].side, threads[1].range, threads[1].resolved },
+    { "base", { first = 433, last = 433 }, true }
+  )
+  eq({ threads[2].side, threads[2].range, threads[2].outdated }, { "head", nil, true })
+end
+
+T["get_threads()"]["a deleted author, a pending comment, a thread on the file and a range on two sides"] = function()
+  mock_threads("base_threads_graphql", function(pages)
+    local nodes = pages[1].data.node.reviewThreads.nodes
+    nodes[1].comments.nodes[1].author = vim.NIL
+    nodes[1].comments.nodes[2].state = "PENDING"
+    nodes[2].isOutdated, nodes[2].subjectType = false, "FILE"
+    nodes[3].isOutdated, nodes[3].line, nodes[3].startLine = false, 12, 10
+    nodes[3].diffSide, nodes[3].startDiffSide = "RIGHT", "LEFT"
+    nodes[4].isOutdated, nodes[4].line, nodes[4].startLine = false, 12, 10
+    nodes[4].diffSide, nodes[4].startDiffSide = "RIGHT", "RIGHT"
+  end)
+  local threads = get_threads(threads_change)
+
+  eq(
+    vim.tbl_map(function(comment)
+      return { comment.author, comment.pending }
+    end, threads[1].comments),
+    { { "ghost", false }, { "b84330808", true } }
+  )
+  eq({ threads[2].range, threads[2].outdated }, { nil, false })
+  eq(threads[3].range, { first = 12, last = 12 })
+  eq(threads[4].range, { first = 10, last = 12 })
+end
+
+T["get_threads()"]["gives the error of gh, also for the comments of a long thread"] = function()
+  mock_gh(function()
+    return { code = 1, stderr = "gh: Could not resolve to a node with the global id of 'PR_x'.\n" }
+  end)
+  eq(call("get_threads", threads_change), {
+    err = "gh api graphql: Could not resolve to a node with the global id of 'PR_x'.",
+  })
+
+  mock_gh(function(args)
+    if args[6] == "query=" .. graphql.thread_comments then
+      return { code = 1, stderr = "gh: HTTP 502\n" }
+    end
+    return { stdout = read_fixture("threads_graphql") }
+  end)
+  eq(call("get_threads", threads_change), { err = "gh api graphql: HTTP 502" })
+end
+
 T["checkout()"] = MiniTest.new_set()
 
 T["checkout()"]["runs gh pr checkout with the number, and the repo of a URL"] = function()

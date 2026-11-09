@@ -1,0 +1,136 @@
+[
+  {
+    "data": {
+      "node": {
+        "reviewThreads": {
+          "pageInfo": {
+            "hasNextPage": true,
+            "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wNlQxMzo1OTo0NlrOtIha5Q=="
+          },
+          "nodes": [
+            {
+              "id": "PRRT_kwDOAPphoM60iDI1",
+              "path": "runtime/lua/vim/async.lua",
+              "line": 323,
+              "startLine": 323,
+              "diffSide": "RIGHT",
+              "startDiffSide": null,
+              "isResolved": false,
+              "isOutdated": false,
+              "subjectType": "LINE",
+              "comments": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wNlQxMzo1ODowOFrPAAAAAQvQatU="
+                },
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "lewis6991"
+                    },
+                    "body": ":+1:",
+                    "state": "SUBMITTED"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_kwDOAPphoM60iFrl",
+              "path": "runtime/doc/lua-async.txt",
+              "line": null,
+              "startLine": null,
+              "diffSide": "RIGHT",
+              "startDiffSide": null,
+              "isResolved": true,
+              "isOutdated": true,
+              "subjectType": "LINE",
+              "comments": {
+                "pageInfo": {
+                  "hasNextPage": true,
+                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wNlQxNDo0OToyMFrPAAAAAQvYWcU="
+                },
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "lewis6991"
+                    },
+                    "body": "Can we avoid these doc changes? The ctrl-c handling is an Nvim specific policy. Maybe this can be mentioned somewhere else?",
+                    "state": "SUBMITTED"
+                  },
+                  {
+                    "author": {
+                      "login": "justinmk"
+                    },
+                    "body": ":( this is the right place for these notes in Nvim...",
+                    "state": "SUBMITTED"
+                  },
+                  {
+                    "author": {
+                      "login": "lewis6991"
+                    },
+                    "body": "I get the friction. If we want to continue to keep async.nvim as a separate project then I think we'll need to treat `vim.async` similar to `vim.uv` and pull the docs as honestly as we can. Otherwise keeping things in sync will be messy (it already is messy, but AI helps).\r\n\r\nOtherwise maybe we should consider dropping async.nvim as its own project.\r\n\r\nOpen to ideas...",
+                    "state": "SUBMITTED"
+                  },
+                  {
+                    "author": {
+                      "login": "justinmk"
+                    },
+                    "body": "I don't see the separate async.nvim repo as part of Neovim's goals. I'm happy to upstream to it as a good faith exercise, but I assumed it was something you personally wanted to keep separated.",
+                    "state": "SUBMITTED"
+                  },
+                  {
+                    "author": {
+                      "login": "lewis6991"
+                    },
+                    "body": "I want `vim.async` to be a pure async library, without unrelated editor concepts leaking into it. I think that fits Nvim's goal of composability. CTRL-C is a good example: Nvim can handle it through the runtime integration while keeping the async model generic. Developing the library outside Nvim helped me build a model I'm confident in and remove assumptions that caused problems in earlier versions.\r\n\r\nThe model is what makes `vim.async` novel, and it's what I care about developing. Changes like this erode it by making editor-specific concepts part of how the library is understood. I'm maintaining async.nvim to keep that model coherent. If we keep tailoring it to Nvim, I worry I'll end up just saying yes to changes to keep the two versions in sync, rather than thinking through how they fit the model. Over time, that would make me less motivated to keep working on it.",
+                    "state": "SUBMITTED"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "data": {
+      "node": {
+        "reviewThreads": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wNlQxNzoyODoyMFrOtJ511g=="
+          },
+          "nodes": [
+            {
+              "id": "PRRT_kwDOAPphoM60nnXW",
+              "path": "runtime/doc/lua-async.txt",
+              "line": 580,
+              "startLine": 579,
+              "diffSide": "RIGHT",
+              "startDiffSide": "RIGHT",
+              "isResolved": false,
+              "isOutdated": false,
+              "subjectType": "LINE",
+              "comments": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMS0wNlQxNzoyODoyMFrPAAAAAQv0na8="
+                },
+                "nodes": [
+                  {
+                    "author": {
+                      "login": "justinmk"
+                    },
+                    "body": "this is not obvious (or at least, it's worth mentioning?), and it applies to upstream",
+                    "state": "SUBMITTED"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+]
