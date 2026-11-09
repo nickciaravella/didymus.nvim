@@ -299,6 +299,8 @@ end
 
 T["health() reports OK"] = function()
   child.cmd("runtime plugin/didymus.lua")
+  -- The default provider runs `gh auth status`, which uses the network.
+  child.lua('require("didymus").setup({ review = { provider = "test" } })')
   child.cmd("checkhealth didymus")
   local report = table.concat(child.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
   MiniTest.expect.no_equality(
