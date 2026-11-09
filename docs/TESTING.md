@@ -143,6 +143,25 @@ Then drive it in the child with `require("didymus.ui.picker.test")`:
 
 `target` is the index or the text of an item. Nil is the item under the cursor. The calls are synchronous, so the test does not wait.
 
+### The test provider
+
+The test provider keeps its changes in memory. Set it in `setup()`:
+
+```lua
+require("didymus").setup({ review = { provider = "test" } })
+```
+
+The helpers in `tests/e2e/review/helpers.lua` run in the test process:
+
+| Function | Behavior |
+| --- | --- |
+| `make_repo(opts)` | Make a temporary git repo with a base commit on `main` and a head commit on `feature`. `HEAD` is on `main`. Return the `dir` and a `change` that points to the two commits. |
+| `set_changes(child, changes)` | Give the changes to the test provider in the child. |
+| `call(child, method, ...)` | Call a method of the configured provider in the child. Wait for its `cb`, and return `{ err, result }`. |
+| `git(dir, args)`, `write(dir, files)` | Run git, or write files, in the repo. |
+
+The `files` of the change come from `git diff`, with the patch as GitHub gives it. The helpers do not use the git config of the user. Before you call `checkout`, set the directory of the child to the repo with `child.fn.chdir(repo.dir)`. See `tests/e2e/review/provider.test.lua`.
+
 ### Integration tests
 
 Integration tests check one provider or external dependency against the real thing. For example, a test checks the GitHub provider with the real `gh`. If necessary, a test can use more than one module, for a larger functional test.

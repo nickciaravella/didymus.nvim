@@ -184,10 +184,79 @@ All methods are async. Each one takes a final `cb(err, result)` and does not blo
 ---@field health fun() Report the dependencies with `vim.health`.
 ```
 
-- The data types are from the [reference file](../reference/design-prompt.md#data-model): `ChangeSummary`, `Change`, `ChangedFile`, `Thread`, `Comment`, `CommentDraft` and `Range`. The task of each type examines its fields again.
 - `review.provider` is `"github"` (the default), `"test"` or a provider table.
 - The GitHub provider keeps all GraphQL documents as string constants in one module.
-- The `test` provider keeps its changes and threads in memory. Tests give it the data. Its `checkout` runs `git checkout` in a temporary repo of the test.
+- The `test` provider keeps its changes and threads in memory. Tests give it the data. Its `checkout` runs `git checkout` in a temporary repo of the test. It calls each `cb` in `vim.schedule()`, as a real provider does.
+
+### Review types
+
+The types come from the [reference file](../reference/design-prompt.md#data-model), with only the fields that the MVP uses. Each field was examined against the live GitHub GraphQL schema on 2026-11-08. A task that uses a type can add a field.
+
+```lua
+---@alias didymus.review.Side "head"|"base"
+
+---@class didymus.review.Range     Lines, 1-based. The range includes `first` and `last`.
+---@field first integer
+---@field last integer
+
+---@class didymus.review.ChangeSummary
+---@field id string                 The id on the code host, such as the PR number.
+---@field title string
+---@field author string
+---@field body string               Markdown.
+---@field is_draft boolean
+
+---@class didymus.review.Change: didymus.review.ChangeSummary
+---@field base_branch string
+---@field head_branch string
+---@field base_sha string
+---@field head_sha string
+---@field files didymus.review.ChangedFile[]
+---@field pending_review_id string?
+
+---@class didymus.review.ChangedFile
+---@field path string
+---@field status "added"|"modified"|"deleted"|"renamed"
+---@field additions integer
+---@field deletions integer
+---@field patch string?             The hunks of the unified diff, with no file header. Nil for a large or binary file.
+
+---@class didymus.review.Thread
+---@field id string
+---@field path string
+---@field side didymus.review.Side
+---@field range didymus.review.Range? Nil if the thread is outdated or on the file.
+---@field resolved boolean
+---@field outdated boolean
+---@field comments didymus.review.Comment[]
+
+---@class didymus.review.Comment
+---@field author string
+---@field body string               Markdown.
+---@field pending boolean
+
+---@class didymus.review.CommentDraft A new comment on the head side.
+---@field path string
+---@field range didymus.review.Range
+---@field body string
+```
+
+1. A provider can add its own fields to a `Change`, such as the GraphQL node id of the PR. The review session gives the same table back to the provider.
+2. `ChangedFile` has the raw `patch`, not the commentable ranges. The patch parser makes the hunks and the commentable ranges from it.
+3. A thread and a draft use a `Range`, not `line` and `start_line`. Then a draft and a commentable range have the same type.
+4. A thread on the base side cannot show at a line of the head file. So `Thread` has `side`. A draft is always on the head side in the MVP.
+
+The MVP does not use these fields of the reference file:
+
+| Fields | Why |
+| --- | --- |
+| `ChangeRef` | There is one provider in the config, and it works on the current repo. |
+| `updated_at`, `url`, `state`, `source` | No MVP feature uses them. The provider does the checkout. |
+| `old_path` | The GraphQL `PullRequestChangedFile` does not have it. |
+| `viewed` | [Mark as viewed](https://github.com/nickciaravella/didymus.nvim/issues/49) is after the MVP. |
+| `original_line` | Outdated threads show only in the panel. |
+| `Comment.id`, `created_at` | No MVP feature uses them. |
+| `CommentDraft.side`, `file_level` | [More comment kinds](https://github.com/nickciaravella/didymus.nvim/issues/53) is after the MVP. |
 
 ## Tests
 
