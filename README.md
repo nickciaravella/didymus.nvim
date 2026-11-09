@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel, the review threads (with navigation), new comments, replies, resolve, and the submit or the discard of the review work now.
+> **Early development.** Only the agent, the start of a review, the files panel, the review threads (with navigation), new comments, replies, resolve, the submit or the discard of the review, and the refresh work now.
 
 ## Goals
 
@@ -126,6 +126,7 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review resolve` | Resolve the thread at the cursor. On a resolved thread, unresolve it. |
 | `:Didymus review submit [approve\|comment\|request_changes]` | Submit your pending review with a verdict and a body. With no verdict, choose one in the picker. |
 | `:Didymus review discard` | Delete your pending review and its comments. The picker asks you to confirm. |
+| `:Didymus review refresh` | Get the pull request and its threads again. `R` in the files panel does the same. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
 
@@ -150,6 +151,7 @@ Outdated threads, threads on deleted lines and threads on the file show only in 
 didymus refuses a comment, and shows the reason, in these cases:
 
 - The current window does not show a file of the pull request.
+- `HEAD` is not the head of the pull request, for example after a refresh with a new head, or after a local commit.
 - The buffer is modified, or the file is different from the head of the pull request. A comment needs the line numbers of the head.
 - The lines are not in a hunk of the pull request. A range must be in one hunk. If the hunks of a file are unknown, for example in a large file, GitHub decides.
 
@@ -166,6 +168,8 @@ After a resolve, the thread is dim in the panel and at its line. If GitHub does 
 `discard` shows your pending comments in the preview of the picker. After you confirm, didymus deletes the pending review, and its comments go away.
 
 After a submit or a discard, didymus gets the threads again. The review stays open.
+
+`refresh` gets the pull request and its threads again, for example after a comment on github.com. Then the files panel and the threads in the files show the new data. A message shows when the refresh starts and when it ends. If the pull request has a new head, a warning shows, and didymus does not check it out. To check out the new head, close the review and open it again.
 
 The highlight groups are `DidymusThread` (default: `DiagnosticInfo`), `DidymusThreadResolved` (default: `Comment`) and `DidymusThreadPending` (default: `DiagnosticHint`).
 
@@ -185,11 +189,12 @@ vim.keymap.set("n", "<leader>rr", "<Plug>(didymus-review-reply)")
 vim.keymap.set("n", "<leader>rx", "<Plug>(didymus-review-resolve)")
 vim.keymap.set("n", "<leader>rs", "<Plug>(didymus-review-submit)")
 vim.keymap.set("n", "<leader>rd", "<Plug>(didymus-review-discard)")
+vim.keymap.set("n", "<leader>rR", "<Plug>(didymus-review-refresh)")
 ```
 
 | Mapping | Modes |
 | --- | --- |
-| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)`, `<Plug>(didymus-review-next)`, `<Plug>(didymus-review-prev)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-submit)`, `<Plug>(didymus-review-discard)` | Normal |
+| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)`, `<Plug>(didymus-review-next)`, `<Plug>(didymus-review-prev)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-submit)`, `<Plug>(didymus-review-discard)`, `<Plug>(didymus-review-refresh)` | Normal |
 | `<Plug>(didymus-review-comment)` | Normal, visual |
 
 To check snacks.nvim and `gh`, run `:checkhealth didymus`.
@@ -208,6 +213,9 @@ require("didymus").setup({
     },
     thread = { -- the thread float
       keys = { reply = "r", resolve = "x" }, -- false turns a key off
+    },
+    panel = { -- the files panel
+      keys = { refresh = "R" }, -- false turns a key off
     },
   },
 })

@@ -49,6 +49,9 @@ end
 ---@param id string
 ---@param cb fun(err: string?, change: didymus.review.Change?)
 function M:get_change(id, cb)
+  if fail("get_change", cb) then
+    return
+  end
   for _, change in ipairs(self.changes) do
     if change.id == id then
       local copy = vim.deepcopy(change)
@@ -66,6 +69,9 @@ end
 ---@param change didymus.review.Change
 ---@param cb fun(err: string?, threads: didymus.review.Thread[]?)
 function M:get_threads(change, cb)
+  if fail("get_threads", cb) then
+    return
+  end
   local threads = vim.deepcopy(self.threads[change.id] or {})
   vim.schedule(function()
     cb(nil, threads)

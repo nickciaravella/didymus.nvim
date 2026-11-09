@@ -7,6 +7,7 @@ local threads = require("didymus.review.threads")
 
 ---@class didymus.review.SessionOpts
 ---@field change didymus.review.Change
+---@field open_id string The id that `open` gave to `get_change()`: a PR number or a PR URL.
 ---@field label string The name of the change in messages, such as "#12".
 ---@field adapter didymus.picker.Adapter The picker of the files panel.
 ---@field provider didymus.review.Provider The provider that gave the change. Only it knows its own fields of the change.
@@ -18,12 +19,15 @@ local threads = require("didymus.review.threads")
 
 ---@class didymus.review.Session
 ---@field change didymus.review.Change
+---@field open_id string The id for `get_change()`. `change.id` of a PR URL is only the number, and `get_change()` of a number uses the current repo.
 ---@field label string
 ---@field threads didymus.review.Thread[] In the order of the panel.
 ---@field provider didymus.review.Provider
 ---@field failed_draft didymus.review.CommentDraft? The last comment that the provider did not add. The next comment at its lines starts with its text.
 ---@field failed_reply { thread_id: string, body: string }? The last reply that the provider did not add. The next reply to its thread starts with its text.
 ---@field failed_review_body string? The body of the last review that the provider did not submit. The next submit starts with it.
+---@field load_count integer The number of the last get of the threads. Only the result of the newest get applies.
+---@field discarded_at integer? The time of the last discard, from `vim.uv.now()`. Nil after a new pending comment.
 ---@field cwd string
 ---@field merge_base string?
 ---@field old_branch string?
@@ -44,8 +48,10 @@ Session.__index = Session
 function Session.new(opts)
   local self = setmetatable({
     change = opts.change,
+    open_id = opts.open_id,
     label = opts.label,
     threads = {},
+    load_count = 0,
     adapter = opts.adapter,
     provider = opts.provider,
     cwd = opts.cwd,
@@ -221,6 +227,15 @@ function Session:set_threads(list)
   if self:is_panel_open() then
     self.panel:update()
   end
+end
+
+--- Replace the change and its threads, for example after a refresh. Show them in the panel and in
+--- the loaded files.
+---@param change didymus.review.Change
+---@param list didymus.review.Thread[]
+function Session:set_change(change, list)
+  self.change = change
+  self:set_threads(list)
 end
 
 --- Add a new thread. Show it in the panel and in the loaded files.

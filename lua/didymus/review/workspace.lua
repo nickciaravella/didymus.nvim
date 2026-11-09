@@ -131,6 +131,18 @@ function M.get_merge_base(cwd, base_sha, head_sha, cb)
   end)
 end
 
+--- Get the sha of `HEAD`.
+---@param cwd string
+---@param cb fun(err: string?, head: string?)
+function M.get_head(cwd, cb)
+  git(cwd, { "rev-parse", "HEAD" }, function(err, stdout)
+    if err then
+      return cb(err)
+    end
+    cb(nil, vim.trim(stdout --[[@as string]]))
+  end)
+end
+
 --- Check if `path` in the working tree is different from `path` in `commit`.
 ---@param cwd string
 ---@param commit string
