@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel and the review threads (read only) work now.
+> **Early development.** Only the agent, the start of a review, the files panel and the review threads (read only, with navigation) work now.
 
 ## Goals
 
@@ -120,6 +120,7 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review close` | Close the files panel and the review tabpage. |
 | `:Didymus review files` | Show the files panel, or hide it. |
 | `:Didymus review thread` | Open the thread at the cursor in a float, with all its comments. |
+| `:Didymus review next`, `:Didymus review prev` | Go to the next or the previous thread, also in a different file. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
 
@@ -137,6 +138,8 @@ Outdated threads, threads on deleted lines and threads on the file show only in 
 
 `thread` opens a float next to the cursor. The float closes when the cursor moves. A second `thread` moves the focus into the float, and `q` closes it. If more than one thread is at the line, the picker asks which one to open.
 
+`next` and `prev` go through the threads in the order of the panel, from the cursor. If the current window does not show a file of the pull request, they start at the cursor of the code window. They skip the threads that show only in the panel, and the threads at the same line are one stop. At the last or the first thread, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. In a different tabpage, `next` and `prev` go to the review tabpage first.
+
 The highlight groups are `DidymusThread` (default: `DiagnosticInfo`) and `DidymusThreadResolved` (default: `Comment`).
 
 `close` does not check out the branch from before the review. Its message names that branch. `:tabclose` of the review tabpage also closes the review.
@@ -148,11 +151,13 @@ vim.keymap.set("n", "<leader>ro", "<Plug>(didymus-review-open)")
 vim.keymap.set("n", "<leader>rc", "<Plug>(didymus-review-close)")
 vim.keymap.set("n", "<leader>rf", "<Plug>(didymus-review-files)")
 vim.keymap.set("n", "<leader>rt", "<Plug>(didymus-review-thread)")
+vim.keymap.set("n", "<leader>rn", "<Plug>(didymus-review-next)")
+vim.keymap.set("n", "<leader>rp", "<Plug>(didymus-review-prev)")
 ```
 
 | Mapping | Modes |
 | --- | --- |
-| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)` | Normal |
+| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)`, `<Plug>(didymus-review-next)`, `<Plug>(didymus-review-prev)` | Normal |
 
 To check snacks.nvim and `gh`, run `:checkhealth didymus`.
 

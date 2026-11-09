@@ -363,4 +363,20 @@ function M.thread()
   end
 end
 
+--- Go to the next thread in the order of the panel, also in a different file.
+function M.next()
+  local session = get_open_review()
+  if session then
+    session:go_to_thread(1)
+  end
+end
+
+--- Go to the previous thread in the order of the panel, also in a different file.
+function M.prev()
+  local session = get_open_review()
+  if session then
+    session:go_to_thread(-1)
+  end
+end
+
 return M
