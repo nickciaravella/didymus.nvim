@@ -38,7 +38,7 @@ Run an agent CLI, such as Claude Code or Codex, in a split on the right or in a 
 | `:Didymus agent start [cmd]` | Start the agent, but do not show it. |
 | `:Didymus agent stop` | End the agent and close its view. |
 | `:[range]Didymus agent append` | Put the current line or the range in the agent input. Then show and focus the agent. |
-| `:[range]Didymus agent send [text]` | Open a float for a prompt about the current line or the range. On submit, send the prompt and the code. The agent stays hidden. |
+| `:[range]Didymus agent send [text]` | Open a float for a prompt about the current line or the range. Then send the prompt and the code, or append them. |
 
 `toggle float` shows or hides the float. If the split is visible, it closes, and the same agent shows in the float. `toggle split` does the same for the split. `toggle` with no view uses the last view, then `agent.view`.
 
@@ -46,7 +46,16 @@ The float hides when you go to a different window. The agent continues. The insi
 
 **Append** puts the location and the code in the agent input, and does not submit. You type the rest of the prompt in the agent.
 
-**Send** opens a float above the code. Type the prompt, then press `<C-y>` to send it. `<CR>` adds a line. `q` or `<Esc>` in normal mode cancels. With `[text]`, send submits at once, with no float. To read the answer, show the agent.
+**Send** opens a float above the code. Type the prompt, then press a key:
+
+| Key | Behavior |
+| --- | --- |
+| `<C-s>` | Send the prompt and the code. The agent stays hidden. To read the answer, show the agent. |
+| `<C-y>` | Append the code and the prompt to the agent input, as append does. Then add to the prompt in the agent. |
+| `<CR>` | Add a line. |
+| `q` or `<Esc>` in normal mode | Cancel. |
+
+With `[text]`, send submits at once, with no float.
 
 In visual mode, the mappings use the selection. `:'<,'>Didymus agent append` uses the full lines. Append and send start the agent if it does not run.
 
@@ -90,7 +99,7 @@ require("didymus").setup({
     input = { -- the float of send
       width = 60, -- below 1 is a fraction of the window width
       max_height = 10, -- the float grows to this height, then it scrolls
-      keys = { submit = "<C-y>", cancel = "q" },
+      keys = { send = "<C-s>", append = "<C-y>", cancel = "q" }, -- false turns off a key
     },
     terminal = {
       ready_delay = 500, -- ms to wait after the first output of the agent, before input

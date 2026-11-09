@@ -26,7 +26,7 @@ These features come later:
 | A3 | `agent.cmd` sets the agent command. The `cmd` option of the API and of the command overrides it. |
 | A4 | The view is `float` or `split`. Only one view is visible at a time. `toggle` with a `view` shows or hides that view. `toggle` with no `view` uses the last view, then `agent.view`. |
 | A5 | Append uses the current line in normal mode and the selection in visual mode. It puts the context in the agent input and focuses the agent. It does not submit. |
-| A6 | Send opens an input float above the code, in the center of the current window. The code has a highlight while the float is open. The float starts with one line and grows when the text wraps. `<CR>` adds a line. `<C-y>` submits. The keys are configurable. |
+| A6 | Send opens an input float above the code, in the center of the current window. The code has a highlight while the float is open. The float starts with one line and grows when the text wraps. `<CR>` adds a line. `<C-s>` sends. `<C-y>` appends the context and the text, as in A5. The keys are configurable. |
 | A7 | Send submits the context and the prompt. It does not show the agent. |
 | A8 | The context is the location and the code in a fenced block. |
 | A9 | The backends are `terminal` and `test`. The interface must also fit an ACP backend. |
@@ -89,7 +89,7 @@ Calls go in one direction: `command` → `agent/init` → `session` → `view` a
 ---@field filetype string?
 
 ---@class didymus.agent.Prompt
----@field text string?       Nil for append.
+---@field text string?       Nil for an append with no text.
 ---@field context didymus.agent.Context[]
 
 ---@class didymus.agent.BackendOpts
@@ -155,13 +155,18 @@ The other parts have these interfaces:
 ---@class didymus.ui.input
 ---@field open fun(opts: didymus.ui.input.Opts)
 
+---@class didymus.ui.input.Action
+---@field key string|false   In insert and normal mode. False turns off the action.
+---@field name string        The name in the footer, for example "send".
+---@field on_submit fun(text: string)
+
 ---@class didymus.ui.input.Opts
 ---@field title string?
----@field on_submit fun(text: string)
+---@field actions didymus.ui.input.Action[] The keys that submit. The footer shows them in this order.
 ---@field on_cancel fun()?
 ---@field width number?      Default 60. A width below 1 is a fraction of the current window width.
 ---@field max_height integer? Default 10.
----@field keys { submit: string?, cancel: string? }? Default `{ submit = "<C-y>", cancel = "q" }`.
+---@field keys { cancel: string? }? Default `{ cancel = "q" }`.
 ---@field range integer[]?   The first and the last line of the code, 1-based. These lines have a highlight. Default: the cursor line.
 
 --- ui/layout.lua
@@ -220,7 +225,7 @@ agent = {
   split = { width = 0.4 },
   float = { width = 0.85, height = 0.85 },
   keys = { focus = false, leave = false }, -- for example "<C-a>"
-  input = { width = 60, max_height = 10, keys = { submit = "<C-y>", cancel = "q" } },
+  input = { width = 60, max_height = 10, keys = { send = "<C-s>", append = "<C-y>", cancel = "q" } },
   terminal = { ready_delay = 500, submit_delay = 50 }, -- milliseconds
 }
 ```
@@ -271,8 +276,10 @@ For example, with the split visible, `toggle float` closes the split and shows t
 ### Send
 
 1. Make the context, as in Append. Open the input float above the line or the selection, with the location as the title. Give the lines as `range`. With `text`, go to step 2 at once.
-2. On submit, start a session if no session runs. Do not show the view. The last view or `agent.view` sets the size.
+2. On `<C-s>`, start a session if no session runs. Do not show the view. The last view or `agent.view` sets the size.
 3. Call `backend:send()`. Show the message "didymus: sent to `<cmd>`".
+
+On `<C-y>`, do steps 2 to 4 of Append, with the text in the prompt. The user can add to the prompt in the agent. `false` turns off a key.
 
 ### Exit
 
@@ -302,14 +309,14 @@ For example, with the split visible, `toggle float` closes the split and shows t
 | Wrapped line | The float goes above the first screen row of the first line, or under the last screen row of the last line. It does not cover the code. |
 | Size | One line at the start. It grows when the text wraps, up to `max_height`. Then it scrolls. |
 | Border | `'winborder'`. If it is empty or `none`, `rounded`, because a title needs a border. |
-| Footer | The keys, for example `<C-y> submit  q cancel`. Only if it fits in the width. |
+| Footer | The keys, for example `<C-s> send  <C-y> append  q cancel`. Only if it fits in the width. |
 | Buffer | `buftype=nofile`, `bufhidden=wipe` and `filetype=didymus_input`. Users can use the filetype to configure the float. |
-| Submit | `<C-y>` in insert and normal mode. The text is the lines joined with `\n`, with no blank lines at the end. If the text is empty, submit does nothing. |
+| Submit | Each action has a key in insert and normal mode, and its own callback. Send has `<C-s>` and `<C-y>`. The text is the lines joined with `\n`, with no blank lines at the end. If the text is empty, submit does nothing. |
 | Cancel | `q` and `<Esc>` in normal mode. To leave or close the float also cancels. `<Esc>` is not configurable. |
 | Callbacks | Only one callback runs, after the float closes. On submit and on cancel with a key, the original window is current and in normal mode. |
 | Second float | `open()` cancels the open float first. |
 | Completion | Off. The float sets `'autocomplete'` off and `b:completion = false`, which blink.cmp reads. nvim-cmp has no buffer variable. Users of nvim-cmp exclude the `didymus_input` filetype. |
-| Submit mapping | Some completion plugins set a buffer `<C-y>` mapping on `InsertEnter` with no fallback. So the float sets its submit mapping again after `InsertEnter`. |
+| Submit mapping | Some completion plugins set a buffer `<C-y>` mapping on `InsertEnter` with no fallback. So the float sets its submit mappings again after `InsertEnter`. |
 
 ## Text format
 

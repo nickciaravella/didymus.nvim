@@ -132,23 +132,29 @@ local function make_context(range)
   return context
 end
 
+---@param agent_prompt didymus.agent.Prompt
+---@param view didymus.agent.ViewKind?
+---@param cmd string|string[]?
+local function append_prompt(agent_prompt, view, cmd)
+  local kind = resolve_view(view)
+  if not kind then
+    return
+  end
+  local session = ensure_running(cmd, kind)
+  if session then
+    session:append(agent_prompt)
+    session:show(kind)
+  end
+end
+
 --- Put the current line, the selection or `range` in the agent input. Then show and focus the
 --- agent. The user types the rest of the prompt in the agent.
 ---@param opts { range: integer[]?, view: didymus.agent.ViewKind?, cmd: string|string[]? }?
 function M.append(opts)
   opts = opts or {}
   local context = make_context(opts.range)
-  if not context then
-    return
-  end
-  local view = resolve_view(opts.view)
-  if not view then
-    return
-  end
-  local session = ensure_running(opts.cmd, view)
-  if session then
-    session:append({ context = { context } })
-    session:show(view)
+  if context then
+    append_prompt({ context = { context } }, opts.view, opts.cmd)
   end
 end
 
@@ -169,7 +175,7 @@ local function submit(context, text, cmd)
 end
 
 --- Send a prompt about the current line, the selection or `range`. With no `text`, open the
---- input float. The agent does not show.
+--- input float. The agent does not show. The append key of the float appends the prompt instead.
 ---@param opts { text: string?, range: integer[]?, cmd: string|string[]? }?
 function M.send(opts)
   opts = opts or {}
@@ -187,10 +193,23 @@ function M.send(opts)
     range = { context.start_line, context.end_line },
     width = input.width,
     max_height = input.max_height,
-    keys = input.keys,
-    on_submit = function(text)
-      submit(context, text, opts.cmd)
-    end,
+    keys = { cancel = input.keys.cancel },
+    actions = {
+      {
+        key = input.keys.send,
+        name = "send",
+        on_submit = function(text)
+          submit(context, text, opts.cmd)
+        end,
+      },
+      {
+        key = input.keys.append,
+        name = "append",
+        on_submit = function(text)
+          append_prompt({ text = text, context = { context } }, nil, opts.cmd)
+        end,
+      },
+    },
   })
 end
 

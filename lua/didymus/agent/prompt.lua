@@ -6,7 +6,7 @@
 ---@field filetype string?
 
 ---@class didymus.agent.Prompt
----@field text string? Nil for append.
+---@field text string? Nil for an append with no text.
 ---@field context didymus.agent.Context[]
 
 local M = {}

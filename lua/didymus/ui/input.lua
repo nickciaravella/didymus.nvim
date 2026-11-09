@@ -3,12 +3,17 @@ local layout = require("didymus.ui.layout")
 local M = {}
 
 ---@class didymus.ui.input.Keys
----@field submit string? In normal and insert mode.
 ---@field cancel string? In normal mode. `<Esc>` in normal mode also cancels.
+
+--- A key that submits the text.
+---@class didymus.ui.input.Action
+---@field key string|false In normal and insert mode. False turns off the action.
+---@field name string The name in the footer, for example "send".
+---@field on_submit fun(text: string)
 
 ---@class didymus.ui.input.Opts
 ---@field title string?
----@field on_submit fun(text: string)
+---@field actions didymus.ui.input.Action[] The footer shows the keys in this order.
 ---@field on_cancel fun()?
 ---@field width number? A width below 1 is a fraction of the current window width.
 ---@field max_height integer?
@@ -18,7 +23,7 @@ local M = {}
 local defaults = {
   width = 60,
   max_height = 10,
-  keys = { submit = "<C-y>", cancel = "q" },
+  keys = { cancel = "q" },
 }
 
 --- Cancels the open input float.
@@ -134,9 +139,12 @@ end
 --- Open a float for a prompt, above or under the code. `<CR>` adds a line.
 ---@param opts didymus.ui.input.Opts
 function M.open(opts)
-  vim.validate("opts.on_submit", opts.on_submit, "function")
+  vim.validate("opts.actions", opts.actions, "table")
   vim.validate("opts.on_cancel", opts.on_cancel, "function", true)
   vim.validate("opts.range", opts.range, "table", true)
+  local actions = vim.tbl_filter(function(action)
+    return action.key
+  end, opts.actions)
   opts = vim.tbl_deep_extend("force", defaults, opts)
   local keys = opts.keys
 
@@ -150,7 +158,11 @@ function M.open(opts)
   local width = resolve_width(opts.width, vim.api.nvim_win_get_width(origin_win))
   local position, max_height = find_position(origin_win, range, width, opts.max_height)
   highlight_context(origin_win, range)
-  local footer = (" %s submit  %s cancel "):format(keys.submit, keys.cancel)
+  local footer_parts = vim.tbl_map(function(action)
+    return ("%s %s"):format(action.key, action.name)
+  end, actions)
+  table.insert(footer_parts, ("%s cancel"):format(keys.cancel))
+  local footer = (" %s "):format(table.concat(footer_parts, "  "))
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].autocomplete = false
@@ -204,7 +216,8 @@ function M.open(opts)
   end
   cancel_current = cancel
 
-  local function submit()
+  ---@param on_submit fun(text: string)
+  local function submit(on_submit)
     local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
     while #lines > 0 and lines[#lines]:match("^%s*$") do
       table.remove(lines)
@@ -215,24 +228,32 @@ function M.open(opts)
     -- Close after the mode change. Else insert mode stays on in the original window.
     vim.cmd.stopinsert()
     vim.schedule(function()
-      close(opts.on_submit, table.concat(lines, "\n"))
+      close(on_submit, table.concat(lines, "\n"))
     end)
   end
 
   local map_opts = { buffer = buf, nowait = true }
-  vim.keymap.set({ "n", "i" }, keys.submit, submit, map_opts)
+  ---@param modes string[]
+  local function map_actions(modes)
+    for _, action in ipairs(actions) do
+      vim.keymap.set(modes, action.key --[[@as string]], function()
+        submit(action.on_submit)
+      end, map_opts)
+    end
+  end
+  map_actions({ "n", "i" })
   vim.keymap.set("n", keys.cancel, cancel, map_opts)
   vim.keymap.set("n", "<Esc>", cancel, map_opts)
 
   -- Completion plugins, such as blink.cmp, set buffer mappings on InsertEnter. Some of these
-  -- mappings do not fall back to ours. Set the submit mapping again after them.
+  -- mappings do not fall back to ours. Set the submit mappings again after them.
   vim.api.nvim_create_autocmd("InsertEnter", {
     group = group,
     buffer = buf,
     callback = function()
       vim.schedule(function()
         if vim.api.nvim_buf_is_valid(buf) then
-          vim.keymap.set("i", keys.submit, submit, map_opts)
+          map_actions({ "i" })
         end
       end)
     end,

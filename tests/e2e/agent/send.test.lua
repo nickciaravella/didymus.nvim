@@ -60,8 +60,8 @@ T["the key opens the input float with the location as the title"] = function()
   eq(is_running(), false)
 end
 
-T["submit sends one prompt and starts a hidden agent"] = function()
-  child.type_keys("2G", "<Space>s", "Explain this.", "<C-y>")
+T["<C-s> sends one prompt and starts a hidden agent"] = function()
+  child.type_keys("2G", "<Space>s", "Explain this.", "<C-s>")
 
   eq(is_running(), true)
   eq(helpers.prompts(child), sent(2, 2, "local bb = 22", "Explain this."))
@@ -81,7 +81,7 @@ T["the key in visual mode"] = MiniTest.new_set({
 T["the key in visual mode"]["sends the selection"] = function(keys, start_line, end_line, text)
   child.type_keys(keys, "<Space>s")
   eq(input_title(), (" a.lua:%d-%d "):format(start_line, end_line))
-  child.type_keys("Why?", "<C-y>")
+  child.type_keys("Why?", "<C-s>")
   eq(helpers.prompts(child), sent(start_line, end_line, text, "Why?"))
 end
 
@@ -131,14 +131,34 @@ T["agent.input sets the width and the keys of the input float"] = function()
       agent = {
         cmd = "agent",
         backend = "test",
-        input = { width = 30, keys = { submit = "<C-s>" } },
+        input = { width = 30, keys = { send = "<C-t>", append = false } },
       },
     },
   })
   child.type_keys("<Space>s")
   eq(child.api.nvim_win_get_width(0), 30)
-  child.type_keys("Why?", "<C-s>")
+  child.type_keys("Why?", "<C-y>", "<C-s>")
+  eq(child.api.nvim_buf_get_lines(0, 0, -1, false), { "Why?" })
+  child.type_keys("<C-t>")
   eq(helpers.prompts(child), sent(1, 1, "local a = 1", "Why?"))
+end
+
+T["<C-y> appends the context and the text, then shows and focuses the agent"] = function()
+  child.type_keys("2GVj", "<Space>s", "Why?", "<C-y>")
+
+  local context = {
+    path = "a.lua",
+    start_line = 2,
+    end_line = 3,
+    text = "local bb = 22\nlocal c = 3",
+    filetype = "lua",
+  }
+  eq(
+    helpers.prompts(child),
+    { { kind = "append", prompt = { text = "Why?", context = { context } } } }
+  )
+  eq(child.api.nvim_get_current_buf(), helpers.agent_buf(child))
+  eq(child.lua_get("require('didymus.agent').current():is_visible('split')"), true)
 end
 
 T["a buffer with no file shows an error, and opens no input float"] = function()
