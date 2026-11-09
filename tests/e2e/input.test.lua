@@ -4,18 +4,20 @@ local expect_screenshot = MiniTest.expect.reference_screenshot
 
 local child = MiniTest.new_child_neovim()
 
---- Open the input float. The callbacks keep the result in `_G.result`.
----@param opts table?
+--- Open the input float with one action, `submit`. The callbacks keep the result in `_G.result`.
+---@param opts table? `submit_key` sets the key of the action. Default `<C-y>`.
 local function open(opts)
   child.lua(
     [[
       _G.result = { submitted = {}, cancelled = 0 }
       local opts = ...
-      opts.on_submit = function(text)
+      local on_submit = function(text)
         table.insert(_G.result.submitted, text)
         _G.result.mode = vim.api.nvim_get_mode().mode
         _G.result.win = vim.api.nvim_get_current_win()
       end
+      opts.actions = { { key = opts.submit_key or "<C-y>", name = "submit", on_submit = on_submit } }
+      opts.submit_key = nil
       opts.on_cancel = function()
         _G.result.cancelled = _G.result.cancelled + 1
       end
@@ -257,7 +259,7 @@ T["a second open cancels the first"] = function()
   open()
   child.lua([[
     require("didymus.ui.input").open({
-      on_submit = function(text) _G.second = text end,
+      actions = { { key = "<C-y>", name = "submit", on_submit = function(text) _G.second = text end } },
     })
   ]])
   eq(result().cancelled, 1)
@@ -267,16 +269,43 @@ T["a second open cancels the first"] = function()
 end
 
 T["custom keys work"] = function()
-  open({ keys = { submit = "<C-s>", cancel = "<C-c>" } })
+  open({ submit_key = "<C-s>", keys = { cancel = "<C-c>" } })
   child.type_keys("one<C-y>")
   eq(child.api.nvim_buf_get_lines(0, 0, -1, false), { "one" })
   child.type_keys("<C-s>")
   eq(result().submitted, { "one" })
 
-  open({ keys = { submit = "<C-s>", cancel = "<C-c>" } })
+  open({ submit_key = "<C-s>", keys = { cancel = "<C-c>" } })
   child.type_keys("<Esc>", "<C-c>")
   eq(result().cancelled, 1)
   eq(input_win(), nil)
+end
+
+T["each action calls its own callback, and the footer shows the keys in order"] = function()
+  child.lua([[
+    _G.calls = {}
+    local function action(key, name)
+      return {
+        key = key,
+        name = name,
+        on_submit = function(text)
+          table.insert(_G.calls, { name, text })
+        end,
+      }
+    end
+    _G.open = function()
+      require("didymus.ui.input").open({
+        actions = { action("<C-s>", "send"), action("<C-y>", "append"), action(false, "off") },
+      })
+    end
+    _G.open()
+  ]])
+  local footer = child.api.nvim_win_get_config(assert(input_win())).footer
+  eq(footer[1][1], " <C-s> send  <C-y> append  q cancel ")
+  child.type_keys("one<C-s>")
+  child.lua("_G.open()")
+  child.type_keys("two", "<Esc>", "<C-y>")
+  eq(child.lua_get("_G.calls"), { { "send", "one" }, { "append", "two" } })
 end
 
 return T

@@ -9,9 +9,11 @@ if vim.fn.has("nvim-0.12") == 0 then
 end
 
 vim.api.nvim_create_user_command("Didymus", function(cmd)
-  require("didymus.command").run(cmd.args)
+  local range = cmd.range > 0 and { cmd.line1, cmd.line2 } or nil
+  require("didymus.command").run(cmd.args, range)
 end, {
   nargs = "*",
+  range = true,
   desc = "didymus.nvim",
   complete = function(arglead, cmdline, cursorpos)
     return require("didymus.command").complete(arglead, cmdline, cursorpos)
@@ -20,6 +22,13 @@ end, {
 
 for _, action in ipairs({ "start", "toggle", "focus", "stop" }) do
   vim.keymap.set({ "n", "t" }, ("<Plug>(didymus-agent-%s)"):format(action), function()
+    require("didymus.agent")[action]()
+  end, { desc = "didymus: agent " .. action })
+end
+
+-- A Lua function sees the selection. A `:` mapping gives only full lines.
+for _, action in ipairs({ "append", "send" }) do
+  vim.keymap.set({ "n", "x" }, ("<Plug>(didymus-agent-%s)"):format(action), function()
     require("didymus.agent")[action]()
   end, { desc = "didymus: agent " .. action })
 end

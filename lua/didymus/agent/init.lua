@@ -1,5 +1,6 @@
 local config = require("didymus.config")
 local Session = require("didymus.agent.session")
+local prompt = require("didymus.agent.prompt")
 local View = require("didymus.agent.view")
 
 local M = {}
@@ -112,6 +113,104 @@ function M.toggle(opts)
     return
   end
   M.focus(opts)
+end
+
+--- The context of the current buffer. Show an error if the buffer has no file.
+---@param range integer[]?
+---@return didymus.agent.Context?
+local function make_context(range)
+  local ok, context = pcall(prompt.context, { buf = vim.api.nvim_get_current_buf(), range = range })
+  local mode = vim.fn.mode()
+  if mode == "v" or mode == "V" or mode == "\22" then
+    -- Leave visual mode as a `:` command does. `:normal!` also sets `'<` and `'>`, so `gv` works.
+    vim.cmd.normal({ "\27", bang = true })
+  end
+  if not ok then
+    vim.notify(context, vim.log.levels.ERROR)
+    return nil
+  end
+  return context
+end
+
+---@param agent_prompt didymus.agent.Prompt
+---@param view didymus.agent.ViewKind?
+---@param cmd string|string[]?
+local function append_prompt(agent_prompt, view, cmd)
+  local kind = resolve_view(view)
+  if not kind then
+    return
+  end
+  local session = ensure_running(cmd, kind)
+  if session then
+    session:append(agent_prompt)
+    session:show(kind)
+  end
+end
+
+--- Put the current line, the selection or `range` in the agent input. Then show and focus the
+--- agent. The user types the rest of the prompt in the agent.
+---@param opts { range: integer[]?, view: didymus.agent.ViewKind?, cmd: string|string[]? }?
+function M.append(opts)
+  opts = opts or {}
+  local context = make_context(opts.range)
+  if context then
+    append_prompt({ context = { context } }, opts.view, opts.cmd)
+  end
+end
+
+---@param context didymus.agent.Context
+---@param text string
+---@param cmd string|string[]?
+local function submit(context, text, cmd)
+  -- The agent stays hidden, but the view sets the size of a new agent.
+  local view = resolve_view(nil)
+  if not view then
+    return
+  end
+  local session = ensure_running(cmd, view)
+  if session then
+    session:send({ text = text, context = { context } })
+    vim.notify(("didymus: sent to `%s`"):format(Session.format_cmd(session.cmd)))
+  end
+end
+
+--- Send a prompt about the current line, the selection or `range`. With no `text`, open the
+--- input float. The agent does not show. The append key of the float appends the prompt instead.
+---@param opts { text: string?, range: integer[]?, cmd: string|string[]? }?
+function M.send(opts)
+  opts = opts or {}
+  local context = make_context(opts.range)
+  if not context then
+    return
+  end
+  if opts.text then
+    submit(context, opts.text, opts.cmd)
+    return
+  end
+  local input = config.options.agent.input
+  require("didymus.ui.input").open({
+    title = prompt.location(context),
+    range = { context.start_line, context.end_line },
+    width = input.width,
+    max_height = input.max_height,
+    keys = { cancel = input.keys.cancel },
+    actions = {
+      {
+        key = input.keys.send,
+        name = "send",
+        on_submit = function(text)
+          submit(context, text, opts.cmd)
+        end,
+      },
+      {
+        key = input.keys.append,
+        name = "append",
+        on_submit = function(text)
+          append_prompt({ text = text, context = { context } }, nil, opts.cmd)
+        end,
+      },
+    },
+  })
 end
 
 --- Stop the agent and close its view.

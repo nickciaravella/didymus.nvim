@@ -8,6 +8,11 @@ M.defaults = {
     split = { width = 0.4 },
     float = { width = 0.85, height = 0.85 },
     keys = { focus = false, leave = false }, -- for example "<C-a>"
+    input = {
+      width = 60,
+      max_height = 10,
+      keys = { send = "<C-s>", append = "<C-y>", cancel = "q" },
+    },
     terminal = { ready_delay = 500, submit_delay = 50 }, -- milliseconds
   },
 }

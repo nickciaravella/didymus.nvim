@@ -1,7 +1,6 @@
 local helpers = dofile("tests/e2e/agent/helpers.lua")
 
 local eq = MiniTest.expect.equality
-local no_eq = MiniTest.expect.no_equality
 
 local child = MiniTest.new_child_neovim()
 
@@ -19,14 +18,12 @@ end
 
 ---@param mode string
 local function wait_for_mode(mode)
-  wait_for(function()
-    return child.api.nvim_get_mode().mode == mode
-  end, "mode " .. mode)
+  helpers.wait_for_mode(child, mode)
 end
 
 ---@param text string
 local function expect_message(text)
-  no_eq(child.cmd_capture("messages"):find(text, 1, true), nil)
+  helpers.expect_message(child, text)
 end
 
 --- Wait until the last screen line shows `text`. A redraw can clear a message that is in :messages.
@@ -160,7 +157,10 @@ end
 
 T[":Didymus completes the agent commands"] = function()
   eq(child.fn.getcompletion("Didymus ", "cmdline"), { "agent" })
-  eq(child.fn.getcompletion("Didymus agent ", "cmdline"), { "focus", "start", "stop", "toggle" })
+  eq(
+    child.fn.getcompletion("Didymus agent ", "cmdline"),
+    { "append", "focus", "send", "start", "stop", "toggle" }
+  )
   eq(child.fn.getcompletion("Didymus agent t", "cmdline"), { "toggle" })
   eq(child.fn.getcompletion("Didymus agent toggle ", "cmdline"), { "float", "split" })
 end

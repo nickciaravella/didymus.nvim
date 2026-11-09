@@ -42,7 +42,7 @@ flowchart TB
 | Agent scope | The agent works in all buffers, also outside a review. Only one agent session runs at a time. |
 | Agent backends | `terminal` and `test` in v1. The interface must also fit ACP. |
 | Agent views | A float, or a split on the right. |
-| Agent commands | `start`, `toggle` and `stop`. Most users only use `toggle`. |
+| Agent commands | `start`, `toggle`, `focus`, `stop`, `append` and `send`. Most users only use `toggle`, `append` and `send`. |
 | Agent context | The location and the code in a fenced block. Claude Code shows the paste as a short placeholder, also for a short context. |
 | Agent in end-to-end tests | The `test` backend for the flows. A fake agent CLI for the terminal backend. |
 | Manual tests | The agent prepares them: a setup file in `.manual-test/`, and a Herdr tab if possible. See [`TESTING.md`](TESTING.md#manual-tests). |
