@@ -35,10 +35,16 @@ flowchart TB
 | Editor state in unit tests | A child Neovim. Prefer it to mocks of `vim.api` and `vim.fn`. |
 | Test Neovim version | The installed Neovim. CI uses stable. |
 | Network in tests | Unit and end-to-end tests do not use the network. Unit tests mock external dependencies. |
-| Code host in end-to-end tests | The local provider. Integration tests check each real provider, such as GitHub, against the provider interface. |
+| Code host in end-to-end tests | The test provider. In the MVP, people test the GitHub provider by hand. See [#50](https://github.com/nickciaravella/didymus.nvim/issues/50). |
+| Picker in end-to-end tests | The test picker. Integration tests use the real snacks.nvim. |
 | Work tracking | Four epics: `agent`, `agentic-dev`, `diff`, `review`. Each epic is a GitHub label. See [`TASK_TRACKING.md`](TASK_TRACKING.md). |
 | Infrastructure | Build it only when an epic needs it. |
 | Agent design | See [`architecture/agent.md`](architecture/agent.md). |
+| Review design | See [`architecture/review.md`](architecture/review.md). |
+| First integrations | The GitHub provider, through `gh`, and the snacks.nvim picker. |
+| Review workspace | The current checkout in the MVP. didymus asks before it checks out the PR over uncommitted changes. A worktree comes later. See [#48](https://github.com/nickciaravella/didymus.nvim/issues/48). |
+| Pickers | Only snacks.nvim in the MVP. The picker interface keeps the select role and the panel role apart, so that other pickers can come later. The health check reports a missing picker. |
+| Hunk display | Not in the MVP. The patch from the code host gives the first hunk and the commentable lines. See [#51](https://github.com/nickciaravella/didymus.nvim/issues/51). |
 | Agent scope | The agent works in all buffers, also outside a review. Only one agent session runs at a time. |
 | Agent backends | `terminal` and `test` in v1. The interface must also fit ACP. |
 | Agent views | A float, or a split on the right. |
@@ -59,10 +65,8 @@ flowchart TB
 
 ## Open questions
 
-- How do we get the PR code: a git worktree, or the current checkout?
-- Which integrations ship first?
-- What are the interfaces between core and the integrations?
-- Do the integration tests for the GitHub provider use the real GitHub, or recorded output?
+- What is the diff interface? See [#51](https://github.com/nickciaravella/didymus.nvim/issues/51).
+- How do we test the GitHub provider automatically? See [#50](https://github.com/nickciaravella/didymus.nvim/issues/50).
 
 ## Work in a worktree
 
