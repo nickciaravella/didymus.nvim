@@ -99,7 +99,7 @@ These rules apply to `open` and `close`:
 8. A newer `open` wins. The callbacks of an older `open` do nothing.
 9. The review tabpage starts with an unlisted scratch buffer. `:tabclose` of the review tabpage also ends the review.
 
-Comments need the line numbers of the PR head. So didymus refuses a new comment on a file with local changes: a modified buffer, or a file that is different from `HEAD`.
+Comments need the line numbers of the PR head. So didymus refuses a new comment on a file with local changes: a modified buffer, or a file that is different from the change head. See [Comments](#comments).
 
 ### Files panel
 
@@ -110,7 +110,7 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 | Header 1 | `#12 <title>` | `Number`, `Title` |
 | Header 2 | `@author main ← feature` | `Comment` |
 | File | `M path +12 -3 2 threads`, in the order of the provider | `Added`, `Changed`, `Removed`, `Comment` |
-| Thread, at depth 1 under its file | `@author <first line of the first comment> [resolved] [outdated]` | `DidymusThread` for the author. A resolved thread is all `DidymusThreadResolved`. `[outdated]` is `DiagnosticWarn`. |
+| Thread, at depth 1 under its file | `@author <first line of the first comment> [pending] [resolved] [outdated]` | `DidymusThread` for the author. A resolved thread is all `DidymusThreadResolved`. `[pending]` is `DidymusThreadPending`. `[outdated]` is `DiagnosticWarn`. |
 
 1. The status letters are `A`, `M`, `D` and `R`. The full path comes before the counts. A long path can hide the counts in a narrow panel.
 2. The thread count shows only if it is above 0. A count of 0 on each row makes the rows long.
@@ -178,6 +178,21 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 7. At the last or the first thread, `didymus: no next thread` or `didymus: no previous thread` shows, and the cursor does not move. The navigation does not wrap.
 8. The cursor of the panel does not move, and the thread float does not open.
 
+### Comments
+
+`:[range]Didymus review comment` adds a thread on the head side. `M.comment()` in `lua/didymus/review/init.lua` does the checks and opens the input float.
+
+1. The lines are the range of the command, the selection in visual mode, or the cursor line. The `<Plug>` mapping leaves visual mode, as a `:` command does.
+2. The current window must show a file of the change, in any tabpage. If a check fails, the reason shows as a warning, and no float opens.
+3. The buffer must not be modified, and all lines must be in one commentable range. If the commentable ranges are unknown, the code host decides.
+4. didymus refuses a range across two hunks. GitHub accepts it, but keeps only the hunk of the last line. github.com does not let you select it.
+5. Then `git diff --quiet <head_sha> -- <path>` checks the file on disk. A file that is different from the change head has different line numbers, also after a local commit.
+6. The input float opens above the lines. Its title is `path:3` or `path:3-5`. `review.input` sets its size and its keys.
+7. On submit, `provider:add_comment()` runs with a progress message. The session adds the new thread, and updates the panel and the marks. If the review closed, only the message shows.
+8. If the first comment of a thread is pending, the thread has the `[pending]` tag, in the panel and at the line.
+9. If the provider fails, the error shows on one line, because a longer message makes the user press Enter. The session keeps the draft. The next comment on the same file and lines starts with its text.
+10. The session keeps the provider that gave the change, because only that provider knows its own fields of the change.
+
 ## Parts
 
 ```mermaid
@@ -193,9 +208,9 @@ flowchart LR
 
 | Part | Owns | Does not |
 | --- | --- | --- |
-| Review session | The change, the threads, the tabpage and the order of the threads for navigation. | Call `gh` or `git`. |
+| Review session | The change, the threads, the tabpage, the order of the threads for navigation, and the provider of the change. | Call `gh` or `git`. |
 | Provider | All calls to the code host, also the checkout. It changes host data into didymus types. | Open windows. Know about pickers. |
-| Workspace | `HEAD`, the uncommitted changes, the confirm prompt and the merge-base. | Know about the code host. |
+| Workspace | `HEAD`, the uncommitted changes, the confirm prompt, the merge-base, and the check of a file against the change head. | Know about the code host. |
 | Picker adapter | Show items and call back with the choice. | Know about reviews. It gets plain items. |
 | Files panel | Make picker items from the review session, and the actions on them. | Draw a buffer. The picker adapter draws it. |
 | Patch parser | Make the hunks and the commentable ranges from the patch of a file. | Use editor state. |
@@ -278,6 +293,7 @@ All methods are async. Each one takes a final `cb(err, result)` and does not blo
 - `review.provider` is `"github"` (the default), `"test"` or a provider table.
 - The GitHub provider keeps all GraphQL documents as string constants in one module.
 - The `test` provider keeps its changes and threads in memory. Tests give it the data. Its `checkout` runs `git checkout` in a temporary repo of the test. It calls each `cb` in `vim.schedule()`, as a real provider does.
+- The `add_comment` of the `test` provider adds a thread with one pending comment of `viewer`. `errors.<method>` makes the next call of that method fail.
 
 ### Review types
 
@@ -364,6 +380,9 @@ The `github` provider is in `lua/didymus/review/provider/github/`. It runs the [
 9. `health()` runs `gh auth status --active`, and waits for 10 seconds at most. `:checkhealth` is synchronous.
 10. `get_threads` uses the GraphQL `node_id` of the PR. A thread with more comments than the first page gets all its comments from a second query. These queries run at the same time.
 11. `diffSide` `RIGHT` is `head`, and `LEFT` is `base`. The range is `startLine` (or `line`) to `line`. If the range starts on the other side, the range is only `line`. The range is nil if GitHub gives no `line`, or if the thread is outdated. `pending` is `state == PENDING`.
+12. `add_comment` gets the pending review of the viewer before each comment. It does not use `change.pending_review_id`, because the user can start, submit or discard a review on github.com after the open. If there is no pending review, `addPullRequestReview` with `commitOID` of `head_sha` and no `event` starts one. Then `change.pending_review_id` is its id.
+13. `addPullRequestReviewThread` gets `side: RIGHT` and `line`. A range also gets `startLine` and `startSide: RIGHT`. The reply has the new thread with the fields of `get_threads`.
+14. For a line out of the diff, GitHub gives `thread: null` and no error. Then `add_comment` gives an error.
 
 ## Tests
 

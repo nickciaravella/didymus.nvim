@@ -415,6 +415,185 @@ T["get_threads()"]["gives the error of gh, also for the comments of a long threa
   eq(call("get_threads", threads_change), { err = "gh api graphql: HTTP 502" })
 end
 
+T["add_comment()"] = MiniTest.new_set()
+
+-- The node id of nickciaravella/didymus.nvim#64.
+local comment_node_id = "PR_kwDOVmiVUM8AAAABNzd55g"
+
+--- The change of nickciaravella/didymus.nvim#64. `add_comment()` uses `github` and `head_sha`.
+---@param github table? The `github` field. Default: the PR by number.
+---@return table
+local function make_comment_change(github)
+  return {
+    id = "64",
+    head_sha = "e7923fbc3f3e4806ed079d00eb44b0fa1894809b",
+    github = github or { number = 64, node_id = comment_node_id },
+  }
+end
+
+--- Reply to each query of `add_comment()` with a recorded result.
+---@param replies table<string, table> The result of each GraphQL document, by its name in `graphql`.
+local function mock_comment(replies)
+  mock_gh(function(args)
+    for name, reply in pairs(replies) do
+      if args[4] == "query=" .. graphql[name] then
+        return reply
+      end
+    end
+    error("no reply for " .. args[4])
+  end)
+end
+
+---@param name string
+---@return table
+local function fixture_reply(name)
+  return { stdout = read_fixture(name) }
+end
+
+---@param first integer
+---@param last integer
+---@return didymus.review.CommentDraft
+local function make_draft(first, last)
+  return {
+    path = "lua/didymus/init.lua",
+    range = { first = first, last = last },
+    body = ("Recorded for the unit tests of didymus: lines %d-%d."):format(first, last),
+  }
+end
+
+T["add_comment()"]["starts a pending review if there is none, and adds a thread on one line"] = function()
+  mock_comment({
+    pending_reviews = fixture_reply("comment_no_review_graphql"),
+    start_review = fixture_reply("comment_start_review_graphql"),
+    add_thread = fixture_reply("comment_thread_graphql"),
+  })
+  local change = make_comment_change()
+  local reply = call("add_comment", change, make_draft(25, 25))
+
+  local review_id = "PRR_kwDOVmiVUM8AAAABWx95Dg"
+  eq(commands, {
+    {
+      "gh",
+      "api",
+      "graphql",
+      "-f",
+      "query=" .. graphql.pending_reviews,
+      "-f",
+      "id=" .. comment_node_id,
+    },
+    {
+      "gh",
+      "api",
+      "graphql",
+      "-f",
+      "query=" .. graphql.start_review,
+      "-f",
+      "pullRequestId=" .. comment_node_id,
+      "-f",
+      "commitOID=e7923fbc3f3e4806ed079d00eb44b0fa1894809b",
+    },
+    {
+      "gh",
+      "api",
+      "graphql",
+      "-f",
+      "query=" .. graphql.add_thread,
+      "-f",
+      "reviewId=" .. review_id,
+      "-f",
+      "path=lua/didymus/init.lua",
+      "-f",
+      "body=Recorded for the unit tests of didymus: lines 25-25.",
+      "-F",
+      "line=25",
+    },
+  })
+  eq(reply, {
+    result = {
+      id = "PRRT_kwDOVmiVUM61MQcu",
+      path = "lua/didymus/init.lua",
+      side = "head",
+      range = { first = 25, last = 25 },
+      resolved = false,
+      outdated = false,
+      comments = {
+        {
+          author = "nickciaravella",
+          body = "Recorded for the unit tests of didymus: lines 25-25.",
+          pending = true,
+        },
+      },
+    },
+  })
+  eq(change.pending_review_id, review_id)
+end
+
+T["add_comment()"]["adds a range to the pending review of the viewer, on the host of a URL"] = function()
+  mock_comment({
+    pending_reviews = fixture_reply("comment_pending_review_graphql"),
+    add_thread = fixture_reply("comment_range_thread_graphql"),
+  })
+  local change = make_comment_change({
+    number = 64,
+    host = "github.com",
+    owner = "nickciaravella",
+    repo = "didymus.nvim",
+    node_id = comment_node_id,
+  })
+  local reply = call("add_comment", change, make_draft(2, 4))
+
+  eq(#commands, 2)
+  eq(vim.list_slice(commands[1], 8), { "--hostname", "github.com" })
+  eq(vim.list_slice(commands[2], 6), {
+    "-f",
+    "reviewId=PRR_kwDOVmiVUM8AAAABWx95Dg",
+    "-f",
+    "path=lua/didymus/init.lua",
+    "-f",
+    "body=Recorded for the unit tests of didymus: lines 2-4.",
+    "-F",
+    "line=4",
+    "-F",
+    "startLine=2",
+    "-f",
+    "startSide=RIGHT",
+    "--hostname",
+    "github.com",
+  })
+  eq(reply.result.range, { first = 2, last = 4 })
+end
+
+T["add_comment()"]["gives an error if GitHub adds no thread"] = function()
+  -- GitHub gives no error for a line out of the diff.
+  mock_comment({
+    pending_reviews = fixture_reply("comment_pending_review_graphql"),
+    add_thread = fixture_reply("comment_no_thread_graphql"),
+  })
+  eq(call("add_comment", make_comment_change(), make_draft(12, 12)), {
+    err = "gh api graphql: GitHub did not add the thread. Are the lines in the diff?",
+  })
+end
+
+T["add_comment()"]["gives the error of gh, and stops"] = function()
+  mock_comment({ pending_reviews = { code = 1, stderr = "gh: HTTP 502\n" } })
+  eq(call("add_comment", make_comment_change(), make_draft(25, 25)), {
+    err = "gh api graphql: HTTP 502",
+  })
+  eq(#commands, 1)
+
+  mock_comment({
+    pending_reviews = fixture_reply("comment_no_review_graphql"),
+    start_review = {
+      code = 1,
+      stderr = "gh: User can only have one pending review per pull request\n",
+    },
+  })
+  eq(call("add_comment", make_comment_change(), make_draft(25, 25)), {
+    err = "gh api graphql: User can only have one pending review per pull request",
+  })
+  eq(#commands, 2)
+end
+
 T["checkout()"] = MiniTest.new_set()
 
 T["checkout()"]["runs gh pr checkout with the number, and the repo of a URL"] = function()

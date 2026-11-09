@@ -168,6 +168,15 @@ The helpers in `tests/e2e/review/helpers.lua` run in the test process:
 | `picker_calls(child, kind)` | Get the calls of the test picker, with no functions. `kind` is `"select"` or `"panel"`. Nil gives all calls. |
 | `git(dir, args)`, `write(dir, files)` | Run git, or write files, in the repo. In `write()` and `make_repo()`, `false` deletes a file. |
 
+The test provider has two more fields:
+
+| Field | Behavior |
+| --- | --- |
+| `viewer` | The author of the comments that `add_comment()` adds. Default `"reviewer"`. |
+| `errors` | An error for the next call of a method, such as `errors.add_comment = "no network"`. |
+
+To test an error message of an async flow, send the last key with `child.api.nvim_input()`, not `child.type_keys()`. See the [notebook entry](../agents/expertise/neovim.md#childtype_keys-fails-the-test-on-an-error-message-also-from-a-later-callback). See `tests/e2e/review/comment.test.lua`.
+
 The `files` of the change come from `git diff`, with the patch as GitHub gives it. The helpers do not use the git config of the user. Before you call `checkout`, set the directory of the child to the repo with `child.fn.chdir(repo.dir)`. See `tests/e2e/review/provider.test.lua`.
 
 The flow of `:Didymus review open` is async. Poll the child with `wait_for()` until the review opens, or until a picker call or a message shows. See `tests/e2e/review/open.test.lua`.
@@ -187,6 +196,7 @@ The unit tests of the GitHub provider replace `vim.system` with a mock. The mock
 | `threads_graphql.json` | The threads of neovim/neovim#42726, with `first: 2` threads and `first: 5` comments: 2 pages, and a thread with more comments. | None. |
 | `thread_comments_graphql.json` | The comments of the long thread of `threads_graphql.json`, with `first: 5`: 3 pages. | None. |
 | `base_threads_graphql.json` | The threads of neovim/neovim#42735: a thread on the base side, and outdated threads. | None. A test changes some fields after it reads the file. |
+| `comment_*_graphql.json` | `add_comment()` on nickciaravella/didymus.nvim#64, a throwaway PR: no pending review, a new review, a thread on one line, a range, and a line out of the diff. | Formatted with `jq`. |
 
 The REST fixtures (`*_files.json`) do not have the URL fields. To record again, run the queries of `lua/didymus/review/provider/github/graphql.lua` and the REST call with `--paginate --slurp`. A smaller page size, such as `first: 2` and `per_page=2`, gives more than one page.
 
@@ -207,6 +217,8 @@ In the MVP, people test the GitHub provider with the real `gh` by hand. See [#50
 ## Manual tests
 
 Do manual tests on a throwaway PR, not on a PR that other persons use.
+
+The throwaway PR of the review is [#64](https://github.com/nickciaravella/didymus.nvim/pull/64), from the branch `test/review-comments`. It changes `lua/didymus/init.lua` at two places, so its patch has two hunks: head lines 1-6 and 22-28. Do not merge it, close it or delete its branch. Delete each pending review that a check leaves.
 
 ### Load the plugin from a worktree
 

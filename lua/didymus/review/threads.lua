@@ -10,6 +10,7 @@ M.namespace = vim.api.nvim_create_namespace("didymus.review")
 local function set_highlights()
   vim.api.nvim_set_hl(0, "DidymusThread", { link = "DiagnosticInfo", default = true })
   vim.api.nvim_set_hl(0, "DidymusThreadResolved", { link = "Comment", default = true })
+  vim.api.nvim_set_hl(0, "DidymusThreadPending", { link = "DiagnosticHint", default = true })
 end
 set_highlights()
 -- A color scheme clears the highlight groups.
@@ -51,6 +52,10 @@ function M.get_summary(thread, text_hl)
     { "@" .. author, dim or "DidymusThread" },
     { " " .. first_line, dim or text_hl },
   }
+  -- The first comment is pending until the user submits the review that started the thread.
+  if comment and comment.pending then
+    table.insert(segments, { " [pending]", dim or "DidymusThreadPending" })
+  end
   if thread.resolved then
     table.insert(segments, { " [resolved]", dim })
   end

@@ -277,6 +277,16 @@ local function get_node_args(target, query, id)
   return vim.list_extend(args, get_host_args(target))
 end
 
+--- The arguments of one `gh api graphql` call, with no pagination.
+---@param target didymus.review.provider.github.Target
+---@param query string
+---@param fields string[] The `-f` and `-F` arguments of the variables.
+---@return string[]
+local function get_graphql_args(target, query, fields)
+  local args = vim.list_extend({ "api", "graphql", "-f", "query=" .. query }, fields)
+  return vim.list_extend(args, get_host_args(target))
+end
+
 --- Get the threads, then all comments of each thread that has more comments, at the same time.
 ---@param change didymus.review.provider.github.Change
 ---@param cb fun(err: string?, threads: didymus.review.Thread[]?)
@@ -326,6 +336,70 @@ function M:get_threads(change, cb)
     if waiting == 0 then
       finish()
     end
+  end)
+end
+
+--- Get the pending review of the viewer, or start one at the change head. Do not use
+--- `change.pending_review_id`, because the user can start, submit or discard a review on github.com.
+---@param change didymus.review.provider.github.Change
+---@param cb fun(err: string?, review_id: string?)
+local function get_pending_review(change, cb)
+  local target = change.github
+  local label = "gh api graphql"
+  local args = get_graphql_args(target, graphql.pending_reviews, { "-f", "id=" .. target.node_id })
+  run_json(label, args, function(err, result)
+    if err then
+      return cb(err)
+    end
+    for _, review in ipairs(result.data.node.reviews.nodes) do
+      if review.viewerDidAuthor then
+        return cb(nil, review.id)
+      end
+    end
+    args = get_graphql_args(target, graphql.start_review, {
+      "-f",
+      "pullRequestId=" .. target.node_id,
+      "-f",
+      "commitOID=" .. change.head_sha,
+    })
+    run_json(label, args, function(start_err, started)
+      if start_err then
+        return cb(start_err)
+      end
+      cb(nil, started.data.addPullRequestReview.pullRequestReview.id)
+    end)
+  end)
+end
+
+--- Add a thread on the head side to the pending review of the viewer. Start the review if there
+--- is none.
+---@param change didymus.review.provider.github.Change
+---@param draft didymus.review.CommentDraft
+---@param cb fun(err: string?, thread: didymus.review.Thread?)
+function M:add_comment(change, draft, cb)
+  local label = "gh api graphql"
+  get_pending_review(change, function(err, review_id)
+    if err then
+      return cb(err)
+    end
+    change.pending_review_id = review_id
+    local fields = { "-f", "reviewId=" .. review_id, "-f", "path=" .. draft.path }
+    vim.list_extend(fields, { "-f", "body=" .. draft.body, "-F", "line=" .. draft.range.last })
+    if draft.range.first ~= draft.range.last then
+      vim.list_extend(fields, { "-F", "startLine=" .. draft.range.first, "-f", "startSide=RIGHT" })
+    end
+    local args = get_graphql_args(change.github, graphql.add_thread, fields)
+    run_json(label, args, function(add_err, result)
+      if add_err then
+        return cb(add_err)
+      end
+      local thread = result.data.addPullRequestReviewThread.thread
+      if not thread then
+        -- GitHub gives no error for a line out of the diff.
+        return cb(("%s: GitHub did not add the thread. Are the lines in the diff?"):format(label))
+      end
+      cb(nil, to_thread(thread, thread.comments.nodes))
+    end)
   end)
 end
 
