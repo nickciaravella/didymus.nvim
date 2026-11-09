@@ -114,10 +114,35 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 1. The status letters are `A`, `M`, `D` and `R`. The full path comes before the counts. A long path can hide the counts in a narrow panel.
 2. The thread count shows only if it is above 0. A count of 0 on each row makes the rows long.
 3. `<CR>` on a header row does nothing. On a deleted file, it shows a message and opens nothing, because the file is not in the checkout.
-4. `<CR>` on a file opens the real file in the code window, and focuses the code window. The code window is the first window of the tabpage. If the user closed it, the file opens in a new window on the right, and that window becomes the code window.
+4. `<CR>` on a file opens the real file in the code window at its first change, and focuses the code window. The code window is the first window of the tabpage. If the user closed it, the file opens in a new window on the right, and that window becomes the code window. See [Patch parser](#patch-parser).
 5. In the review tabpage, `:Didymus review files` shows or hides the panel. In a different tabpage, it goes to the review tabpage and shows the panel. A hidden panel is closed, so a new panel starts with the cursor on the first row.
 6. `close` and `:tabclose` also close the panel.
 7. If the panel cannot open, for example with no snacks.nvim, the review opens without it, and the error shows.
+8. If the code window already shows the file, `<CR>` only moves the cursor. `:edit` of a modified buffer gives E37.
+9. If Neovim cannot open the file, the error shows, and the focus goes back to the panel. For example, with 'nohidden', a modified buffer in the code window gives E37.
+
+### Patch parser
+
+`lua/didymus/review/patch.lua` makes the hunks and the commentable ranges of a file from its `patch`. It does not use editor state.
+
+```lua
+---@class didymus.review.Hunk
+---@field head didymus.review.Range? The lines of the hunk in the head file, also the context lines. Nil if the hunk has no head lines.
+---@field base didymus.review.Range? The lines of the hunk in the base file. Nil if the hunk has no base lines.
+---@field first_change integer The head line of the first added or deleted line.
+
+---@class didymus.review.Patch
+---@field hunks didymus.review.Hunk[]
+---@field commentable table<didymus.review.Side, didymus.review.Range[]>? The lines that accept comments, one range for each hunk. Nil if they are unknown.
+```
+
+1. The ranges come from the hunk header, `@@ -a,b +c,d @@`. A count that the header does not give is 1. A count of 0 gives no range on that side.
+2. GitHub accepts a comment on each line of a hunk, also on a context line. So each hunk gives one commentable range on each side. git does not make hunks that touch, so the ranges do not merge.
+3. A file with no `patch` has no hunks, and its commentable lines are unknown. An empty `patch` has no hunks and no commentable lines.
+4. `first_change` is the first added line. If deleted lines have no added lines after them, it is the head line before the deletion, as in a unified diff. At the start of the file, it is line 1.
+5. The parser skips `\ No newline at end of file` and the lines before the first hunk. An empty line in a hunk is a context line.
+6. The panel parses the patch when it opens a file. There is no cache, because a refresh replaces the change.
+7. The cursor goes to the first non-blank character of `first_change` of the first hunk, or to line 1 with no hunks. If the buffer is shorter, the cursor goes to the last line. The file in the checkout can be different from the change head.
 
 ## Parts
 
@@ -139,6 +164,7 @@ flowchart LR
 | Workspace | `HEAD`, the uncommitted changes, the confirm prompt and the merge-base. | Know about the code host. |
 | Picker adapter | Show items and call back with the choice. | Know about reviews. It gets plain items. |
 | Files panel | Make picker items from the review session, and the actions on them. | Draw a buffer. The picker adapter draws it. |
+| Patch parser | Make the hunks and the commentable ranges from the patch of a file. | Use editor state. |
 | Inline threads | Extmarks for the threads, and the thread float. | Call the provider. |
 
 The picker adapter goes in `lua/didymus/ui/picker/`, because it does not know about reviews.
