@@ -37,13 +37,15 @@ flowchart TB
 | Network in tests | Unit and end-to-end tests do not use the network. Unit tests mock external dependencies. |
 | Code host in end-to-end tests | The test provider. In the MVP, people test the GitHub provider by hand. See [#50](https://github.com/nickciaravella/didymus.nvim/issues/50). |
 | Picker in end-to-end tests | The test picker. Integration tests use the real snacks.nvim. |
+| snacks.nvim in tests | A fixed commit: `SNACKS_COMMIT` in the `Makefile`. `make deps` checks it out. Only the integration tests put it on the `'runtimepath'`. |
+| Test commands | `make test` runs all kinds of tests. CI runs `make test`. |
 | Work tracking | Four epics: `agent`, `agentic-dev`, `diff`, `review`. Each epic is a GitHub label. See [`TASK_TRACKING.md`](TASK_TRACKING.md). |
 | Infrastructure | Build it only when an epic needs it. |
 | Agent design | See [`architecture/agent.md`](architecture/agent.md). |
 | Review design | See [`architecture/review.md`](architecture/review.md). |
 | First integrations | The GitHub provider, through `gh`, and the snacks.nvim picker. |
 | Review workspace | The current checkout in the MVP. didymus asks before it checks out the PR over uncommitted changes. A worktree comes later. See [#48](https://github.com/nickciaravella/didymus.nvim/issues/48). |
-| Pickers | Only snacks.nvim in the MVP. The picker interface keeps the select role and the panel role apart, so that other pickers can come later. The health check reports a missing picker. |
+| Pickers | Only snacks.nvim in the MVP. The picker interface keeps the select role and the panel role apart, so that other pickers can come later. The health check reports a missing picker. See [`architecture/review.md`](architecture/review.md#picker-interface). |
 | Hunk display | Not in the MVP. The patch from the code host gives the first hunk and the commentable lines. See [#51](https://github.com/nickciaravella/didymus.nvim/issues/51). |
 | Agent scope | The agent works in all buffers, also outside a review. Only one agent session runs at a time. |
 | Agent backends | `terminal` and `test` in v1. The interface must also fit ACP. |
@@ -77,7 +79,7 @@ git fetch origin
 git worktree add --no-track -b <type>/<slug> ../didymus.nvim-worktrees/<issue>-<slug> origin/main
 ```
 
-The first `make test` in a worktree clones mini.nvim into its own `deps/`.
+The first `make test` in a worktree clones mini.nvim and snacks.nvim into its own `deps/`.
 
 After the pull request merges, remove the worktree and the branch:
 
@@ -96,7 +98,10 @@ lua/didymus/command.lua      :Didymus subcommands and completion
 lua/didymus/health.lua       :checkhealth didymus
 lua/didymus/agent/           the agent. See architecture/agent.md.
 lua/didymus/ui/              UI parts for all epics, such as the input float and window layout
+lua/didymus/ui/picker/       the picker interface and its adapters: snacks, test
+tests/helpers.lua            helpers for all kinds of tests
 tests/unit/didymus/          unit tests, mirror lua/didymus/
 tests/e2e/                   end-to-end tests, by feature
+tests/integration/           integration tests, with the real dependency
 tests/fixtures/              files for tests, such as the fake agent
 ```

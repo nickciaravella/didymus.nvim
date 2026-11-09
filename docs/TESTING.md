@@ -10,11 +10,12 @@ The tests run on the Neovim that is installed on your machine.
 make test                                        # all tests
 make test-unit                                   # unit tests only
 make test-e2e                                    # end-to-end tests only
+make test-integration                            # integration tests only
 make test-file FILE=tests/e2e/startup.test.lua   # one file
 make test NVIM=~/neovim/build/bin/nvim           # a different Neovim
 ```
 
-The first run clones mini.nvim into `deps/`.
+The first run clones mini.nvim and snacks.nvim into `deps/`. snacks.nvim is at the commit of `SNACKS_COMMIT` in the `Makefile`. If you change `SNACKS_COMMIT`, the next run fetches the new commit.
 
 ## Kinds of tests
 
@@ -31,8 +32,10 @@ The unit tests and the end-to-end tests do not use the network.
 ```text
 tests/
   minimal_init.lua
+  helpers.lua         helpers for all kinds of tests, such as wait_for()
   unit/didymus/       mirrors lua/didymus/
   e2e/                one file (or folder) for each feature
+  integration/        one folder for each kind of integration, such as picker/
 ```
 
 All test files end in `.test.lua`.
@@ -73,7 +76,7 @@ A unit test calls one function and checks the return value. An end-to-end test u
 
 End-to-end tests drive a child Neovim the way a user does, and check the result that a user sees.
 
-- Configure the test provider in place of GitHub, and the test picker in place of snacks.
+- Configure the test provider in place of GitHub, and the test picker in place of snacks. See "The test picker".
 - Use one file for each feature, such as `startup.test.lua`. Use a folder if a feature needs more than one file.
 - Start each test with `child.restart()`, so that no state goes from one test to the next.
 - Drive the plugin with `child.cmd()`, `child.type_keys()` and the public API, such as `require("didymus.agent").start()`.
@@ -121,11 +124,36 @@ The text goes through `vim.inspect()`. Make the terminal wide, so that each row 
 
 The agent starts in a separate process. Do not use a fixed delay. Poll the agent buffer until the text shows. The helpers are in `tests/e2e/agent/helpers.lua`.
 
+### The test picker
+
+The test picker has no UI. It records each call, so that a test can act as the user. Set it in `setup()`:
+
+```lua
+require("didymus").setup({ review = { picker = "test" } })
+```
+
+Then drive it in the child with `require("didymus.ui.picker.test")`:
+
+| Function | Behavior |
+| --- | --- |
+| `calls` | One record for each `select()` and `panel()`: `kind`, `opts`, `items`, `cursor`, `open` and `focus_count`. |
+| `choose(target)` | Choose an item in the last open picker. A select closes first. A panel stays open. |
+| `cancel()` | Close the last open picker with no choice. |
+| `press(key, target)` | Call the action of `key` in the last open panel, with the item under the cursor. |
+
+`target` is the index or the text of an item. Nil is the item under the cursor. The calls are synchronous, so the test does not wait.
+
 ### Integration tests
 
 Integration tests check one provider or external dependency against the real thing. For example, a test checks the GitHub provider with the real `gh`. If necessary, a test can use more than one module, for a larger functional test.
 
-The first integration tests check the snacks picker adapter. See [#36](https://github.com/nickciaravella/didymus.nvim/issues/36). In the MVP, people test the GitHub provider by hand. See [#50](https://github.com/nickciaravella/didymus.nvim/issues/50).
+`tests/integration/picker/snacks.test.lua` checks the snacks picker adapter with the real snacks.nvim:
+
+- Start each test with `helpers.restart(child)` from `tests/integration/helpers.lua`. It puts `deps/snacks.nvim` on the `'runtimepath'` of the child. The end-to-end children do not have snacks.nvim.
+- snacks draws its windows in scheduled callbacks. Poll with `wait_for()` until the text shows.
+- To check that a thing does not happen, such as an auto close, let the child run its callbacks first. Call `vim.wait(50)` in the child.
+
+In the MVP, people test the GitHub provider by hand. See [#50](https://github.com/nickciaravella/didymus.nvim/issues/50).
 
 ## Manual tests
 
@@ -169,4 +197,4 @@ didymus.setup(vim.tbl_deep_extend("force", didymus.config, {
 
 ## CI
 
-`.github/workflows/ci.yml` runs the tests on Neovim stable, and checks the format.
+`.github/workflows/ci.yml` runs `make test` on Neovim stable, and checks the format. `make test` runs the unit, end-to-end and integration tests.
