@@ -5,12 +5,18 @@ local expect_screenshot = MiniTest.expect.reference_screenshot
 local child = MiniTest.new_child_neovim()
 
 --- Open the input float with one action, `submit`. The callbacks keep the result in `_G.result`.
----@param opts table? `submit_key` sets the key of the action. Default `<C-y>`.
+---@param opts table? `submit_key` sets the key of the action. Default `<C-y>`. `on_empty = true`
+--- counts the calls of `on_empty`.
 local function open(opts)
   child.lua(
     [[
-      _G.result = { submitted = {}, cancelled = 0 }
+      _G.result = { submitted = {}, cancelled = 0, empty = 0 }
       local opts = ...
+      if opts.on_empty then
+        opts.on_empty = function()
+          _G.result.empty = _G.result.empty + 1
+        end
+      end
       local on_submit = function(text)
         table.insert(_G.result.submitted, text)
         _G.result.mode = vim.api.nvim_get_mode().mode
@@ -247,6 +253,24 @@ T["<C-y> with no text does nothing"] = function()
   child.type_keys(" <CR><C-y>")
   eq(result().submitted, {})
   eq(child.api.nvim_get_current_win(), input_win())
+end
+
+T["<C-y> with no text calls on_empty, and the float stays open"] = function()
+  open({ on_empty = true })
+  child.type_keys("<C-y>")
+  eq(result().empty, 1)
+  eq(result().submitted, {})
+  eq(child.api.nvim_get_current_win(), input_win())
+  child.type_keys("one", "<C-y>")
+  eq(result().submitted, { "one" })
+end
+
+T["with allow_empty, <C-y> with no text submits an empty text"] = function()
+  open({ allow_empty = true, on_empty = true })
+  child.type_keys(" <CR><C-y>")
+  eq(result().submitted, { "" })
+  eq(result().empty, 0)
+  eq(input_win(), nil)
 end
 
 T["cancel"] = MiniTest.new_set({

@@ -23,12 +23,13 @@ local threads = require("didymus.review.threads")
 ---@field provider didymus.review.Provider
 ---@field failed_draft didymus.review.CommentDraft? The last comment that the provider did not add. The next comment at its lines starts with its text.
 ---@field failed_reply { thread_id: string, body: string }? The last reply that the provider did not add. The next reply to its thread starts with its text.
+---@field failed_review_body string? The body of the last review that the provider did not submit. The next submit starts with it.
 ---@field cwd string
 ---@field merge_base string?
 ---@field old_branch string?
 ---@field old_head string?
 ---@field tabpage integer
----@field private adapter didymus.picker.Adapter
+---@field adapter didymus.picker.Adapter
 ---@field private panel didymus.picker.Panel?
 ---@field private code_win integer The window of the tabpage that shows the files of the change.
 ---@field private on_close fun(session: didymus.review.Session)
@@ -255,6 +256,20 @@ function Session:add_reply(thread_id, comment)
     table.insert(thread.comments, comment)
     self:update_thread(thread)
   end
+end
+
+--- The pending comments of the review, with their threads, in the order of the panel.
+---@return { thread: didymus.review.Thread, comment: didymus.review.Comment }[]
+function Session:get_pending_comments()
+  local result = {}
+  for _, thread in ipairs(self.threads) do
+    for _, comment in ipairs(thread.comments) do
+      if comment.pending then
+        table.insert(result, { thread = thread, comment = comment })
+      end
+    end
+  end
+  return result
 end
 
 --- Call `cb` with the thread at the cursor: the thread of the thread float if it is the current

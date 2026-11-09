@@ -33,6 +33,7 @@ All write actions are GraphQL mutations. Each one is in the live schema:
 | Reply | `addPullRequestReviewThreadReply` | `pullRequestReviewId`, `pullRequestReviewThreadId`, `body`. |
 | Resolve | `resolveReviewThread`, `unresolveReviewThread` | `threadId`. |
 | Submit | `submitPullRequestReview` | `pullRequestReviewId`, `event` (`COMMENT`, `APPROVE`, `REQUEST_CHANGES`), `body`. |
+| Submit with no pending review | `addPullRequestReview` | `pullRequestId`, `commitOID`, `event`, `body`. |
 | Discard | `deletePullRequestReview` | `pullRequestReviewId`. |
 | Viewed | `markFileAsViewed`, `unmarkFileAsViewed` | `pullRequestId`, `path`. |
 
@@ -208,6 +209,18 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 9. `provider:set_resolved()` gives the thread with its new state, because the `can_…` fields change. The session replaces the thread, and updates the panel and the marks. A resolved thread is dim.
 10. If the review closed before the provider replies, only the message shows.
 
+### Submit and discard
+
+`M.submit()` and `M.discard()` in `lua/didymus/review/init.lua` act on the pending review of the user.
+
+1. `submit` with no verdict asks for one with the select role. The items are "Comment", "Approve" and "Request changes", in the order of github.com. A cancel does nothing.
+2. Then the input float opens at the cursor line, for the body. Its title is `Comment on #12`, `Approve #12` or `Request changes on #12`. The submit key is `keys.comment`, because the body is a comment.
+3. An approval needs no body. A comment or a request for changes needs a body if the session has no pending comment, as on GitHub. A submit with no text then shows a warning, and the float stays open. If the threads of the session are old, the error of the code host shows.
+4. `provider:submit_review()` runs with a progress message. If it fails, the session keeps the body. The next submit starts with it.
+5. `discard` asks to confirm with `picker.confirm()`. The preview lists the pending comments of the session. It always asks, because the session can be old. Then `provider:discard_review()` runs with a progress message.
+6. After a submit or a discard, the session gets the threads again. After a discard, it removes the pending comments and the empty threads from the result, because GitHub gives the deleted threads for a few seconds.
+7. The review stays open. If the review closed before the provider replies, only the message shows.
+
 ## Parts
 
 ```mermaid
@@ -309,6 +322,7 @@ All methods are async. Each one takes a final `cb(err, result)` and does not blo
 - The GitHub provider keeps all GraphQL documents as string constants in one module.
 - The `test` provider keeps its changes and threads in memory. Tests give it the data. Its `checkout` runs `git checkout` in a temporary repo of the test. It calls each `cb` in `vim.schedule()`, as a real provider does.
 - The `add_comment` of the `test` provider adds a thread with one pending comment of `viewer`. Its `reply` adds a pending comment of `viewer`. Its `set_resolved` changes `resolved`, and then lets the viewer do only the other action, as GitHub does. `errors.<method>` makes the next call of that method fail.
+- The `submit_review` of the `test` provider records the verdict and the body in `reviews`, and makes the pending comments submitted. Its `discard_review` removes the pending comments, and the threads with no comments left. With no pending comment, it gives an error.
 
 ### Review types
 
@@ -405,6 +419,10 @@ The `github` provider is in `lua/didymus/review/provider/github/`. It runs the [
 15. `reply` finds or starts the pending review, as `add_comment` does. Then `addPullRequestReviewThreadReply` gets `pullRequestReviewId`. The reply of GitHub has only the new comment, because a comment has no link to its thread.
 16. `set_resolved` runs `resolveReviewThread` or `unresolveReviewThread`. The reply has the thread with the fields of `get_threads`. A thread with more than 100 comments gets its other comments from a second query, as in `get_threads`.
 17. `viewerCanReply`, `viewerCanResolve` and `viewerCanUnresolve` give the `can_…` fields. On a thread of a pending review, `viewerCanResolve` and `viewerCanUnresolve` are false, but the mutations work. didymus obeys the fields, as github.com does.
+18. `submit_review` gets the pending review of the viewer again, as `add_comment` does. With a pending review, it runs `submitPullRequestReview`. With none, it runs `addPullRequestReview` with the `event`, the `body` and `commitOID` of `head_sha`. Then `change.pending_review_id` is nil.
+19. GitHub can refuse a review with an error that has no message. Then `gh` exits with 0, and the payload is `null`. So `submit_review` and `discard_review` check the payload.
+20. `discard_review` gets the pending review again, and runs `deletePullRequestReview`. With no pending review, it gives an error.
+21. GitHub does not let the author of a PR approve it or request changes on it. The error of GitHub shows.
 
 ## Tests
 

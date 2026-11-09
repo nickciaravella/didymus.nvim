@@ -110,6 +110,43 @@ mutation($pullRequestId: ID!, $commitOID: GitObjectID!) {
 }
 ]]
 
+--- Submit a pending review with a verdict.
+M.submit_review = [[
+mutation($reviewId: ID!, $event: PullRequestReviewEvent!, $body: String) {
+  submitPullRequestReview(input: { pullRequestReviewId: $reviewId, event: $event, body: $body }) {
+    pullRequestReview { id }
+  }
+}
+]]
+
+--- Add a review with a verdict and no comments. With an `event`, the review does not stay pending.
+M.add_review = [[
+mutation(
+  $pullRequestId: ID!
+  $commitOID: GitObjectID!
+  $event: PullRequestReviewEvent!
+  $body: String
+) {
+  addPullRequestReview(input: {
+    pullRequestId: $pullRequestId
+    commitOID: $commitOID
+    event: $event
+    body: $body
+  }) {
+    pullRequestReview { id }
+  }
+}
+]]
+
+--- Delete a pending review and its comments.
+M.delete_review = [[
+mutation($reviewId: ID!) {
+  deletePullRequestReview(input: { pullRequestReviewId: $reviewId }) {
+    pullRequestReview { id }
+  }
+}
+]]
+
 --- Add a thread on the head side to a pending review. `startLine` and `startSide` are null for a
 --- comment on one line.
 M.add_thread = [[

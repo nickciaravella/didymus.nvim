@@ -21,7 +21,7 @@ M.defaults = {
     input = {
       width = 60,
       max_height = 10,
-      keys = { comment = "<C-s>", cancel = "q" }, -- `comment` also adds a reply.
+      keys = { comment = "<C-s>", cancel = "q" }, -- `comment` also adds a reply and submits.
     },
     thread = {
       keys = { reply = "r", resolve = "x" }, -- In the thread float. False turns a key off.

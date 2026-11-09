@@ -49,6 +49,8 @@
 ---@field body string Markdown.
 ---@field pending boolean
 
+---@alias didymus.review.Verdict "approve"|"comment"|"request_changes"
+
 --- A new comment on the head side.
 ---@class didymus.review.CommentDraft
 ---@field path string
@@ -64,8 +66,8 @@
 ---@field add_comment fun(self, change: didymus.review.Change, draft: didymus.review.CommentDraft, cb: fun(err: string?, thread: didymus.review.Thread?)) Start a pending review if there is none.
 ---@field reply fun(self, change: didymus.review.Change, thread_id: string, body: string, cb: fun(err: string?, comment: didymus.review.Comment?)) Start a pending review if there is none.
 ---@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?, thread: didymus.review.Thread?)) Give the thread with its new state.
----@field submit_review fun(self, change: didymus.review.Change, verdict: "approve"|"comment"|"request_changes", body: string?, cb: fun(err: string?))
----@field discard_review fun(self, change: didymus.review.Change, cb: fun(err: string?))
+---@field submit_review fun(self, change: didymus.review.Change, verdict: didymus.review.Verdict, body: string?, cb: fun(err: string?)) Submit the pending review. With no pending review, add a review with no comments.
+---@field discard_review fun(self, change: didymus.review.Change, cb: fun(err: string?)) Delete the pending review and its comments. Give an error if there is none.
 ---@field health fun() Report the dependencies with `vim.health`.
 
 local M = {}
