@@ -26,6 +26,9 @@ M.defaults = {
     thread = {
       keys = { reply = "r", resolve = "x" }, -- In the thread float. False turns a key off.
     },
+    panel = {
+      keys = { refresh = "R" }, -- In the files panel. False turns a key off.
+    },
   },
 }
 

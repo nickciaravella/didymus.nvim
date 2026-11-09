@@ -246,11 +246,13 @@ T["a file that is different from the change head shows the reason"] = function()
   wait_for_message(message)
   eq(float_win(), nil)
 
-  -- A local commit also changes the line numbers.
+  -- A local commit also changes the line numbers. It moves HEAD from the change head.
   helpers.git(repo.dir, { "commit", "--quiet", "--all", "--message", "local" })
   child.cmd("messages clear")
   child.cmd("Didymus review comment")
-  wait_for_message(message)
+  wait_for_message(
+    "didymus: HEAD is not the head of #1. To check it out, close the review and open it again."
+  )
   eq(float_win(), nil)
 end
 

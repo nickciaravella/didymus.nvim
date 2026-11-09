@@ -1,6 +1,7 @@
 --- The files panel: the header, the changed files and their threads, as picker items. The picker
 --- adapter draws them. See docs/architecture/review.md#parts.
 
+local config = require("didymus.config")
 local patch = require("didymus.review.patch")
 local picker = require("didymus.ui.picker")
 local threads = require("didymus.review.threads")
@@ -122,6 +123,26 @@ local function choose(session, item)
   session:open_file(value.file.path, first_hunk and first_hunk.first_change or 1)
 end
 
+--- The keys of `review.panel.keys`. False turns a key off.
+---@return didymus.picker.Action[]
+local function get_actions()
+  local key = config.options.review.panel.keys.refresh
+  if not key then
+    return {}
+  end
+  return {
+    {
+      key = key,
+      name = "refresh",
+      fn = function()
+        -- A require at the top makes a loop: the review module loads the session, which loads
+        -- this module.
+        require("didymus.review").refresh()
+      end,
+    },
+  }
+end
+
 --- Open the files panel of `session` in the current tabpage.
 ---@param adapter didymus.picker.Adapter
 ---@param session didymus.review.Session
@@ -135,6 +156,7 @@ function M.open(adapter, session)
     on_choose = function(item)
       choose(session, item)
     end,
+    actions = get_actions(),
   })
 end
 

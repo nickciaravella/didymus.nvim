@@ -23,6 +23,7 @@ local open_count = 0
 ---@field provider didymus.review.Provider
 ---@field cwd string
 ---@field number integer The number of the `open()`.
+---@field id string? The id that `get_change()` took: a PR number or a PR URL.
 
 ---@return didymus.review.Session?
 function M.current()
@@ -136,6 +137,10 @@ local function on_close(session)
   vim.notify(("didymus: closed the review of %s.%s"):format(label(session.change.id), before))
 end
 
+--- GitHub gives the deleted threads for a few seconds after a discard. For this time, in
+--- milliseconds, didymus removes the pending comments from the threads of the provider.
+local discard_delay = 10000
+
 --- The threads with their pending comments removed, and with no empty threads.
 ---@param list didymus.review.Thread[]
 ---@return didymus.review.Thread[]
@@ -152,20 +157,42 @@ local function remove_pending(list)
   return kept
 end
 
---- Get the threads, and show them in the session. A close or a newer review ignores the result.
+--- The threads from the provider, with no pending comments just after a discard.
 ---@param session didymus.review.Session
----@param after_discard boolean? Remove the pending comments. GitHub gives the threads of a discarded review for a few seconds.
-local function load_threads(session, after_discard)
+---@param list didymus.review.Thread[]
+---@return didymus.review.Thread[]
+local function filter_threads(session, list)
+  if session.discarded_at and vim.uv.now() - session.discarded_at < discard_delay then
+    return remove_pending(list)
+  end
+  return list
+end
+
+--- Start a get of the threads. A newer get, or a close of the review, makes its result old.
+---@param session didymus.review.Session
+---@return fun(): boolean is_newest
+local function start_load(session)
+  session.load_count = session.load_count + 1
+  local number = session.load_count
+  return function()
+    return current == session and session.load_count == number
+  end
+end
+
+--- Get the threads, and show them in the session.
+---@param session didymus.review.Session
+local function load_threads(session)
+  local is_newest = start_load(session)
   track(("get the threads of %s"):format(session.label), function(done)
     session.provider:get_threads(session.change, done)
   end, function(err, list)
-    if current ~= session then
+    if not is_newest() then
       return
     end
     if err then
       return show_error(("cannot get the threads of %s: %s"):format(session.label, err))
     end
-    session:set_threads(after_discard and remove_pending(list) or list)
+    session:set_threads(filter_threads(session, list))
   end)
 end
 
@@ -188,6 +215,7 @@ local function start_session(flow, change, status)
       end
       current = Session.new({
         change = change,
+        open_id = flow.id or change.id,
         label = label(change.id),
         adapter = flow.adapter,
         provider = flow.provider,
@@ -291,6 +319,7 @@ local function open_id(flow, id)
   if current and current.change.id == id then
     return current:focus()
   end
+  flow.id = id
   track(
     ("get %s"):format(label(id)),
     function(done)
@@ -404,6 +433,50 @@ function M.prev()
   end
 end
 
+--- Get the change and the threads again, at the same time, and show them. If the head of the change
+--- is new, show a warning. Do not check out the new head.
+function M.refresh()
+  local session = get_open_review()
+  if not session then
+    return
+  end
+  local is_newest = start_load(session)
+  track(("refresh %s"):format(session.label), function(done)
+    local results, errors, count = {}, {}, 0
+    ---@param name "change"|"threads"
+    local function on_result(name)
+      return function(err, result)
+        results[name], errors[name], count = result, err, count + 1
+        if count == 2 then
+          done(errors.change or errors.threads, results)
+        end
+      end
+    end
+    session.provider:get_change(session.open_id, on_result("change"))
+    -- The change of the session is enough, because its id does not change.
+    session.provider:get_threads(session.change, on_result("threads"))
+  end, function(err, results)
+    if not is_newest() then
+      return
+    end
+    if err then
+      return show_error(("cannot refresh %s: %s"):format(session.label, err))
+    end
+    local old_head = session.change.head_sha
+    session:set_change(results.change, filter_threads(session, results.threads))
+    if results.change.head_sha == old_head then
+      return vim.notify(("didymus: refreshed %s"):format(session.label))
+    end
+    -- One line, because a message with more lines makes the user press Enter.
+    show_warning(
+      ("refreshed %s. Its head is now %s, but HEAD did not change. To check it out, close the review and open it again."):format(
+        session.label,
+        results.change.head_sha:sub(1, 7)
+      )
+    )
+  end)
+end
+
 --- `path:3` for one line, `path:3-5` for more lines.
 ---@param path string
 ---@param range didymus.review.Range
@@ -493,6 +566,8 @@ local function add_comment(session, draft)
     end
     -- The comment is on the code host, also after a close of the review.
     if session:is_open() then
+      -- The pending comments from the provider are now new, not deleted.
+      session.discarded_at = nil
       session:add_thread(thread)
     end
     vim.notify(("didymus: added a pending comment at %s"):format(location))
@@ -545,26 +620,41 @@ function M.comment(opts)
   if not file then
     return
   end
-  workspace.has_changes(session.cwd, session.change.head_sha, file.path, function(err, changed)
-    if err then
-      return show_error(err)
+  local head_sha = session.change.head_sha
+  -- After a refresh with a new head, git can have no commit of the new head. Then `git diff` gives
+  -- an error that does not tell the reason.
+  workspace.get_head(session.cwd, function(head_err, head)
+    if head_err then
+      return show_error(head_err)
     end
-    if changed then
+    if head ~= head_sha then
       return show_warning(
-        ("%s is different from the head of %s. A comment needs the lines of the head."):format(
-          file.path,
+        ("HEAD is not the head of %s. To check it out, close the review and open it again."):format(
           session.label
         )
       )
     end
-    -- The check is async. Open the float only at the same place.
-    if
-      session:is_open()
-      and vim.api.nvim_get_current_win() == win
-      and vim.api.nvim_win_get_buf(win) == buf
-    then
-      open_comment_input(session, file.path, range)
-    end
+    workspace.has_changes(session.cwd, head_sha, file.path, function(err, changed)
+      if err then
+        return show_error(err)
+      end
+      if changed then
+        return show_warning(
+          ("%s is different from the head of %s. A comment needs the lines of the head."):format(
+            file.path,
+            session.label
+          )
+        )
+      end
+      -- The checks are async. Open the float only at the same place.
+      if
+        session:is_open()
+        and vim.api.nvim_get_current_win() == win
+        and vim.api.nvim_win_get_buf(win) == buf
+      then
+        open_comment_input(session, file.path, range)
+      end
+    end)
   end)
 end
 
@@ -591,6 +681,8 @@ local function add_reply(session, thread, body)
     end
     -- The reply is on the code host, also after a close of the review.
     if session:is_open() then
+      -- The pending comments from the provider are now new, not deleted.
+      session.discarded_at = nil
       session:add_reply(thread.id, comment)
     end
     vim.notify(("didymus: added a pending reply at %s"):format(location))
@@ -819,7 +911,8 @@ function M.discard()
         end
         vim.notify(("didymus: discarded the pending review of %s"):format(session.label))
         if session:is_open() then
-          load_threads(session, true)
+          session.discarded_at = vim.uv.now()
+          load_threads(session)
         end
       end)
     end,

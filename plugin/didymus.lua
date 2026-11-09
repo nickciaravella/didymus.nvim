@@ -44,6 +44,7 @@ for _, action in ipairs({
   "resolve",
   "submit",
   "discard",
+  "refresh",
 }) do
   vim.keymap.set("n", ("<Plug>(didymus-review-%s)"):format(action), function()
     require("didymus.review")[action]()
