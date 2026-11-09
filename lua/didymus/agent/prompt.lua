@@ -76,14 +76,24 @@ local function make_fence(text)
   return ("`"):rep(math.max(3, longest + 1))
 end
 
+--- `path:10` for one line, `path:10-12` for more lines.
+---@param context didymus.agent.Context
+---@return string
+function M.location(context)
+  if context.start_line == context.end_line then
+    return ("%s:%d"):format(context.path, context.start_line)
+  end
+  return ("%s:%d-%d"):format(context.path, context.start_line, context.end_line)
+end
+
 ---@param context didymus.agent.Context
 ---@return string
 local function format_context(context)
-  local location = context.start_line == context.end_line
-      and ("%s:%d"):format(context.path, context.start_line)
-    or ("%s:%d-%d"):format(context.path, context.start_line, context.end_line)
   local fence = make_fence(context.text)
-  return table.concat({ location, fence .. (context.filetype or ""), context.text, fence }, "\n")
+  return table.concat(
+    { M.location(context), fence .. (context.filetype or ""), context.text, fence },
+    "\n"
+  )
 end
 
 ---@param prompt didymus.agent.Prompt

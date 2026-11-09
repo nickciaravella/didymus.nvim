@@ -23,6 +23,29 @@ function M.wait_for(check, what)
 end
 
 ---@param child MiniTest.child
+---@param mode string
+function M.wait_for_mode(child, mode)
+  M.wait_for(function()
+    return child.api.nvim_get_mode().mode == mode
+  end, "mode " .. mode)
+end
+
+---@param child MiniTest.child
+---@param text string
+function M.expect_message(child, text)
+  MiniTest.expect.no_equality(child.cmd_capture("messages"):find(text, 1, true), nil)
+end
+
+--- Show `a.lua` of the current directory in the current window. The file is not written.
+---@param child MiniTest.child
+---@param lines string[]
+function M.edit_code(child, lines)
+  child.api.nvim_buf_set_name(0, "a.lua")
+  child.bo.filetype = "lua"
+  child.api.nvim_buf_set_lines(0, 0, -1, true, lines)
+end
+
+---@param child MiniTest.child
 ---@return integer?
 function M.agent_buf(child)
   return child.lua_get([[

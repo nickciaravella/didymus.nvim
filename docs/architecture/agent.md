@@ -148,6 +148,7 @@ The other parts have these interfaces:
 --- prompt.lua
 ---@class didymus.agent.prompt
 ---@field context fun(opts: { buf: integer, range: integer[]? }): didymus.agent.Context With no range: the current line, or the selection in visual mode. Throws an error if the buffer has no file.
+---@field location fun(context: didymus.agent.Context): string `path:10`, or `path:10-12` for more lines.
 ---@field to_text fun(prompt: didymus.agent.Prompt): string
 
 --- ui/input.lua
@@ -183,8 +184,10 @@ agent.toggle({ cmd = "codex", view = "float" }) -- start if necessary, then show
 agent.focus({ view = "float" })                 -- start if necessary, then show and focus the float
 agent.stop()                                    -- end the agent and close the view
 agent.append()                                  -- the current line, or the selection in visual mode
+agent.append({ range = { 10, 12 }, view = "float", cmd = "codex" })
 agent.send()                                    -- open the input float
 agent.send({ text = "Explain this." })          -- submit at once, with no input float
+agent.send({ range = { 10, 12 }, cmd = "codex" })
 ```
 
 Most users only use `toggle`. Use `start` to start the agent before you show it.
@@ -201,7 +204,8 @@ All options are optional. `cmd` and `view` use the config if you do not give the
 ```
 
 - `[cmd]` is the rest of the line. It runs through 'shell'. If the agent runs, didymus does not use it.
-- Each action has a `<Plug>(didymus-agent-…)` mapping. `start`, `toggle`, `focus` and `stop` work in normal and terminal mode. `append` and `send` work in normal and visual mode.
+- `append` and `send` take a range. Other actions ignore it. `append` has no arguments, so that it is the same as `send`, whose argument is `[text]`.
+- Each action has a `<Plug>(didymus-agent-…)` mapping. `start`, `toggle`, `focus` and `stop` work in normal and terminal mode. `append` and `send` work in normal and visual mode. Their mappings call a Lua function, so that the function sees the selection. A `:` mapping gives only full lines.
 - There are no default keymaps. `agent.keys` sets two optional keys:
   - `focus`: a global normal-mode key for `focus`.
   - `leave`: a key in the agent buffer, in terminal and normal mode. It goes back to the window before the agent. If that window is not valid, it goes to the previous window.
@@ -259,16 +263,16 @@ For example, with the split visible, `toggle float` closes the split and shows t
 
 ### Append
 
-1. Make the context from the current line, the command range or the selection.
-2. If no session runs, start one.
+1. Make the context from the current line, the command range or the selection. Leave visual mode, also on an error. If the buffer has no file, show the error and stop.
+2. If no session runs, start one, as in Focus.
 3. Call `backend:append()` with no prompt text.
 4. Show and focus the view. The user types the rest of the prompt and submits it in the agent.
 
 ### Send
 
-1. Make the context. Open the input float above the line or the selection. Give the lines as `range`.
-2. On submit, start a session if no session runs. Do not show the view.
-3. Call `backend:send()`. Show the message "Sent to `<cmd>`".
+1. Make the context, as in Append. Open the input float above the line or the selection, with the location as the title. Give the lines as `range`. With `text`, go to step 2 at once.
+2. On submit, start a session if no session runs. Do not show the view. The last view or `agent.view` sets the size.
+3. Call `backend:send()`. Show the message "didymus: sent to `<cmd>`".
 
 ### Exit
 
@@ -417,4 +421,4 @@ flowchart LR
 | 8. [Append](https://github.com/nickciaravella/didymus.nvim/issues/11) | `:Didymus agent append` and its `<Plug>` mapping. | 2, 5, 6 |
 | 9. [Send](https://github.com/nickciaravella/didymus.nvim/issues/12) | `:Didymus agent send` and its `<Plug>` mapping. A hidden start, and the "Sent" message. | 2, 3, 5, 6 |
 
-Tasks 1, 2 and 3 can start at the same time. Then tasks 4 to 7 can go in parallel. Tasks 8 and 9 come last.
+Tasks 1, 2 and 3 can start at the same time. Then tasks 4 to 7 can go in parallel. Tasks 8 and 9 come last, in one pull request, because they change the same files.

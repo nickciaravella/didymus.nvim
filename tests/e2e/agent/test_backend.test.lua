@@ -1,7 +1,6 @@
 local helpers = dofile("tests/e2e/agent/helpers.lua")
 
 local eq = MiniTest.expect.equality
-local no_eq = MiniTest.expect.no_equality
 
 local child = MiniTest.new_child_neovim()
 
@@ -12,7 +11,7 @@ end
 
 ---@param text string
 local function expect_message(text)
-  no_eq(child.cmd_capture("messages"):find(text, 1, true), nil)
+  helpers.expect_message(child, text)
 end
 
 local T = MiniTest.new_set({

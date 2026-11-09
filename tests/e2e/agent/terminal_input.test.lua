@@ -92,4 +92,22 @@ T["input before the agent is ready arrives one time, after the agent is ready"] 
   eq(get_events(), { "paste: " .. quote(sent), "submitted: " .. quote(sent) })
 end
 
+T["append puts the context in the agent input, and the user submits it"] = function()
+  helpers.edit_code(child, { "local a = 1" })
+  child.lua("require('didymus.agent').append()")
+  helpers.wait_for_text(child, "paste: ")
+  -- The split has focus in terminal mode, so the next key goes to the agent.
+  helpers.wait_for_mode(child, "t")
+  child.type_keys("<CR>")
+  wait_for_submit()
+
+  local appended = {
+    context = {
+      { path = "a.lua", start_line = 1, end_line = 1, text = "local a = 1", filetype = "lua" },
+    },
+  }
+  -- A submit by append would show a second "submitted" row.
+  eq(get_events(), { "paste: " .. quote(appended), "submitted: " .. quote(appended) })
+end
+
 return T
