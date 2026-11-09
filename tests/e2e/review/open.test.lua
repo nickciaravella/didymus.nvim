@@ -421,14 +421,19 @@ T["the mappings run the commands"] = function()
 end
 
 T["the command completes the review actions"] = function()
-  eq(child.fn.getcompletion("Didymus review ", "cmdline"), { "close", "files", "open", "thread" })
+  eq(
+    child.fn.getcompletion("Didymus review ", "cmdline"),
+    { "close", "files", "next", "open", "prev", "thread" }
+  )
   eq(child.fn.getcompletion("Didymus ", "cmdline"), { "agent", "review" })
 end
 
 T["an unknown review action shows the usage"] = function()
   -- An error message in a command is an error of `child.cmd()`.
   child.lua("require('didymus.command').run('review foo')")
-  expect_message("didymus: unknown command. Use :Didymus review open, close, files or thread.")
+  expect_message(
+    "didymus: unknown command. Use :Didymus review open, close, files, thread, next or prev."
+  )
 end
 
 return T

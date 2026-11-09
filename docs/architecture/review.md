@@ -119,7 +119,7 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 5. In the review tabpage, `:Didymus review files` shows or hides the panel. In a different tabpage, it goes to the review tabpage and shows the panel. A hidden panel is closed, so a new panel starts with the cursor on the first row.
 6. `close` and `:tabclose` also close the panel.
 7. If the panel cannot open, for example with no snacks.nvim, the review opens without it, and the error shows.
-8. If the code window already shows the file, `<CR>` only moves the cursor. `:edit` of a modified buffer gives E37.
+8. If the code window already shows the file, `<CR>` only moves the cursor. `:edit` of a modified buffer gives E37. The move goes into the jumplist, as the `:edit` of a different file does.
 9. If Neovim cannot open the file, the error shows, and the focus goes back to the panel. For example, with 'nohidden', a modified buffer in the code window gives E37.
 10. The thread count counts all threads of the file, also the resolved and outdated threads.
 11. `<CR>` on a thread with a line opens its file at that line, as rule 4. `<CR>` on a thread that shows only in the panel opens the thread float next to the panel. See [Inline threads](#inline-threads).
@@ -164,6 +164,19 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 11. A float that opens from the panel is not wider than the panel, because the float of Neovim is not wider than the current window.
 12. If more than one thread is at the line, `thread` asks which one with the select role of the picker.
 13. The order of the threads is the order of the panel: the files in the order of the provider. In each file, the threads with a line come first, by line. The other threads stay in the order of the provider.
+
+### Thread navigation
+
+`Session:go_to_thread()` in `lua/didymus/review/session.lua` does `next` and `prev`.
+
+1. The stops are the threads with a line, in the order of the panel. The threads at the same line are one stop, because `thread` asks which one to open.
+2. The start is the cursor of the current window, if it shows a file of the change. Else, it is the cursor of the code window, for example from the panel. If neither shows a file of the change, `next` goes to the first thread, and `prev` to the last thread.
+3. In a different tabpage, `next` and `prev` go to the review tabpage first, so that the jump shows.
+4. The jump uses the line of the thread, as `<CR>` of the panel does, not the extmark. In the file of the cursor, a line after the end of the buffer counts as the last line. Else, `next` goes to the last line again and again.
+5. If the current window shows the file of the thread, the cursor moves in that window. Else, the file opens in the code window, as with `<CR>` of the panel.
+6. Each jump adds the old position to the jumplist, as `vim.diagnostic.jump()` does.
+7. At the last or the first thread, `didymus: no next thread` or `didymus: no previous thread` shows, and the cursor does not move. The navigation does not wrap.
+8. The cursor of the panel does not move, and the thread float does not open.
 
 ## Parts
 
