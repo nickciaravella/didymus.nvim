@@ -105,7 +105,7 @@ lua/didymus/health.lua       :checkhealth didymus
 lua/didymus/agent/           the agent. See architecture/agent.md.
 lua/didymus/ui/              UI parts for all epics, such as the input float and window layout
 lua/didymus/ui/picker/       the picker interface and its adapters: snacks, test
-lua/didymus/review/          the review API, the review session and the workspace. See architecture/review.md.
+lua/didymus/review/          the review API, the review session, the files panel and the workspace. See architecture/review.md.
 lua/didymus/review/provider/ the review types, the provider interface and its providers: github, test
 tests/helpers.lua            helpers for all kinds of tests
 tests/unit/didymus/          unit tests, mirror lua/didymus/

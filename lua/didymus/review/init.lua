@@ -105,11 +105,8 @@ local function to_item(change)
   if change.is_draft then
     table.insert(segments, { " [draft]", "DiagnosticWarn" })
   end
-  local texts = vim.tbl_map(function(segment)
-    return segment[1]
-  end, segments)
   return {
-    text = table.concat(texts),
+    text = picker.join_segments(segments),
     id = change.id,
     segments = segments,
     preview = get_preview(change),
@@ -150,6 +147,8 @@ local function start_session(flow, change, status)
       end
       current = Session.new({
         change = change,
+        label = label(change.id),
+        adapter = flow.adapter,
         cwd = flow.cwd,
         merge_base = merge_base,
         old_branch = status.branch,
@@ -311,13 +310,30 @@ function M.open(opts)
   end
 end
 
---- Close the review tabpage. Do not check out the branch from before the review.
-function M.close()
+---@return didymus.review.Session?
+local function get_open_review()
   if not current then
     vim.notify("didymus: no review is open", vim.log.levels.WARN)
-    return
   end
-  current:close()
+  return current
+end
+
+--- Close the files panel and the review tabpage. Do not check out the branch from before the
+--- review.
+function M.close()
+  local session = get_open_review()
+  if session then
+    session:close()
+  end
+end
+
+--- In the review tabpage, show the files panel or hide it. From a different tabpage, go to the
+--- review tabpage and show the panel.
+function M.files()
+  local session = get_open_review()
+  if session then
+    session:toggle_files()
+  end
 end
 
 return M

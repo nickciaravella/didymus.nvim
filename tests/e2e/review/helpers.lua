@@ -1,5 +1,7 @@
 -- Helpers for the end-to-end tests of the review. Load them with `dofile()`.
 
+local wait_for = dofile("tests/helpers.lua").wait_for
+
 local M = {}
 
 -- The tests do not use the git config of the user, because it can sign commits or run hooks.
@@ -27,14 +29,18 @@ end
 
 --- Write files in `dir`.
 ---@param dir string
----@param files table<string, string> The text of each path.
+---@param files table<string, string|false> The text of each path. False deletes the file.
 function M.write(dir, files)
   for path, text in pairs(files) do
     local full = vim.fs.joinpath(dir, path)
-    vim.fn.mkdir(vim.fs.dirname(full), "p")
-    local file = assert(io.open(full, "w"))
-    file:write(text)
-    file:close()
+    if text == false then
+      assert(os.remove(full))
+    else
+      vim.fn.mkdir(vim.fs.dirname(full), "p")
+      local file = assert(io.open(full, "w"))
+      file:write(text)
+      file:close()
+    end
   end
 end
 
@@ -75,7 +81,7 @@ end
 
 --- Make a git repo with a base commit on `main` and a head commit on `feature`. `HEAD` is on
 --- `main`. Make a change for the test provider that points to the two commits.
----@param opts { base: table<string, string>?, head: table<string, string>? }? The files of each commit.
+---@param opts { base: table<string, string>?, head: table<string, string|false>? }? The files of each commit. False deletes a file.
 ---@return didymus.test.Repo
 function M.make_repo(opts)
   opts = opts or {}
@@ -83,7 +89,7 @@ function M.make_repo(opts)
   vim.fn.mkdir(dir, "p")
   M.git(dir, { "init", "--quiet", "--initial-branch", "main" })
 
-  ---@param files table<string, string>
+  ---@param files table<string, string|false>
   ---@param message string
   ---@return string sha
   local function commit(files, message)
@@ -120,6 +126,70 @@ end
 ---@param changes didymus.review.Change[]
 function M.set_changes(child, changes)
   child.lua("require('didymus.review.provider.test').changes = ...", { changes })
+end
+
+---@class didymus.test.Review
+---@field id string
+---@field tabpage integer
+---@field merge_base string?
+
+--- The open review in the child, else nil.
+---@param child MiniTest.child
+---@return didymus.test.Review?
+function M.review(child)
+  local session = child.lua_get([[
+    (function()
+      local session = require("didymus.review").current()
+      return session and {
+        id = session.change.id,
+        tabpage = session.tabpage,
+        merge_base = session.merge_base,
+      }
+    end)()
+  ]])
+  return session ~= vim.NIL and session or nil
+end
+
+--- Wait until the review of `id` is open. Nil is any change.
+---@param child MiniTest.child
+---@param id string?
+---@return didymus.test.Review
+function M.wait_for_review(child, id)
+  wait_for(function()
+    local session = M.review(child)
+    return session ~= nil and (id == nil or session.id == id)
+  end, "the review of " .. (id or "a change"))
+  return assert(M.review(child))
+end
+
+---@class didymus.test.PickerCall
+---@field kind "select"|"panel"
+---@field title string
+---@field items didymus.picker.Item[]
+---@field cursor integer
+---@field open boolean
+---@field focus_count integer
+
+--- The calls of the test picker in the child, with no functions, so that they go through RPC.
+---@param child MiniTest.child
+---@param kind ("select"|"panel")? Nil is all calls.
+---@return didymus.test.PickerCall[]
+function M.picker_calls(child, kind)
+  local calls = child.lua_get([[
+    vim.tbl_map(function(call)
+      return {
+        kind = call.kind,
+        title = call.opts.title,
+        items = call.items,
+        cursor = call.cursor,
+        open = call.open,
+        focus_count = call.focus_count,
+      }
+    end, require("didymus.ui.picker.test").calls)
+  ]])
+  return vim.tbl_filter(function(call)
+    return kind == nil or call.kind == kind
+  end, calls)
 end
 
 --- Call `method` of the configured provider in the child, and wait for its `cb`.

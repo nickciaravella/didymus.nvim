@@ -11,6 +11,7 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Base | The branch or commit that the change goes into. |
 | Change | The thing under review. On GitHub, a pull request (PR). |
 | Code host | The system that keeps the change, such as GitHub. |
+| Code window | The window of the review tabpage that shows the real files. |
 | Context | A part of the code that goes with a prompt: the path, the lines, the text and the filetype. |
 | End-to-end test | A test that drives a child Neovim the way a user does: with commands, keys and the public API. |
 | Epic | A large stream of work. Each epic is a GitHub label. |
@@ -28,7 +29,7 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Prompt | The text for the agent, and its context. |
 | Provider | An integration for a code host, such as GitHub. |
 | Reference file | `docs/reference/design-prompt.md`. A first pass at the design. Not a spec. |
-| Review session | One open review: the change, its tabpage, and the branch from before the review. |
+| Review session | One open review: the change, its tabpage, its files panel, and the branch from before the review. |
 | Review tabpage | The tabpage of one review, with the files panel and the code. |
 | Send | Submit a prompt with its context. Do not show the agent. |
 | Test backend | A backend without a process. End-to-end tests use it for the agent flows. |

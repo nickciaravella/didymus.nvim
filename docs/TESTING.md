@@ -161,11 +161,15 @@ The helpers in `tests/e2e/review/helpers.lua` run in the test process:
 | `make_repo(opts)` | Make a temporary git repo with a base commit on `main` and a head commit on `feature`. `HEAD` is on `main`. Return the `dir` and a `change` that points to the two commits. |
 | `set_changes(child, changes)` | Give the changes to the test provider in the child. |
 | `call(child, method, ...)` | Call a method of the configured provider in the child. Wait for its `cb`, and return `{ err, result }`. |
-| `git(dir, args)`, `write(dir, files)` | Run git, or write files, in the repo. |
+| `review(child)`, `wait_for_review(child, id)` | Get the open review in the child, or wait for it. |
+| `picker_calls(child, kind)` | Get the calls of the test picker, with no functions. `kind` is `"select"` or `"panel"`. Nil gives all calls. |
+| `git(dir, args)`, `write(dir, files)` | Run git, or write files, in the repo. In `write()` and `make_repo()`, `false` deletes a file. |
 
 The `files` of the change come from `git diff`, with the patch as GitHub gives it. The helpers do not use the git config of the user. Before you call `checkout`, set the directory of the child to the repo with `child.fn.chdir(repo.dir)`. See `tests/e2e/review/provider.test.lua`.
 
 The flow of `:Didymus review open` is async. Poll the child with `wait_for()` until the review opens, or until a picker call or a message shows. See `tests/e2e/review/open.test.lua`.
+
+Each review opens the files panel. `choose()` acts on the last open picker. To answer a select that opened before the panel, hide the panel first with `:Didymus review files`. The test picker has no window. To check that `<CR>` moves the focus to the code window, make a different window current first. See `tests/e2e/review/files.test.lua`.
 
 ### The GitHub provider
 
