@@ -2,6 +2,8 @@
 --- See docs/architecture/review.md#workspace-flow.
 
 local config = require("didymus.config")
+local input = require("didymus.ui.input")
+local patch = require("didymus.review.patch")
 local picker = require("didymus.ui.picker")
 local providers = require("didymus.review.provider")
 local Session = require("didymus.review.session")
@@ -31,6 +33,11 @@ local function show_error(message)
   vim.notify("didymus: " .. message, vim.log.levels.ERROR)
 end
 
+---@param message string
+local function show_warning(message)
+  vim.notify("didymus: " .. message, vim.log.levels.WARN)
+end
+
 --- The name of a change in messages, such as "#12". A URL stays a URL.
 ---@param id string
 ---@return string
@@ -51,7 +58,7 @@ local function guard(flow, fn)
   end
 end
 
---- Show a progress message while `start` works.
+--- Show a progress message while `start` works. A new progress message replaces the last one.
 ---@param text string
 ---@param start fun(done: fun(err: string?, result: any))
 ---@param cb fun(err: string?, result: any)
@@ -59,7 +66,7 @@ local function track(text, start, cb)
   ---@param status "running"|"success"|"failed"
   local function show(status)
     vim.api.nvim_echo({ { text } }, false, {
-      id = "didymus.review.open",
+      id = "didymus.review.progress",
       kind = "progress",
       source = "didymus",
       title = "didymus",
@@ -129,11 +136,10 @@ local function on_close(session)
 end
 
 --- Get the threads, and show them in the session. A close or a newer review ignores the result.
----@param provider didymus.review.Provider
 ---@param session didymus.review.Session
-local function load_threads(provider, session)
+local function load_threads(session)
   track(("get the threads of %s"):format(session.label), function(done)
-    provider:get_threads(session.change, done)
+    session.provider:get_threads(session.change, done)
   end, function(err, list)
     if current ~= session then
       return
@@ -166,6 +172,7 @@ local function start_session(flow, change, status)
         change = change,
         label = label(change.id),
         adapter = flow.adapter,
+        provider = flow.provider,
         cwd = flow.cwd,
         merge_base = merge_base,
         old_branch = status.branch,
@@ -174,7 +181,7 @@ local function start_session(flow, change, status)
       })
       vim.notify(("didymus: opened the review of %s: %s"):format(label(change.id), change.title))
       -- The review opens first, so that the user can read the files while the threads load.
-      load_threads(flow.provider, current)
+      load_threads(current)
     end)
   )
 end
@@ -377,6 +384,170 @@ function M.prev()
   if session then
     session:go_to_thread(-1)
   end
+end
+
+--- `path:3` for one line, `path:3-5` for more lines.
+---@param path string
+---@param range didymus.review.Range
+---@return string
+local function format_location(path, range)
+  if range.first == range.last then
+    return ("%s:%d"):format(path, range.first)
+  end
+  return ("%s:%d-%d"):format(path, range.first, range.last)
+end
+
+--- The lines of the selection in visual mode, else the cursor line. Leave visual mode, as a `:`
+--- command does.
+---@return didymus.review.Range
+local function get_cursor_range()
+  -- Out of visual mode, "v" is the cursor.
+  local first, last = vim.fn.line("v"), vim.fn.line(".")
+  local mode = vim.fn.mode()
+  if mode == "v" or mode == "V" or mode == "\22" then
+    -- `:normal!` also sets `'<` and `'>`, so `gv` works.
+    vim.cmd.normal({ "\27", bang = true })
+  end
+  return { first = math.min(first, last), last = math.max(first, last) }
+end
+
+--- Check that `buf` shows a file of the change with no unsaved changes, and that the lines accept
+--- comments. If a check fails, show the reason.
+---@param session didymus.review.Session
+---@param buf integer
+---@param range didymus.review.Range
+---@return didymus.review.ChangedFile?
+local function check_comment(session, buf, range)
+  local index = session:find_file_index(buf)
+  if not index then
+    show_warning(("the current window does not show a file of %s"):format(session.label))
+    return
+  end
+  local file = session.change.files[index]
+  if vim.bo[buf].modified then
+    show_warning(
+      ("%s is modified. A comment needs the lines of the head of %s."):format(
+        file.path,
+        session.label
+      )
+    )
+    return
+  end
+  if not patch.is_commentable(patch.parse(file.patch), "head", range) then
+    if range.first == range.last then
+      show_warning(
+        ("line %d of %s is not in a hunk of %s"):format(range.first, file.path, session.label)
+      )
+    else
+      show_warning(
+        ("lines %d-%d of %s are not in one hunk of %s"):format(
+          range.first,
+          range.last,
+          file.path,
+          session.label
+        )
+      )
+    end
+    return
+  end
+  return file
+end
+
+--- Add the comment with the provider. Then show the new thread. If the provider fails, keep the
+--- text for the next comment at these lines.
+---@param session didymus.review.Session
+---@param draft didymus.review.CommentDraft
+local function add_comment(session, draft)
+  local location = format_location(draft.path, draft.range)
+  track(("add a comment at %s"):format(location), function(done)
+    session.provider:add_comment(session.change, draft, done)
+  end, function(err, thread)
+    if err then
+      local message = ("cannot add the comment at %s: %s"):format(location, err)
+      if session:is_open() then
+        session.failed_draft = draft
+        -- One line, because a message with more lines makes the user press Enter.
+        message = ("%s. The next comment at these lines starts with its text."):format(
+          (message:gsub("%.$", ""))
+        )
+      end
+      return show_error(message)
+    end
+    -- The comment is on the code host, also after a close of the review.
+    if session:is_open() then
+      session:add_thread(thread)
+    end
+    vim.notify(("didymus: added a pending comment at %s"):format(location))
+  end)
+end
+
+---@param session didymus.review.Session
+---@param path string
+---@param range didymus.review.Range
+local function open_comment_input(session, path, range)
+  local options = config.options.review.input
+  local failed = session.failed_draft
+  local text
+  if failed and failed.path == path and vim.deep_equal(failed.range, range) then
+    text = failed.body
+    session.failed_draft = nil
+  end
+  input.open({
+    title = format_location(path, range),
+    range = { range.first, range.last },
+    text = text,
+    width = options.width,
+    max_height = options.max_height,
+    keys = { cancel = options.keys.cancel },
+    actions = {
+      {
+        key = options.keys.comment,
+        name = "comment",
+        on_submit = function(body)
+          add_comment(session, { path = path, range = range, body = body })
+        end,
+      },
+    },
+  })
+end
+
+--- Add a comment on the current line, the selection or `range`, in the pending review. Check the
+--- lines first. Then open the input float above them.
+---@param opts { range: integer[]? }? The first and the last line.
+function M.comment(opts)
+  opts = opts or {}
+  local range = opts.range and { first = opts.range[1], last = opts.range[2] } or get_cursor_range()
+  local session = get_open_review()
+  if not session then
+    return
+  end
+  local win = vim.api.nvim_get_current_win()
+  local buf = vim.api.nvim_win_get_buf(win)
+  local file = check_comment(session, buf, range)
+  if not file then
+    return
+  end
+  workspace.has_changes(session.cwd, session.change.head_sha, file.path, function(err, changed)
+    if err then
+      return show_error(err)
+    end
+    if changed then
+      return show_warning(
+        ("%s is different from the head of %s. A comment needs the lines of the head."):format(
+          file.path,
+          session.label
+        )
+      )
+    end
+    -- The check is async. Open the float only at the same place.
+    if
+      session:is_open()
+      and vim.api.nvim_get_current_win() == win
+      and vim.api.nvim_win_get_buf(win) == buf
+    then
+      open_comment_input(session, file.path, range)
+    end
+  end)
 end
 
 return M

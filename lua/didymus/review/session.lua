@@ -9,6 +9,7 @@ local threads = require("didymus.review.threads")
 ---@field change didymus.review.Change
 ---@field label string The name of the change in messages, such as "#12".
 ---@field adapter didymus.picker.Adapter The picker of the files panel.
+---@field provider didymus.review.Provider The provider that gave the change. Only it knows its own fields of the change.
 ---@field cwd string
 ---@field merge_base string? Nil if git could not find it.
 ---@field old_branch string? The branch before the review. Nil if `HEAD` was detached.
@@ -19,6 +20,8 @@ local threads = require("didymus.review.threads")
 ---@field change didymus.review.Change
 ---@field label string
 ---@field threads didymus.review.Thread[] In the order of the panel.
+---@field provider didymus.review.Provider
+---@field failed_draft didymus.review.CommentDraft? The last comment that the provider did not add. The next comment at its lines starts with its text.
 ---@field cwd string
 ---@field merge_base string?
 ---@field old_branch string?
@@ -42,6 +45,7 @@ function Session.new(opts)
     label = opts.label,
     threads = {},
     adapter = opts.adapter,
+    provider = opts.provider,
     cwd = opts.cwd,
     merge_base = opts.merge_base,
     old_branch = opts.old_branch,
@@ -215,6 +219,12 @@ function Session:set_threads(list)
   if self:is_panel_open() then
     self.panel:update()
   end
+end
+
+--- Add a new thread. Show it in the panel and in the loaded files.
+---@param thread didymus.review.Thread
+function Session:add_thread(thread)
+  self:set_threads(vim.list_extend(vim.list_slice(self.threads), { thread }))
 end
 
 --- Open the thread at the cursor in a float. If more than one thread is at the line, ask which one.

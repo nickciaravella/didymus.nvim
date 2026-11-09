@@ -16,8 +16,9 @@ local max_warning_files = 10
 --- Run git in `cwd`. Call `cb` in the main loop.
 ---@param cwd string
 ---@param args string[]
----@param cb fun(err: string?, stdout: string?)
-local function git(cwd, args, cb)
+---@param cb fun(err: string?, stdout: string?, code: integer?)
+---@param ok_codes integer[]? The exit codes that are not errors. Default `{ 0 }`.
+local function git(cwd, args, cb, ok_codes)
   local label = "git " .. args[1]
   local ok, err = pcall(
     vim.system,
@@ -25,8 +26,8 @@ local function git(cwd, args, cb)
     { cwd = cwd, text = true },
     function(result)
       vim.schedule(function()
-        if result.code == 0 then
-          cb(nil, result.stdout)
+        if vim.list_contains(ok_codes or { 0 }, result.code) then
+          cb(nil, result.stdout, result.code)
         else
           cb(("%s: %s"):format(label, vim.trim(result.stderr or "")))
         end
@@ -128,6 +129,20 @@ function M.get_merge_base(cwd, base_sha, head_sha, cb)
     end
     cb(nil, vim.trim(stdout --[[@as string]]))
   end)
+end
+
+--- Check if `path` in the working tree is different from `path` in `commit`.
+---@param cwd string
+---@param commit string
+---@param path string Relative to `cwd`.
+---@param cb fun(err: string?, changed: boolean?)
+function M.has_changes(cwd, commit, path, cb)
+  git(cwd, { "diff", "--quiet", commit, "--", path }, function(err, _, code)
+    if err then
+      return cb(err)
+    end
+    cb(nil, code == 1)
+  end, { 0, 1 })
 end
 
 return M

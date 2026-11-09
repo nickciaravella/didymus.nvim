@@ -38,6 +38,36 @@ The `patch` field is `null`. The other fields, such as `status` and `changes`, a
   - The same for `src/unicode/EastAsianWidth.txt` in neovim/neovim#27317 gives `{"changes":5170,"patch":null,"status":"modified"}`.
 - Checked: gh 2.103.2
 
+## Review comments
+
+### `addPullRequestReviewThread` gives `thread: null` and no error for a line out of the diff
+
+The exit code is 0, and the reply has no `errors`. So check that `thread` is not null. A range that starts out of the diff gives the same reply.
+
+- Proof: on nickciaravella/didymus.nvim#64, `addPullRequestReviewThread` with `line: 12` (between the two hunks) gives `{"data":{"addPullRequestReviewThread":{"thread":null}}}` and exit code 0.
+- Checked: gh 2.103.2
+
+### `addPullRequestReviewThread` accepts a range across two hunks, but keeps only the hunk of `line`
+
+The thread has the `startLine` and the `line` of the input. But its `diff_hunk` has only the lines of the hunk of `line`, up to `line`. github.com does not let you select across two hunks. didymus refuses such a range.
+
+- Proof: on nickciaravella/didymus.nvim#64 (hunks at head lines 1-6 and 22-28), `startLine: 5, line: 23` gives a thread with `startLine: 5` and `line: 23`. `gh api repos/{owner}/{repo}/pulls/64/reviews/<id>/comments` gives a `diff_hunk` that starts at `@@ -21,7 +22,7 @@` and stops at line 23.
+- Checked: gh 2.103.2
+
+### A user can have only one pending review on a PR
+
+A second `addPullRequestReview` with no `event` fails with `User can only have one pending review per pull request`. Find the pending review first, also one that the user started on github.com. Only its author can see a pending review.
+
+- Proof: on nickciaravella/didymus.nvim#64, run `addPullRequestReview` with `pullRequestId` and `commitOID` two times. The second call exits with 1, with that message.
+- Checked: gh 2.103.2
+
+### `deletePullRequestReview` removes the threads of the review some seconds later
+
+The reply comes at once, but `reviewThreads` of the PR still has the threads for a short time. So a get of the threads just after a discard can give the deleted threads.
+
+- Proof: on nickciaravella/didymus.nvim#64, after `deletePullRequestReview` of a review with 4 threads, `reviewThreads { totalCount }` gave 4, then 1, then 0 in the next seconds.
+- Checked: gh 2.103.2
+
 ## `gh pr checkout`
 
 ### The fetch lines of git can come before the error on stderr

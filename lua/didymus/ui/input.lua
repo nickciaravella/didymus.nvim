@@ -19,6 +19,7 @@ local M = {}
 ---@field max_height integer?
 ---@field keys didymus.ui.input.Keys?
 ---@field range integer[]? The first and the last line of the code, 1-based. These lines have a highlight. Default: the cursor line.
+---@field text string? The text at the start. Insert mode starts at its end.
 
 local defaults = {
   width = 60,
@@ -142,6 +143,7 @@ function M.open(opts)
   vim.validate("opts.actions", opts.actions, "table")
   vim.validate("opts.on_cancel", opts.on_cancel, "function", true)
   vim.validate("opts.range", opts.range, "table", true)
+  vim.validate("opts.text", opts.text, "string", true)
   local actions = vim.tbl_filter(function(action)
     return action.key
   end, opts.actions)
@@ -170,6 +172,9 @@ function M.open(opts)
   -- FileType autocmds of the user can change it.
   vim.b[buf].completion = false
   vim.bo[buf].filetype = "didymus_input"
+  if opts.text then
+    vim.api.nvim_buf_set_lines(buf, 0, -1, true, vim.split(opts.text, "\n"))
+  end
 
   local win_config = vim.tbl_extend("force", position, {
     width = width,
@@ -187,6 +192,10 @@ function M.open(opts)
   vim.wo[win][0].wrap = true
   vim.wo[win][0].linebreak = true
   vim.wo[win][0].winfixbuf = true
+  if opts.text then
+    update_height(win, max_height)
+    vim.api.nvim_win_set_cursor(win, { vim.api.nvim_buf_line_count(buf), 0 })
+  end
 
   local group = vim.api.nvim_create_augroup(("didymus.ui.input.%d"):format(win), {})
   local done = false
@@ -282,7 +291,8 @@ function M.open(opts)
     end,
   })
 
-  vim.cmd.startinsert()
+  -- The user adds to the end of `opts.text`.
+  vim.cmd.startinsert({ bang = true })
 end
 
 return M

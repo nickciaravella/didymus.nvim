@@ -114,4 +114,48 @@ T["parse()"]["gives no hunks and unknown commentable lines for no patch"] = func
   eq(patch.parse(nil), { hunks = {} })
 end
 
+T["is_commentable()"] = MiniTest.new_set()
+
+--- Two hunks: head lines 1-5 and 15-20. Base lines 1-5 and 15-19.
+local two_hunks = {
+  hunks = {},
+  commentable = {
+    head = { { first = 1, last = 5 }, { first = 15, last = 20 } },
+    base = { { first = 1, last = 5 }, { first = 15, last = 19 } },
+  },
+}
+
+---@param side didymus.review.Side
+---@param first integer
+---@param last integer
+---@return boolean
+local function is_commentable(side, first, last)
+  return patch.is_commentable(two_hunks, side, { first = first, last = last })
+end
+
+T["is_commentable()"]["accepts a line or a range in one hunk, also at its edges"] = function()
+  eq(is_commentable("head", 3, 3), true)
+  eq(is_commentable("head", 1, 5), true)
+  eq(is_commentable("head", 15, 20), true)
+end
+
+T["is_commentable()"]["refuses a line or a range out of the hunks"] = function()
+  eq(is_commentable("head", 10, 10), false)
+  eq(is_commentable("head", 21, 21), false)
+  eq(is_commentable("head", 4, 6), false)
+end
+
+T["is_commentable()"]["refuses a range across two hunks"] = function()
+  eq(is_commentable("head", 5, 15), false)
+end
+
+T["is_commentable()"]["uses the ranges of the side"] = function()
+  eq(is_commentable("head", 20, 20), true)
+  eq(is_commentable("base", 20, 20), false)
+end
+
+T["is_commentable()"]["accepts all lines if the commentable lines are unknown"] = function()
+  eq(patch.is_commentable(patch.parse(nil), "head", { first = 100, last = 200 }), true)
+end
+
 return T

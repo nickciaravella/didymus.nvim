@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel and the review threads (read only, with navigation) work now.
+> **Early development.** Only the agent, the start of a review, the files panel, the review threads (with navigation) and new comments work now.
 
 ## Goals
 
@@ -121,6 +121,7 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review files` | Show the files panel, or hide it. |
 | `:Didymus review thread` | Open the thread at the cursor in a float, with all its comments. |
 | `:Didymus review next`, `:Didymus review prev` | Go to the next or the previous thread, also in a different file. |
+| `:[range]Didymus review comment` | Add a comment on the current line, the selection or the range. The comment goes into your pending review. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
 
@@ -140,7 +141,17 @@ Outdated threads, threads on deleted lines and threads on the file show only in 
 
 `next` and `prev` go through the threads in the order of the panel, from the cursor. If the current window does not show a file of the pull request, they start at the cursor of the code window. They skip the threads that show only in the panel, and the threads at the same line are one stop. At the last or the first thread, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. In a different tabpage, `next` and `prev` go to the review tabpage first.
 
-The highlight groups are `DidymusThread` (default: `DiagnosticInfo`) and `DidymusThreadResolved` (default: `Comment`).
+`comment` opens a float above the lines, with the location as the title. Type the comment, then press `<C-s>` to add it, or `q` in normal mode to cancel. The comment goes into your pending review. If you have no pending review, didymus starts one. A pending review that you started on github.com also works. The new thread shows in the panel and at the line, with the `[pending]` tag. It stays pending until you submit the review on github.com.
+
+didymus refuses a comment, and shows the reason, in these cases:
+
+- The current window does not show a file of the pull request.
+- The buffer is modified, or the file is different from the head of the pull request. A comment needs the line numbers of the head.
+- The lines are not in a hunk of the pull request. A range must be in one hunk. If the hunks of a file are unknown, for example in a large file, GitHub decides.
+
+If GitHub does not add the comment, the error shows. The next `comment` on the same lines starts with your text.
+
+The highlight groups are `DidymusThread` (default: `DiagnosticInfo`), `DidymusThreadResolved` (default: `Comment`) and `DidymusThreadPending` (default: `DiagnosticHint`).
 
 `close` does not check out the branch from before the review. Its message names that branch. `:tabclose` of the review tabpage also closes the review.
 
@@ -153,11 +164,13 @@ vim.keymap.set("n", "<leader>rf", "<Plug>(didymus-review-files)")
 vim.keymap.set("n", "<leader>rt", "<Plug>(didymus-review-thread)")
 vim.keymap.set("n", "<leader>rn", "<Plug>(didymus-review-next)")
 vim.keymap.set("n", "<leader>rp", "<Plug>(didymus-review-prev)")
+vim.keymap.set({ "n", "x" }, "<leader>rm", "<Plug>(didymus-review-comment)")
 ```
 
 | Mapping | Modes |
 | --- | --- |
 | `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)`, `<Plug>(didymus-review-next)`, `<Plug>(didymus-review-prev)` | Normal |
+| `<Plug>(didymus-review-comment)` | Normal, visual |
 
 To check snacks.nvim and `gh`, run `:checkhealth didymus`.
 
@@ -168,6 +181,11 @@ require("didymus").setup({
   review = {
     picker = "snacks", -- "snacks", "test" for tests, or an adapter table
     provider = "github", -- "github", "test" for tests, or a provider table
+    input = { -- the float of comment
+      width = 60, -- below 1 is a fraction of the window width
+      max_height = 10, -- the float grows to this height, then it scrolls
+      keys = { comment = "<C-s>", cancel = "q" }, -- cancel is in normal mode
+    },
   },
 })
 ```

@@ -113,3 +113,10 @@ If a file has a swap file from a Neovim that crashed, `:edit` shows the E325 pro
   3. `nvim_get_mode()` gives `{ blocking = true, mode = "rm" }`. With `-n`, it gives `mode = "n"`.
 - Proof for mini.test: `child.start()` in `deps/mini.nvim/lua/mini/test.lua` adds `--clean -n`.
 - Checked: Neovim 0.12.5
+
+### `child.type_keys()` fails the test on an error message, also from a later callback
+
+mini.test reads `v:errmsg` after each key. An error message from the key fails the test with that message. This also applies to the error of a `vim.schedule()` callback, if it runs before mini.test reads `v:errmsg`. To test an async error, send the last key with `child.api.nvim_input()`. Then poll the messages.
+
+- Proof: in the test "after an error, the next comment at the same lines starts with the text" of `tests/e2e/review/comment.test.lua`, use `child.type_keys("<C-s>")` in place of `child.api.nvim_input("<C-s>")`. The test fails with the error message of didymus. See `type_keys()` in `deps/mini.nvim/lua/mini/test.lua`.
+- Checked: Neovim 0.12.5, mini.nvim f9ac12d

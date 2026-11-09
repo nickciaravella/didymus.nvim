@@ -38,3 +38,7 @@ for _, action in ipairs({ "open", "close", "files", "thread", "next", "prev" }) 
     require("didymus.review")[action]()
   end, { desc = "didymus: review " .. action })
 end
+
+vim.keymap.set({ "n", "x" }, "<Plug>(didymus-review-comment)", function()
+  require("didymus.review").comment()
+end, { desc = "didymus: review comment" })
