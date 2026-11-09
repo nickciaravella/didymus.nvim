@@ -32,6 +32,21 @@ Facts about Neovim that are tricky and not well documented. For the rules, see [
 
 - Checked: Neovim 0.12.5
 
+## Messages
+
+### A progress message of `nvim_echo()` needs `source`, and shows as `<title>: <text>`
+
+`:h nvim_echo` gives `source` as optional, but `kind = "progress"` gives an error with no `source`. The default UI shows the `title`, a colon and the text. So `title = "didymus"` and the text `get #12` show `didymus: get #12`. A later call with the same `id` updates the message.
+
+- Proof: this command prints `{ false, "Required: 'opts.source'" }`. A screenshot of a child Neovim in mini.test shows `didymus: get #12`.
+
+  ```sh
+  nvim --clean --headless -c 'lua io.write(vim.inspect({ pcall(vim.api.nvim_echo, { { "x" } }, false,
+  { kind = "progress", status = "running" }) }), "\n")' -c qa
+  ```
+
+- Checked: Neovim 0.12.5
+
 ## Lua scripts (`nvim -l`)
 
 ### A script that blocks in `io.read` does not exit on SIGTERM or SIGHUP
