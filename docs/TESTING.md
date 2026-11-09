@@ -21,8 +21,8 @@ The first run clones mini.nvim into `deps/`.
 | Kind | Checks | External dependencies |
 | --- | --- | --- |
 | Unit | A pure function, or a function that uses only Neovim. | None. |
-| End-to-end | One feature as a user sees it, through commands, keys and the public API. | None. The local provider in place of GitHub. The test backend or the fake agent in place of an agent. |
-| Integration | One provider or external dependency against the real thing. If necessary, more than one module, for a larger functional test. | The real dependency, for example `gh`. |
+| End-to-end | One feature as a user sees it, through commands, keys and the public API. | None. The test provider in place of GitHub. The test picker in place of snacks. The test backend or the fake agent in place of an agent. |
+| Integration | One provider or external dependency against the real thing. If necessary, more than one module, for a larger functional test. | The real dependency, for example snacks.nvim. |
 
 The unit tests and the end-to-end tests do not use the network.
 
@@ -73,7 +73,7 @@ A unit test calls one function and checks the return value. An end-to-end test u
 
 End-to-end tests drive a child Neovim the way a user does, and check the result that a user sees.
 
-- Configure the local provider in place of GitHub.
+- Configure the test provider in place of GitHub, and the test picker in place of snacks.
 - Use one file for each feature, such as `startup.test.lua`. Use a folder if a feature needs more than one file.
 - Start each test with `child.restart()`, so that no state goes from one test to the next.
 - Drive the plugin with `child.cmd()`, `child.type_keys()` and the public API, such as `require("didymus.agent").start()`.
@@ -125,7 +125,7 @@ The agent starts in a separate process. Do not use a fixed delay. Poll the agent
 
 Integration tests check one provider or external dependency against the real thing. For example, a test checks the GitHub provider with the real `gh`. If necessary, a test can use more than one module, for a larger functional test.
 
-We add the first integration tests with the first provider.
+The first integration tests check the snacks picker adapter. See [#36](https://github.com/nickciaravella/didymus.nvim/issues/36). In the MVP, people test the GitHub provider by hand. See [#50](https://github.com/nickciaravella/didymus.nvim/issues/50).
 
 ## Manual tests
 
