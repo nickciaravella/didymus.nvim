@@ -1,5 +1,6 @@
 local config = require("didymus.config")
 
+--- The public API of didymus.nvim.
 local M = {}
 
 M.config = config.options
@@ -21,7 +22,7 @@ function M.setup(opts)
   if key then
     vim.keymap.set("n", key, function()
       require("didymus.agent").focus()
-    end, { desc = "didymus: focus the agent" })
+    end, { desc = "didymus: show and focus the agent" })
     focus_key = key
   end
 end
