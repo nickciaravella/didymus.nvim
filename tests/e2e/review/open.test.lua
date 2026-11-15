@@ -425,6 +425,7 @@ T["the command completes the review actions"] = function()
     child.fn.getcompletion("Didymus review ", "cmdline"),
     { "close", "files", "next", "open", "prev", "thread" }
   )
+  eq(child.fn.getcompletion("Didymus review next ", "cmdline"), { "file", "hunk", "thread" })
   eq(child.fn.getcompletion("Didymus ", "cmdline"), { "agent", "review" })
 end
 
