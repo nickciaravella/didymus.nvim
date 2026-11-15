@@ -112,13 +112,14 @@ end
 ---@field preview? { lines: string[], filetype: string? } The preview of both items.
 ---@field cb fun(confirmed: boolean)
 
---- Ask a question with the select role, because `vim.fn.confirm()` blocks the UI. The items are
---- `choice` and "Cancel". A close with no choice is a cancel.
+--- Ask a question with the select role and the `choice` kind, because `vim.fn.confirm()` blocks
+--- the UI. The items are `choice` and "Cancel". A close with no choice is a cancel.
 ---@param adapter didymus.picker.Adapter
 ---@param opts didymus.picker.ConfirmOpts
 function M.confirm(adapter, opts)
   adapter.select({
     title = opts.title,
+    kind = "choice",
     items = {
       { text = opts.choice, value = true, preview = opts.preview },
       { text = "Cancel", value = false, preview = opts.preview },

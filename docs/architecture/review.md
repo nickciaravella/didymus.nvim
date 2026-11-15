@@ -93,7 +93,7 @@ These rules apply to `open` and `close`:
 2. With no argument, `open` shows the picker first. Then rule 1 applies to the choice.
 3. Each question uses the select role of the picker, because `vim.fn.confirm()` blocks the UI. The items are the action and "Cancel". A close of the picker with no choice is a cancel.
 4. The uncommitted changes are the tracked files with changes, staged or not. Untracked files stay after a checkout, and git refuses the checkout if one of them conflicts.
-5. The question about uncommitted changes shows the files in its preview. A warning message also lists them, so that they show after the picker closes.
+5. The question about uncommitted changes shows the files in its preview. The snacks `select` layout of the `choice` kind hides the preview. So a warning message also lists the files, and they show also after the picker closes.
 6. If git cannot find the merge-base, the review opens with a warning. No MVP feature uses the merge-base yet.
 7. A progress message shows while the provider works.
 8. A newer `open` wins. The callbacks of an older `open` do nothing.
