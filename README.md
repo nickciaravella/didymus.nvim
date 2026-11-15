@@ -119,7 +119,7 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review open [n\|url]` | Open a pull request in the review tabpage. With no argument, choose a pull request in the picker. The preview shows its description. |
 | `:Didymus review close` | Close the files panel and the review tabpage. |
 | `:Didymus review files` | Show the files panel, or hide it. |
-| `:Didymus review thread` | Open the thread at the cursor in a float, with all its comments. |
+| `:Didymus review fold [all]` | Fold or unfold the threads at the cursor line. With `all`, fold or unfold all threads. |
 | `:Didymus review next [thread\|file\|hunk]`, `:Didymus review prev [thread\|file\|hunk]` | Go to the next or the previous thread, changed file or hunk, also in a different file. The default is `thread`. |
 | `:[range]Didymus review comment` | Add a comment on the current line, the selection or the range. Post it at once, or add it to your pending review. |
 | `:Didymus review reply` | Reply to the thread at the cursor. Post the reply at once, or add it to your pending review. |
@@ -136,19 +136,38 @@ The files panel opens on the left of the review tabpage. It shows the title, the
 
 `files` in a different tabpage goes to the review tabpage and shows the panel.
 
-Under each file, the panel shows its review threads: an icon for the state (💬 active, ✅ resolved), the author and the first line of the first comment. A resolved thread is dim. An outdated thread has the `[outdated]` tag. `<CR>` on a thread goes to its line in the code window. The file row shows the thread count.
+Under each file, the panel shows its review threads: an icon for the state (💬 active, ✅ resolved), the author and the first line of the first comment. A resolved thread is dim. An outdated thread has the `[outdated]` tag. `<CR>` on a thread goes to its line in the code window, and unfolds the thread. The file row shows the thread count.
 
 `a` in the panel shows only the active threads, or all threads again. The default is all threads. The third row of the header shows the filter: `All threads` or `Active threads`. The thread count of a file counts only the threads that show.
 
-In the file, each thread has a sign with its comment count, and a summary under its line. A thread on a range shows at the last line of the range. The signs and the summaries show only in the windows of the review tabpage. In a window outside the review tabpage, the file can have an empty sign column.
+In the file, each thread has a sign with its comment count. The thread shows under its line, so it does not cover the code. A thread on a range shows at the last line of the range. The signs and the threads show only in the windows of the review tabpage. In a window outside the review tabpage, the file can have an empty sign column.
 
-Outdated threads, threads on deleted lines and threads on the file show only in the panel. `<CR>` on one of them opens its float next to the panel.
+```
+2 local count = 2
+  ┌ 💬 @octocat
+  │ Why two?
+  ├ @hubot [pending]
+  │ Because.
+  └ <Space>rr reply  <Space>rx resolve  <Space>rz fold
+  local total = count * 2
+  ✅ @hubot Rename this.
+```
 
-`thread` opens a float next to the cursor. The float closes when the cursor moves. A second `thread` moves the focus into the float, and `q` closes it. If more than one thread is at the line, the picker asks which one to open. Then a second `thread` focuses the float, with no question.
+A thread is folded or unfolded:
+
+- A folded thread is one line: the icon of the state, the author and the first line of the first comment.
+- An unfolded thread shows all its comments. A long line wraps at the width of the window.
+- As on github.com, an active thread starts unfolded, and a resolved thread starts folded. A resolve folds the thread, and an unresolve unfolds it.
+
+`fold` folds the threads at the cursor line, or unfolds them. With two threads at the line, it folds both if one of them is unfolded. `fold all` folds all threads if one of them is unfolded. Else, it unfolds all threads. A refresh keeps the folds.
+
+The last line of an unfolded thread shows your keys for `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)` and `<Plug>(didymus-review-fold)`, if the line fits.
+
+Outdated threads, threads on deleted lines and threads on the file show only in the panel. `<CR>` on one of them opens its float next to the panel. The float closes when the cursor moves. A second `<CR>` moves the focus into the float, and `q` closes it.
 
 `next` and `prev` go in the order of the panel, from the cursor. If the current window does not show a file of the pull request, they start at the cursor of the code window.
 
-- `thread` skips the threads that show only in the panel. If the panel shows only the active threads, it also skips the resolved threads. The threads at the same line are one stop.
+- `thread` skips the threads that show only in the panel. If the panel shows only the active threads, it also skips the resolved threads. The threads at the same line are one stop. `thread` unfolds the threads of the stop, and scrolls the window so that they show.
 - `file` goes to the first change of the file.
 - `hunk` goes to the first change of the hunk.
 - `file` and `hunk` skip the deleted files.
@@ -174,11 +193,11 @@ didymus refuses a comment, and shows the reason, in these cases:
 
 If GitHub does not add the comment, the error shows. The next `comment` on the same lines starts with your text.
 
-If the thread float is open, `reply` and `resolve` use the thread of the float, also from the window under the float. Else, they use the thread at the cursor line. If more than one thread is at the line, the picker asks which one. In the thread float, `r` replies and `x` resolves or unresolves. The footer of the float shows these keys if it is wide enough. For a thread that shows only in the panel, press `<CR>` two times on its row, then use the keys.
+`reply` and `resolve` use the thread at the cursor line. If more than one thread is at the line, the picker asks which one. If the thread float is open, they use the thread of the float, also from the window under the float, such as the panel. In the thread float, `r` replies and `x` resolves or unresolves. The footer of the float shows these keys if it is wide enough.
 
-`reply` opens a float at the cursor line. It has the keys of `comment`: `<C-s>` (reply now) posts the reply at once, and `<C-y>` (add to review) adds it to your pending review. `q` in normal mode cancels. GitHub posts a reply at once only if you have no pending review. A reply in your pending review has `*pending*` in the thread float, until you submit the review. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
+`reply` opens a float at the cursor line. It has the keys of `comment`: `<C-s>` (reply now) posts the reply at once, and `<C-y>` (add to review) adds it to your pending review. `q` in normal mode cancels. GitHub posts a reply at once only if you have no pending review. A reply in your pending review has the `[pending]` tag, until you submit the review. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
 
-After a resolve, the thread is dim in the panel and at its line. If GitHub does not let you do the action, a message shows. For example, GitHub does not let you resolve a thread of your pending review.
+After a resolve, the thread is dim in the panel and at its line, and it is folded. If GitHub does not let you do the action, a message shows. For example, GitHub does not let you resolve a thread of your pending review.
 
 `submit` opens a float for the body of the review, with the verdict and the pull request as the title. Type the body, then press `<C-s>` to submit, or `q` in normal mode to cancel. An approval does not need a body. A comment or a request for changes needs a body, or a pending comment. A comment that you posted at once does not count. With no pending review, `submit` gives a review with only the body. GitHub does not let you approve your own pull request or request changes on it. If GitHub does not submit the review, the error shows. The next `submit` starts with your text.
 
@@ -198,7 +217,8 @@ There are no default keymaps. For example:
 vim.keymap.set("n", "<leader>ro", "<Plug>(didymus-review-open)")
 vim.keymap.set("n", "<leader>rc", "<Plug>(didymus-review-close)")
 vim.keymap.set("n", "<leader>rf", "<Plug>(didymus-review-files)")
-vim.keymap.set("n", "<leader>rt", "<Plug>(didymus-review-thread)")
+vim.keymap.set("n", "<leader>rz", "<Plug>(didymus-review-fold)")
+vim.keymap.set("n", "<leader>rZ", "<Plug>(didymus-review-fold-all)")
 vim.keymap.set("n", "<leader>rnt", "<Plug>(didymus-review-next-thread)")
 vim.keymap.set("n", "<leader>rpt", "<Plug>(didymus-review-prev-thread)")
 vim.keymap.set("n", "<leader>rnf", "<Plug>(didymus-review-next-file)")
@@ -215,7 +235,7 @@ vim.keymap.set("n", "<leader>rR", "<Plug>(didymus-review-refresh)")
 
 | Mapping | Modes |
 | --- | --- |
-| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-submit)`, `<Plug>(didymus-review-discard)`, `<Plug>(didymus-review-refresh)` | Normal |
+| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-fold)`, `<Plug>(didymus-review-fold-all)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-submit)`, `<Plug>(didymus-review-discard)`, `<Plug>(didymus-review-refresh)` | Normal |
 | `<Plug>(didymus-review-next-thread)`, `<Plug>(didymus-review-next-file)`, `<Plug>(didymus-review-next-hunk)`, `<Plug>(didymus-review-prev-thread)`, `<Plug>(didymus-review-prev-file)`, `<Plug>(didymus-review-prev-hunk)` | Normal |
 | `<Plug>(didymus-review-comment)` | Normal, visual |
 
@@ -260,7 +280,7 @@ require("didymus").setup({
       -- post: comment or reply now, or submit. add: add to the pending review. cancel is in normal mode.
       keys = { post = "<C-s>", add = "<C-y>", cancel = "q" },
     },
-    thread = { -- the thread float
+    thread = { -- the thread float of a thread that shows only in the panel
       keys = { reply = "r", resolve = "x" }, -- false turns a key off
     },
   },

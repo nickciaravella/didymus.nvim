@@ -1,6 +1,6 @@
---- The inline threads: a sign and a one-line summary at the line of each thread, and the thread
---- float. The marks show only in the windows of the review tabpage. It does not call the provider.
---- See docs/architecture/review.md#inline-threads.
+--- The inline threads: a sign at the line of each thread, and the thread under the line, folded or
+--- unfolded. The thread float for the threads with no line. The marks show only in the windows of
+--- the review tabpage. It does not call the provider. See docs/architecture/review.md#inline-threads.
 
 local config = require("didymus.config")
 
@@ -86,14 +86,198 @@ local function get_sign_text(count)
   return count <= 9 and tostring(count) or "9+"
 end
 
+--- The text width of the unfolded threads in each buffer, at the last `draw()`. Nil if the buffer
+--- has no unfolded thread, because a folded thread does not wrap.
+---@type table<integer, integer>
+local drawn_widths = {}
+
+--- Replace each tab with spaces, up to the next multiple of `tabstop` columns.
+---@param line string
+---@param tabstop integer
+---@return string
+local function expand_tabs(line, tabstop)
+  local column = 0
+  return (
+    line:gsub("([^\t]*)\t", function(before)
+      column = column + vim.fn.strdisplaywidth(before)
+      local spaces = tabstop - column % tabstop
+      column = column + spaces
+      return before .. (" "):rep(spaces)
+    end)
+  )
+end
+
+--- Split `text` into lines of `width` display cells or fewer, at the spaces. A word that is longer
+--- than a line breaks at the width. An empty text gives one empty line.
+---@param text string With no tabs and no newlines.
+---@param width integer
+---@return string[]
+function M.wrap(text, width)
+  width = math.max(width, 1)
+  local lines, line, line_width = {}, "", 0
+  local function push()
+    table.insert(lines, line)
+    line, line_width = "", 0
+  end
+  for spaces, word in text:gmatch("(%s*)(%S*)") do
+    local word_width = vim.fn.strdisplaywidth(word)
+    if line_width > 0 and line_width + #spaces + word_width > width then
+      push()
+    else
+      -- The spaces at the start of a line can be the indent of code.
+      spaces = spaces:sub(1, width - line_width)
+      line, line_width = line .. spaces, line_width + #spaces
+    end
+    if line_width + word_width <= width then
+      line, line_width = line .. word, line_width + word_width
+    else
+      for _, char in ipairs(vim.fn.split(word, [[\zs]])) do
+        local char_width = vim.fn.strdisplaywidth(char)
+        if line_width > 0 and line_width + char_width > width then
+          push()
+        end
+        line, line_width = line .. char, line_width + char_width
+      end
+    end
+  end
+  if line ~= "" or #lines == 0 then
+    push()
+  end
+  return lines
+end
+
+--- The keys that the user mapped to each `<Plug>` mapping of didymus, in `buf` or global. A key is
+--- in the notation of `keytrans()`, such as `<Space>rr`.
+---@param buf integer
+---@return table<string, string>
+local function get_mapped_keys(buf)
+  local keys = {}
+  local maps = vim.list_extend(vim.api.nvim_buf_get_keymap(buf, "n"), vim.api.nvim_get_keymap("n"))
+  for _, map in ipairs(maps) do
+    if map.rhs and vim.startswith(map.rhs, "<Plug>(didymus-") and not keys[map.rhs] then
+      keys[map.rhs] = map.lhsraw and vim.fn.keytrans(map.lhsraw) or map.lhs
+    end
+  end
+  return keys
+end
+
+---@param chunks [string, string?][]
+---@return integer
+local function get_chunks_width(chunks)
+  local width = 0
+  for _, chunk in ipairs(chunks) do
+    width = width + vim.fn.strdisplaywidth(chunk[1])
+  end
+  return width
+end
+
+--- The keys of the user for the actions on `thread`. Nil if the user mapped no key, or if the line
+--- is wider than `width`.
+---@param thread didymus.review.Thread
+---@param keys table<string, string> From `get_mapped_keys()`.
+---@param width integer
+---@param dim string? The highlight of a resolved thread.
+---@return [string, string?][]?
+local function get_keys_chunks(thread, keys, width, dim)
+  local actions = {
+    { plug = "<Plug>(didymus-review-reply)", name = "reply" },
+    {
+      plug = "<Plug>(didymus-review-resolve)",
+      name = thread.resolved and "unresolve" or "resolve",
+    },
+    { plug = "<Plug>(didymus-review-fold)", name = "fold" },
+  }
+  local chunks = {}
+  for _, action in ipairs(actions) do
+    local key = keys[action.plug]
+    if key then
+      table.insert(chunks, { (#chunks > 0 and "  " or "") .. key, dim or "DidymusThread" })
+      table.insert(chunks, { " " .. action.name, dim or "Comment" })
+    end
+  end
+  if #chunks > 0 and get_chunks_width(chunks) <= width then
+    return chunks
+  end
+end
+
+---@class didymus.review.threads.UnfoldOpts
+---@field indent integer The indent of the line of the thread.
+---@field width integer The width of the text area.
+---@field tabstop integer
+---@field keys table<string, string> From `get_mapped_keys()`.
+
+--- The `virt_lines` of an unfolded thread: all comments in a frame, and the keys of the user.
+---@param thread didymus.review.Thread
+---@param opts didymus.review.threads.UnfoldOpts
+---@return [string, string?][][]
+local function get_unfolded_lines(thread, opts)
+  local dim = thread.resolved and "DidymusThreadResolved" or nil
+  local icons = config.options.review.icons
+  local icon = thread.resolved and icons.resolved or icons.active
+  -- The frame is a character and a space in front of each line.
+  local text_width = opts.width - opts.indent - vim.fn.strdisplaywidth("│ ")
+  ---@type { header: boolean, chunks: [string, string?][] }[]
+  local rows = {}
+  for index, comment in ipairs(thread.comments) do
+    local header = {}
+    if index == 1 and icon ~= "" then
+      table.insert(header, { icon .. " ", dim })
+    end
+    table.insert(header, { "@" .. comment.author, dim or "DidymusThread" })
+    if comment.pending then
+      table.insert(header, { " [pending]", dim or "DidymusThreadPending" })
+    end
+    table.insert(rows, { header = true, chunks = header })
+    -- Keep the indent of the first line, because it can be code.
+    local body = comment.body:gsub("^%s*\n", ""):gsub("%s+$", "")
+    if body ~= "" then
+      for _, body_line in ipairs(vim.split(body, "\n")) do
+        body_line = expand_tabs((body_line:gsub("%s+$", "")), opts.tabstop)
+        for _, part in ipairs(M.wrap(body_line, text_width)) do
+          table.insert(rows, { header = false, chunks = { { part, dim } } })
+        end
+      end
+    end
+  end
+  local keys = get_keys_chunks(thread, opts.keys, text_width, dim)
+  if keys then
+    table.insert(rows, { header = false, chunks = keys })
+  end
+
+  local indent = (" "):rep(opts.indent)
+  local lines = {}
+  for index, row in ipairs(rows) do
+    local frame = "│"
+    if index == 1 then
+      frame = #rows == 1 and "─" or "┌"
+    elseif index == #rows then
+      frame = "└"
+    elseif row.header then
+      frame = "├"
+    end
+    local line = { { indent }, { frame .. " ", dim or "DidymusThread" } }
+    table.insert(lines, vim.list_extend(line, row.chunks))
+  end
+  return lines
+end
+
+---@class didymus.review.threads.DrawOpts
+---@field width integer The width of the text area. The comments of an unfolded thread wrap at it.
+---@field is_folded fun(thread: didymus.review.Thread): boolean
+
 --- Draw the threads of `path` in `buf`. The id of each mark is the index of its thread in
---- `threads`, so that `at_cursor()` finds the thread.
+--- `threads`, so that `at_cursor()` finds the thread. A folded thread is one line: its summary. An
+--- unfolded thread shows all its comments.
 ---@param buf integer
 ---@param path string
 ---@param threads didymus.review.Thread[]
-function M.draw(buf, path, threads)
+---@param opts didymus.review.threads.DrawOpts
+function M.draw(buf, path, threads, opts)
   vim.api.nvim_buf_clear_namespace(buf, M.namespace, 0, -1)
+  drawn_widths[buf] = nil
   local line_count = vim.api.nvim_buf_line_count(buf)
+  ---@type table<string, string>?
+  local keys
   for index, thread in ipairs(threads) do
     local line = thread.path == path and M.get_line(thread)
     if line then
@@ -102,20 +286,41 @@ function M.draw(buf, path, threads)
       local indent = vim.api.nvim_buf_call(buf, function()
         return vim.fn.indent(line)
       end)
-      local summary = M.get_summary(thread, "DidymusThread")
-      table.insert(summary, 1, { (" "):rep(indent) })
+      local virt_lines
+      if opts.is_folded(thread) or #thread.comments == 0 then
+        local summary = M.get_summary(thread, "DidymusThread")
+        table.insert(summary, 1, { (" "):rep(indent) })
+        virt_lines = { summary }
+      else
+        keys = keys or get_mapped_keys(buf)
+        virt_lines = get_unfolded_lines(thread, {
+          indent = indent,
+          width = opts.width,
+          tabstop = vim.bo[buf].tabstop,
+          keys = keys,
+        })
+        drawn_widths[buf] = opts.width
+      end
       vim.api.nvim_buf_set_extmark(buf, M.namespace, line - 1, 0, {
         id = index,
         sign_text = get_sign_text(#thread.comments),
         sign_hl_group = thread.resolved and "DidymusThreadResolved" or "DidymusThread",
-        virt_lines = { summary },
+        virt_lines = virt_lines,
       })
     end
   end
 end
 
+--- The text width of the last `draw()` in `buf`. Nil if `buf` has no unfolded thread.
+---@param buf integer
+---@return integer?
+function M.get_drawn_width(buf)
+  return drawn_widths[buf]
+end
+
 --- Remove the marks from all buffers.
 function M.clear()
+  drawn_widths = {}
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(buf) then
       vim.api.nvim_buf_clear_namespace(buf, M.namespace, 0, -1)

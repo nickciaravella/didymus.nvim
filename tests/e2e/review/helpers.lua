@@ -165,6 +165,50 @@ function M.make_thread(id, path, fields)
   }, fields)
 end
 
+---@class didymus.test.ThreadMark
+---@field row integer 0-based.
+---@field lines string[] The text of the `virt_lines` of the mark.
+
+--- The thread marks in the current buffer of the child, in the order of the rows.
+---@param child MiniTest.child
+---@return didymus.test.ThreadMark[]
+function M.thread_marks(child)
+  return child.lua_get([[
+    vim.tbl_map(function(mark)
+      return {
+        row = mark[2],
+        lines = vim.tbl_map(function(line)
+          return table.concat(vim.tbl_map(function(chunk)
+            return chunk[1]
+          end, line))
+        end, mark[4].virt_lines),
+      }
+    end, vim.api.nvim_buf_get_extmarks(
+      0,
+      require("didymus.review.threads").namespace,
+      0,
+      -1,
+      { details = true }
+    ))
+  ]])
+end
+
+--- Redraw the child, and wait until the unfolded threads of the current buffer wrap at the text
+--- width. A redraw can change the text width, for example with a new sign column.
+---@param child MiniTest.child
+function M.wait_for_wrap(child)
+  child.cmd("redraw")
+  wait_for(function()
+    return child.lua_get([[
+      (function()
+        local buf = vim.api.nvim_get_current_buf()
+        local width = require("didymus.review.threads").get_drawn_width(buf)
+        return width == nil or width == require("didymus.review").current():get_text_width(buf)
+      end)()
+    ]])
+  end, "the wrap at the text width")
+end
+
 --- Wait until the open review has `count` threads.
 ---@param child MiniTest.child
 ---@param count integer

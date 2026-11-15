@@ -385,6 +385,43 @@ T["the mappings go to the next and the previous thread, file and hunk"] = functi
   eq(position(), { "a.txt", 5 })
 end
 
+T["next thread unfolds the threads at the stop, and scrolls so that they show"] = function()
+  local comments = {}
+  for index = 1, 8 do
+    table.insert(
+      comments,
+      { author = "octocat", body = "Comment " .. index .. ".", pending = false }
+    )
+  end
+  open_review({
+    make_thread("a2", "a.txt", { range = { first = 2, last = 2 }, resolved = true }),
+    make_thread("a30", "a.txt", { range = { first = 30, last = 30 }, comments = comments }),
+  }, {
+    base = { ["a.txt"] = make_text("a", 40) },
+    head = { ["a.txt"] = make_text("a", 40, { [2] = "A2", [30] = "A30" }) },
+  })
+  open_file("a.txt", 1)
+  child.cmd("Didymus review fold all")
+  -- A move to a hunk does not unfold.
+  child.cmd("Didymus review next hunk")
+  eq(helpers.thread_marks(child)[1].lines, { "✅ @octocat A comment." })
+
+  child.api.nvim_win_set_cursor(0, { 1, 0 })
+  child.cmd("Didymus review next")
+  eq(position(), { "a.txt", 2 })
+  eq(helpers.thread_marks(child)[1].lines, { "┌ ✅ @octocat", "└ A comment." })
+
+  child.cmd("Didymus review next")
+  eq(position(), { "a.txt", 30 })
+  eq(#helpers.thread_marks(child)[2].lines, 16)
+  local screen = vim.tbl_map(function(row)
+    return vim.trim(table.concat(row))
+  end, child.get_screenshot().text)
+  -- The sign is the comment count.
+  eq(vim.tbl_contains(screen, "8 A30"), true)
+  eq(vim.tbl_contains(screen, "└ Comment 8."), true)
+end
+
 T["next with an unknown kind shows an error"] = function()
   open_review()
   -- An error message in a command is an error of `child.cmd()`.
