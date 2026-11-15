@@ -1,10 +1,11 @@
 local M = {}
 
 local views = { float = {}, split = {} }
+local stop_kinds = { thread = {}, file = {}, hunk = {} }
 
 local tree = {
   agent = { start = {}, toggle = views, focus = views, stop = {}, append = {}, send = {} },
-  review = { open = {}, close = {}, files = {}, thread = {} },
+  review = { open = {}, close = {}, files = {}, thread = {}, next = stop_kinds, prev = stop_kinds },
 }
 
 ---@param text string
@@ -67,6 +68,12 @@ local review_actions = {
   thread = function()
     require("didymus.review").thread()
   end,
+  next = function(rest)
+    require("didymus.review").next({ kind = non_empty(rest) })
+  end,
+  prev = function(rest)
+    require("didymus.review").prev({ kind = non_empty(rest) })
+  end,
 }
 
 local groups = {
@@ -74,7 +81,10 @@ local groups = {
     actions = agent_actions,
     usage = "Use :Didymus agent start, toggle, focus, stop, append or send.",
   },
-  review = { actions = review_actions, usage = "Use :Didymus review open, close, files or thread." },
+  review = {
+    actions = review_actions,
+    usage = "Use :Didymus review open, close, files, thread, next or prev.",
+  },
 }
 
 ---@param args string

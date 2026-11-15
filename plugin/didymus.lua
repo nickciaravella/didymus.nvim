@@ -38,3 +38,11 @@ for _, action in ipairs({ "open", "close", "files", "thread" }) do
     require("didymus.review")[action]()
   end, { desc = "didymus: review " .. action })
 end
+
+for _, action in ipairs({ "next", "prev" }) do
+  for _, kind in ipairs({ "thread", "file", "hunk" }) do
+    vim.keymap.set("n", ("<Plug>(didymus-review-%s-%s)"):format(action, kind), function()
+      require("didymus.review")[action]({ kind = kind })
+    end, { desc = ("didymus: review %s %s"):format(action, kind) })
+  end
+end

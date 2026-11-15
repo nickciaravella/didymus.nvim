@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel and the review threads (read only) work now.
+> **Early development.** Only the agent, the start of a review, the files panel, the review threads (read only) and the navigation work now.
 
 ## Goals
 
@@ -120,6 +120,7 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review close` | Close the files panel and the review tabpage. |
 | `:Didymus review files` | Show the files panel, or hide it. |
 | `:Didymus review thread` | Open the thread at the cursor in a float, with all its comments. |
+| `:Didymus review next [thread\|file\|hunk]`, `:Didymus review prev [thread\|file\|hunk]` | Go to the next or the previous thread, changed file or hunk, also in a different file. The default is `thread`. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
 
@@ -139,6 +140,15 @@ Outdated threads, threads on deleted lines and threads on the file show only in 
 
 `thread` opens a float next to the cursor. The float closes when the cursor moves. A second `thread` moves the focus into the float, and `q` closes it. If more than one thread is at the line, the picker asks which one to open.
 
+`next` and `prev` go in the order of the panel, from the cursor. If the current window does not show a file of the pull request, they start at the cursor of the code window.
+
+- `thread` skips the threads that show only in the panel. If the panel shows only the active threads, it also skips the resolved threads. The threads at the same line are one stop.
+- `file` goes to the first change of the file.
+- `hunk` goes to the first change of the hunk.
+- `file` and `hunk` skip the deleted files.
+
+At the last or the first stop, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. In a different tabpage, `next` and `prev` go to the review tabpage first.
+
 The highlight groups are `DidymusThread` (default: `DiagnosticInfo`) and `DidymusThreadResolved` (default: `Comment`).
 
 `close` does not check out the branch from before the review. Its message names that branch. `:tabclose` of the review tabpage also closes the review.
@@ -150,11 +160,18 @@ vim.keymap.set("n", "<leader>ro", "<Plug>(didymus-review-open)")
 vim.keymap.set("n", "<leader>rc", "<Plug>(didymus-review-close)")
 vim.keymap.set("n", "<leader>rf", "<Plug>(didymus-review-files)")
 vim.keymap.set("n", "<leader>rt", "<Plug>(didymus-review-thread)")
+vim.keymap.set("n", "<leader>rnt", "<Plug>(didymus-review-next-thread)")
+vim.keymap.set("n", "<leader>rpt", "<Plug>(didymus-review-prev-thread)")
+vim.keymap.set("n", "<leader>rnf", "<Plug>(didymus-review-next-file)")
+vim.keymap.set("n", "<leader>rpf", "<Plug>(didymus-review-prev-file)")
+vim.keymap.set("n", "<leader>rnh", "<Plug>(didymus-review-next-hunk)")
+vim.keymap.set("n", "<leader>rph", "<Plug>(didymus-review-prev-hunk)")
 ```
 
 | Mapping | Modes |
 | --- | --- |
 | `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)` | Normal |
+| `<Plug>(didymus-review-next-thread)`, `<Plug>(didymus-review-next-file)`, `<Plug>(didymus-review-next-hunk)`, `<Plug>(didymus-review-prev-thread)`, `<Plug>(didymus-review-prev-file)`, `<Plug>(didymus-review-prev-hunk)` | Normal |
 
 To check snacks.nvim and `gh`, run `:checkhealth didymus`.
 
