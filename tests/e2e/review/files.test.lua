@@ -102,6 +102,14 @@ T["the panel shows the header and one row for each file, in the order of the pro
   eq(calls[1].items[5].segments[1], { "A", "Added" })
 end
 
+T["each file row has a location for the preview, except a deleted file and the header"] = function()
+  open_review()
+  local locations = vim.tbl_map(function(item)
+    return item.location or false
+  end, panels()[1].items)
+  eq(locations, { false, false, { path = "file.txt" }, { path = "new.txt" }, false })
+end
+
 T["to choose a file opens the real file in the code window. The panel stays open"] = function()
   local review = open_review()
   local code_win = child.api.nvim_get_current_win()
