@@ -4,6 +4,7 @@ local views = { float = {}, split = {} }
 
 local tree = {
   agent = { start = {}, toggle = views, focus = views, stop = {}, append = {}, send = {} },
+  review = { open = {}, close = {} },
 }
 
 ---@param text string
@@ -53,20 +54,36 @@ local agent_actions = {
   end,
 }
 
+local review_actions = {
+  open = function(rest)
+    require("didymus.review").open({ id = non_empty(rest) })
+  end,
+  close = function()
+    require("didymus.review").close()
+  end,
+}
+
+local groups = {
+  agent = {
+    actions = agent_actions,
+    usage = "Use :Didymus agent start, toggle, focus, stop, append or send.",
+  },
+  review = { actions = review_actions, usage = "Use :Didymus review open or close." },
+}
+
 ---@param args string
 ---@param range integer[]? The first and the last line of the command range.
 function M.run(args, range)
-  local group, rest = split_word(args)
+  local group_name, rest = split_word(args)
+  local group = groups[group_name]
   local action
   action, rest = split_word(rest)
-  if group ~= "agent" or not agent_actions[action] then
-    vim.notify(
-      "didymus: unknown command. Use :Didymus agent start, toggle, focus, stop, append or send.",
-      vim.log.levels.ERROR
-    )
+  local usage = group and group.usage or "Use :Didymus agent or :Didymus review."
+  if not group or not group.actions[action] then
+    vim.notify("didymus: unknown command. " .. usage, vim.log.levels.ERROR)
     return
   end
-  agent_actions[action](rest, range)
+  group.actions[action](rest, range)
 end
 
 ---@param arglead string

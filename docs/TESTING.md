@@ -144,6 +144,8 @@ Then drive it in the child with `require("didymus.ui.picker.test")`:
 
 `target` is the index or the text of an item. Nil is the item under the cursor. The calls are synchronous, so the test does not wait.
 
+A question of didymus, such as "Uncommitted changes. Check out #1?", is a select. Answer it with `choose("Check out")` or `choose("Cancel")`.
+
 ### The test provider
 
 The test provider keeps its changes in memory. Set it in `setup()`:
@@ -162,6 +164,8 @@ The helpers in `tests/e2e/review/helpers.lua` run in the test process:
 | `git(dir, args)`, `write(dir, files)` | Run git, or write files, in the repo. |
 
 The `files` of the change come from `git diff`, with the patch as GitHub gives it. The helpers do not use the git config of the user. Before you call `checkout`, set the directory of the child to the repo with `child.fn.chdir(repo.dir)`. See `tests/e2e/review/provider.test.lua`.
+
+The flow of `:Didymus review open` is async. Poll the child with `wait_for()` until the review opens, or until a picker call or a message shows. See `tests/e2e/review/open.test.lua`.
 
 ### The GitHub provider
 

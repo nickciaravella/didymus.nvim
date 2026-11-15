@@ -46,6 +46,8 @@ flowchart TB
 | Review design | See [`architecture/review.md`](architecture/review.md). |
 | First integrations | The GitHub provider, through `gh`, and the snacks.nvim picker. |
 | Review workspace | The current checkout in the MVP. didymus asks before it checks out the PR over uncommitted changes. A worktree comes later. See [#48](https://github.com/nickciaravella/didymus.nvim/issues/48). |
+| Review questions | The select role of the picker, because `vim.fn.confirm()` blocks the UI. See [`architecture/review.md`](architecture/review.md#workspace-flow). |
+| Open reviews | One at a time, in its own tabpage. |
 | Pickers | Only snacks.nvim in the MVP. The picker interface keeps the select role and the panel role apart, so that other pickers can come later. The health check reports a missing picker. See [`architecture/review.md`](architecture/review.md#picker-interface). |
 | Picker config | `review.picker_config[kind][adapter_name]`, for the kinds `changes`, `choice` and `files`. The defaults of each adapter are in the adapter. See [`architecture/review.md`](architecture/review.md#picker-config). |
 | Preview in the files panel | The code window shows the item under the cursor, only while the panel has the focus. |
@@ -105,6 +107,7 @@ lua/didymus/health.lua       :checkhealth didymus
 lua/didymus/agent/           the agent. See architecture/agent.md.
 lua/didymus/ui/              UI parts for all epics, such as the input float and window layout
 lua/didymus/ui/picker/       the picker interface and its adapters: snacks, test
+lua/didymus/review/          the review API, the review session and the workspace. See architecture/review.md.
 lua/didymus/review/provider/ the review types, the provider interface and its providers: github, test
 tests/helpers.lua            helpers for all kinds of tests
 tests/unit/didymus/          unit tests, mirror lua/didymus/

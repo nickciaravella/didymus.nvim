@@ -156,7 +156,7 @@ T["after an exit, the buffer stays, and the next toggle starts a new conversatio
 end
 
 T[":Didymus completes the agent commands"] = function()
-  eq(child.fn.getcompletion("Didymus ", "cmdline"), { "agent" })
+  eq(child.fn.getcompletion("Didymus ", "cmdline"), { "agent", "review" })
   eq(
     child.fn.getcompletion("Didymus agent ", "cmdline"),
     { "append", "focus", "send", "start", "stop", "toggle" }

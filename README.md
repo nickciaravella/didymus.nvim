@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent works now.
+> **Early development.** Only the agent and the start of a review work now.
 
 ## Goals
 
@@ -16,6 +16,7 @@ Review pull requests in Neovim. Read the real code with full LSP, comment on the
 
 - Neovim 0.12+
 - `git`
+- For the review: [snacks.nvim](https://github.com/folke/snacks.nvim) and the [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login`
 
 ## Installation
 
@@ -105,6 +106,69 @@ require("didymus").setup({
       ready_delay = 500, -- ms to wait after the first output of the agent, before input
       submit_delay = 50, -- ms to wait after the prompt text, before the Enter key
     },
+  },
+})
+```
+
+## Review
+
+Review a GitHub pull request in the current checkout. The picker is [snacks.nvim](https://github.com/folke/snacks.nvim). didymus gets the pull requests with `gh`.
+
+| Command | Behavior |
+| --- | --- |
+| `:Didymus review open [n\|url]` | Open a pull request in the review tabpage. With no argument, choose a pull request in the picker. The preview shows its description. |
+| `:Didymus review close` | Close the review tabpage. |
+
+If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
+
+Only one review is open at a time. `open` of the same pull request goes to its tabpage. `open` of a different pull request asks to close the open review first.
+
+`close` does not check out the branch from before the review. Its message names that branch. `:tabclose` of the review tabpage also closes the review.
+
+There are no default keymaps. For example:
+
+```lua
+vim.keymap.set("n", "<leader>ro", "<Plug>(didymus-review-open)")
+vim.keymap.set("n", "<leader>rc", "<Plug>(didymus-review-close)")
+```
+
+| Mapping | Modes |
+| --- | --- |
+| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)` | Normal |
+
+To check snacks.nvim and `gh`, run `:checkhealth didymus`.
+
+`review.picker_config` sets the picker options of each kind of list. In each kind, the options of an adapter go under its name, such as `snacks`:
+
+| Kind | List | snacks default |
+| --- | --- | --- |
+| `changes` | The pull request list. | The `default` preset: a float with the list on the left and the description on the right. |
+| `choice` | A question, such as "Uncommitted changes. Check out #12?". | The `select` preset: a small float. It hides the preview. Press `<a-p>` to show it. |
+| `files` | The files panel. | The `sidebar` preset, with the preview in the code window. |
+
+For example, show the pull request list at the bottom, and make the files panel wider:
+
+```lua
+require("didymus").setup({
+  review = {
+    picker_config = {
+      changes = { snacks = { layout = { preset = "ivy" } } },
+      files = { snacks = { layout = { layout = { width = 50, min_width = 50 } } } },
+    },
+  },
+})
+```
+
+didymus merges your options over the default of the kind. You cannot change the options that didymus needs, such as `items`, `format` and `confirm`.
+
+The defaults:
+
+```lua
+require("didymus").setup({
+  review = {
+    picker = "snacks", -- "snacks", "test" for tests, or an adapter table
+    picker_config = {}, -- the options of each kind of list, for each adapter
+    provider = "github", -- "github", "test" for tests, or a provider table
   },
 })
 ```
