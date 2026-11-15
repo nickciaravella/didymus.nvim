@@ -25,6 +25,18 @@ local function check_agent()
   end
 end
 
+local function check_review()
+  vim.health.start("didymus review")
+
+  local adapter, err =
+    require("didymus.ui.picker").get(require("didymus.config").options.review.picker)
+  if adapter then
+    adapter.health()
+  else
+    vim.health.error(("%s (review.picker)"):format(err), "Set `review.picker`.")
+  end
+end
+
 function M.check()
   vim.health.start("didymus")
 
@@ -42,6 +54,7 @@ function M.check()
   end
 
   check_agent()
+  check_review()
 end
 
 return M

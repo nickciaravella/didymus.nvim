@@ -120,6 +120,7 @@ The MVP needs no diff provider. The patch from the code host gives the first hun
 ```lua
 ---@class didymus.picker.Item
 ---@field text string           Plain text, for search and for pickers with no highlights.
+---@field id? string            A stable key. `update()` uses it to keep the cursor on the same item. Default `text`.
 ---@field segments? [string, string?][] Text and highlight group, for pickers with highlights.
 ---@field depth? integer        The indent in a tree. 0 is the top level. Default 0.
 ---@field location? { path: string, line: integer? } A file to show in the preview.
@@ -129,21 +130,28 @@ The MVP needs no diff provider. The patch from the code host gives the first hun
 ---@class didymus.picker.Action
 ---@field key string
 ---@field name string
----@field fn fun(item: didymus.picker.Item)
+---@field fn fun(item: didymus.picker.Item?) The item under the cursor. Nil if the panel is empty.
+
+---@alias didymus.picker.Kind "changes"|"choice"|"files"
+
+--- `config[kind][adapter_name]` has the options of one adapter for one kind.
+---@alias didymus.picker.Config table<didymus.picker.Kind, table<string, table>>
 
 ---@class didymus.picker.SelectOpts
 ---@field title string
+---@field kind? didymus.picker.Kind The adapter uses the options of this kind.
 ---@field items didymus.picker.Item[]
----@field on_choose fun(item: didymus.picker.Item)
+---@field on_choose fun(item: didymus.picker.Item) The picker closes first.
 ---@field on_cancel? fun()
 
 ---@class didymus.picker.PanelOpts
 ---@field title string
+---@field kind? didymus.picker.Kind The adapter uses the options of this kind.
 ---@field items fun(): didymus.picker.Item[] The panel calls it on open and on `update()`.
----@field on_choose fun(item: didymus.picker.Item) The panel stays open.
+---@field on_choose fun(item: didymus.picker.Item) The panel stays open, and its window stays current.
 ---@field actions? didymus.picker.Action[] Keys in the panel, such as `R` for refresh.
 ---@field position? "left"|"right" Default "left".
----@field width? number
+---@field width? number Below 1, a fraction of the editor width. Else columns. Default 40.
 
 ---@class didymus.picker.Panel
 ---@field update fun(self) Call `items()` again and show the new items. Keep the cursor on the same item.
@@ -152,14 +160,43 @@ The MVP needs no diff provider. The patch from the code host gives the first hun
 ---@field is_open fun(self): boolean
 
 ---@class didymus.picker.Adapter
----@field select fun(opts: didymus.picker.SelectOpts)
----@field panel fun(opts: didymus.picker.PanelOpts): didymus.picker.Panel
+---@field select fun(opts: didymus.picker.SelectOpts, config: didymus.picker.Config?)
+---@field panel fun(opts: didymus.picker.PanelOpts, config: didymus.picker.Config?): didymus.picker.Panel
 ---@field health fun() Report the dependencies with `vim.health`.
 ```
 
-1. `review.picker` in the config is `"snacks"` (the default) or an adapter table. A table lets users add a picker with no change to didymus.
-2. The health check calls `health()` of the configured adapter. The snacks adapter reports an error if `Snacks.picker` is not available.
-3. The `test` adapter records the calls, and lets end-to-end tests choose an item. It is the same idea as the test backend of the agent.
+1. `review.picker` in the config is `"snacks"` (the default), `"test"` or an adapter table. A table lets users add a picker with no change to didymus.
+2. Get the adapter with `require("didymus.ui.picker").get(review.picker, review.picker_config)`. Its `select()` and `panel()` give `review.picker_config` to the adapter.
+3. The health check calls `health()` of the configured adapter. The snacks adapter reports an error if `Snacks.picker` is not available.
+4. The `test` adapter records the calls, and lets end-to-end tests choose an item or press the key of an action. It is the same idea as the test backend of the agent. See [`TESTING.md`](../TESTING.md#the-test-picker).
+5. `on_choose` of the panel does not move the focus. The caller opens the file in its code window, because the review session owns the tabpage.
+6. When the cursor moves in the panel, the code window shows the item: `preview` first, else `location` at its line. A row with neither, such as a header, shows no preview. The preview shows only while the panel has the focus. `<CR>` opens the real file.
+7. The keys of the actions work only in the list of the panel, not in its search input.
+8. The snacks panel is a split, so it shows only in the tabpage where it opened.
+
+### Picker config
+
+The layout of a list depends on the picker. So `review.picker_config` has options for each kind of list, and in each kind, options for each adapter:
+
+| Kind | List | snacks default |
+| --- | --- | --- |
+| `changes` | The PR list. | `layout = { preset = "default" }`: a float with the list on the left and the preview on the right. |
+| `choice` | A confirm prompt, the verdict, the choice of a thread. | `layout = { preset = "select" }`. |
+| `files` | The files panel. | The `sidebar` preset with the preview in the code window, and the options of the snacks explorer. |
+
+```lua
+review = {
+  picker_config = {
+    changes = { snacks = { layout = { preset = "ivy" } } },
+    files = { snacks = { layout = { layout = { width = 50, min_width = 50 } } } },
+  },
+}
+```
+
+- The snacks adapter reads `picker_config[kind].snacks`. It merges the options with `vim.tbl_deep_extend()`, in this order: the default of the kind, then the user options, then the options that didymus needs.
+- The user cannot change the options that didymus needs: `items`, `finder`, `format`, `confirm`, `on_close`, `show_empty`, `actions` and the keys of the actions.
+- With no kind, a select uses the snacks default layout, and a panel uses the `files` default.
+- The defaults of each adapter are in the adapter, so that `config.lua` does not know about snacks.
 
 ## Provider interface
 

@@ -10,17 +10,7 @@ function M.fake_cmd(...)
   return { vim.v.progpath, "--clean", "-l", fake_agent, ... }
 end
 
----@param check fun(): boolean
----@param what string
-function M.wait_for(check, what)
-  for _ = 1, 500 do
-    if check() then
-      return
-    end
-    vim.uv.sleep(10)
-  end
-  error("timeout: " .. what)
-end
+M.wait_for = dofile("tests/helpers.lua").wait_for
 
 ---@param child MiniTest.child
 ---@param mode string
