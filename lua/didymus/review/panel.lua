@@ -105,6 +105,7 @@ end
 function M.open(adapter, session)
   return adapter.panel({
     title = "Review " .. session.label,
+    kind = "files",
     items = function()
       return get_items(session)
     end,

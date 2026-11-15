@@ -103,7 +103,7 @@ Comments need the line numbers of the PR head. So didymus refuses a new comment 
 
 ### Files panel
 
-The files panel opens with the review tabpage, in the panel role of the picker. Its title is `Review #12`. `lua/didymus/review/panel.lua` makes the items.
+The files panel opens with the review tabpage, in the panel role of the picker, with the `files` kind. Its title is `Review #12`. `lua/didymus/review/panel.lua` makes the items.
 
 | Row | Text | Highlights |
 | --- | --- | --- |
