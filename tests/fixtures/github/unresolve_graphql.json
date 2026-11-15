@@ -1,0 +1,34 @@
+{
+  "data": {
+    "unresolveReviewThread": {
+      "thread": {
+        "id": "PRRT_kwDOVmiVUM61Mj43",
+        "path": "lua/didymus/init.lua",
+        "line": 3,
+        "startLine": 3,
+        "diffSide": "RIGHT",
+        "startDiffSide": null,
+        "isResolved": false,
+        "isOutdated": false,
+        "subjectType": "LINE",
+        "viewerCanReply": true,
+        "viewerCanResolve": true,
+        "viewerCanUnresolve": false,
+        "comments": {
+          "pageInfo": {
+            "hasNextPage": false
+          },
+          "nodes": [
+            {
+              "author": {
+                "login": "nickciaravella"
+              },
+              "body": "Manual test of didymus #45: reply, resolve and unresolve this thread.",
+              "state": "SUBMITTED"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

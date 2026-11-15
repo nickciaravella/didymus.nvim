@@ -39,6 +39,9 @@
 ---@field range didymus.review.Range? Nil if the thread is outdated or on the file.
 ---@field resolved boolean
 ---@field outdated boolean
+---@field can_reply boolean The viewer can reply.
+---@field can_resolve boolean The viewer can resolve the thread now.
+---@field can_unresolve boolean The viewer can unresolve the thread now.
 ---@field comments didymus.review.Comment[]
 
 ---@class didymus.review.Comment
@@ -53,6 +56,12 @@
 ---@field body string
 ---@field pending boolean True adds the comment to the pending review. False posts it at once.
 
+--- A reply to a thread.
+---@class didymus.review.ReplyDraft
+---@field thread_id string
+---@field body string
+---@field pending boolean True adds the reply to the pending review. False posts it at once.
+
 --- All methods are async. Each one calls `cb` later, and does not block the UI.
 ---@class didymus.review.Provider
 ---@field list_changes fun(self, opts: { search: string? }, cb: fun(err: string?, changes: didymus.review.ChangeSummary[]?))
@@ -60,8 +69,8 @@
 ---@field checkout fun(self, change: didymus.review.Change, cb: fun(err: string?)) Make the change head the current checkout.
 ---@field get_threads fun(self, change: didymus.review.Change, cb: fun(err: string?, threads: didymus.review.Thread[]?))
 ---@field add_comment fun(self, change: didymus.review.Change, draft: didymus.review.CommentDraft, cb: fun(err: string?, thread: didymus.review.Thread?)) Add to the pending review, and start one if there is none. Or post at once.
----@field reply fun(self, change: didymus.review.Change, thread_id: string, body: string, cb: fun(err: string?))
----@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?))
+---@field reply fun(self, change: didymus.review.Change, draft: didymus.review.ReplyDraft, cb: fun(err: string?, comment: didymus.review.Comment?)) Add to the pending review, and start one if there is none. Or post at once.
+---@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?, thread: didymus.review.Thread?)) Give the thread with its new state.
 ---@field submit_review fun(self, change: didymus.review.Change, verdict: "approve"|"comment"|"request_changes", body: string?, cb: fun(err: string?))
 ---@field discard_review fun(self, change: didymus.review.Change, cb: fun(err: string?))
 ---@field health fun() Report the dependencies with `vim.health`.

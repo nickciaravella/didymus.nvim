@@ -1,0 +1,32 @@
+{
+  "data": {
+    "node": {
+      "id": "PRRT_kwDOVmiVUM63la0k",
+      "path": "lua/didymus/init.lua",
+      "line": 25,
+      "startLine": 23,
+      "diffSide": "RIGHT",
+      "startDiffSide": "RIGHT",
+      "isResolved": false,
+      "isOutdated": false,
+      "subjectType": "LINE",
+      "viewerCanReply": true,
+      "viewerCanResolve": true,
+      "viewerCanUnresolve": false,
+      "comments": {
+        "pageInfo": {
+          "hasNextPage": false
+        },
+        "nodes": [
+          {
+            "author": {
+              "login": "nickciaravella"
+            },
+            "body": "Recorded for the unit tests of didymus: posted at once on lines 23-25.",
+            "state": "SUBMITTED"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -154,6 +154,9 @@ T["add to review shows the comment as pending in the panel and at the line"] = f
     range = { first = 3, last = 3 },
     resolved = false,
     outdated = false,
+    can_reply = true,
+    can_resolve = false,
+    can_unresolve = false,
     comments = { { author = "reviewer", body = "Looks good.", pending = true } },
   })
   eq(panel_rows(), {

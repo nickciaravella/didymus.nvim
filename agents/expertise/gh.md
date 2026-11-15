@@ -68,6 +68,34 @@ With no pending review, REST `POST pulls/{n}/comments` posts the comment, but it
 - Proof: `add_comment()` with `pending = false` in `lua/didymus/review/provider/github/init.lua` gave the fixtures `tests/fixtures/github/comment_post_*_graphql.json` on nickciaravella/didymus.nvim#64. A query of `reviews(states: [PENDING])` after the submit gave no review.
 - Checked: gh 2.103.2
 
+### `viewerCanResolve` and `viewerCanUnresolve` depend on the state, and are false on a pending thread
+
+On a submitted thread, `viewerCanResolve` is true only if the thread is not resolved, and `viewerCanUnresolve` only if it is resolved. So read the fields again after a change: the payload of `resolveReviewThread` has `thread`. On a thread of a pending review, both fields are always false, but `resolveReviewThread` and `unresolveReviewThread` still work. github.com shows no resolve button there. `viewerCanReply` is true on both.
+
+- Proof: on nickciaravella/didymus.nvim#64, submit a review with `event: COMMENT` and one thread. `resolveReviewThread` gives `viewerCanResolve: false, viewerCanUnresolve: true`, and `unresolveReviewThread` gives the opposite. In a pending review, `addPullRequestReviewThread`, then `resolveReviewThread`, give `isResolved: true` with both fields false.
+- Checked: gh 2.103.2
+
+### `addPullRequestReviewThreadReply` with no `pullRequestReviewId` posts at once, but only with no pending review
+
+With no pending review, the reply is posted at once: its `state` is `SUBMITTED`, in a new review with the state `COMMENTED`. With a pending review, the same call puts the reply into the pending review as `PENDING`, with no error. REST `POST pulls/{n}/comments/{id}/replies` then fails with 422 and `user_id can only have one pending review per pull request`. So find the pending review first, as for a single comment.
+
+- Proof: on nickciaravella/didymus.nvim#64, call `addPullRequestReviewThreadReply` with only `pullRequestReviewThreadId` and `body`: the comment is `SUBMITTED`. Start a review with `addPullRequestReview`, and call it again: the comment is `PENDING` in that review. Then the REST call gives 422.
+- Checked: gh 2.103.2
+
+### After a post at once, the thread of the add still has the `viewerCan…` fields of a pending thread
+
+The thread in the payload of `addPullRequestReviewThread` has `viewerCanResolve: false`, because the review is still pending. After `submitPullRequestReview`, a query of the thread gives `viewerCanResolve: true`. So get the thread again after the submit.
+
+- Proof: on nickciaravella/didymus.nvim#64, start a review, add a thread, submit with `event: COMMENT`, then query `node(id:)` of the thread. See `tests/fixtures/github/comment_post_get_thread_graphql.json`.
+- Checked: gh 2.103.2
+
+### `addPullRequestReviewThreadReply` gives only the comment, with no link to its thread
+
+`PullRequestReviewComment` has no field for its thread. To get the thread after a reply, query `node(id:)` of the thread again, or add the comment to the thread yourself.
+
+- Proof: `gh api graphql -f query='{ __type(name: "PullRequestReviewComment") { fields { name } } }'` lists `pullRequestReview` and `replyTo`, but no thread field.
+- Checked: gh 2.103.2
+
 ### `deletePullRequestReview` removes the threads of the review some seconds later
 
 The reply comes at once, but `reviewThreads` of the PR still has the threads for a short time. So a get of the threads just after a discard can give the deleted threads.

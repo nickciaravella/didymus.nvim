@@ -1,0 +1,13 @@
+{
+  "data": {
+    "addPullRequestReviewThreadReply": {
+      "comment": {
+        "author": {
+          "login": "nickciaravella"
+        },
+        "body": "Recorded for the unit tests of didymus: a reply.",
+        "state": "PENDING"
+      }
+    }
+  }
+}

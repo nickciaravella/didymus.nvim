@@ -142,20 +142,27 @@ function M.set_threads(child, id, threads)
   )
 end
 
---- Make a thread for the test provider: one comment from octocat on the head side.
+--- Make a thread for the test provider: one comment from octocat on the head side. The viewer can
+--- reply, and resolve or unresolve the thread.
 ---@param id string
 ---@param path string
 ---@param fields table? The fields to change, such as `range` or `comments`.
 ---@return didymus.review.Thread
 function M.make_thread(id, path, fields)
+  fields = fields or {}
+  local resolved = fields.resolved or false
   return vim.tbl_extend("force", {
     id = id,
     path = path,
     side = "head",
     resolved = false,
     outdated = false,
+    -- As on GitHub, the viewer can do only the action that changes the state.
+    can_reply = true,
+    can_resolve = not resolved,
+    can_unresolve = resolved,
     comments = { { author = "octocat", body = "A comment.", pending = false } },
-  }, fields or {})
+  }, fields)
 end
 
 --- Wait until the open review has `count` threads.

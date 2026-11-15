@@ -13,6 +13,8 @@ local tree = {
     next = stop_kinds,
     prev = stop_kinds,
     comment = {},
+    reply = {},
+    resolve = {},
   },
 }
 
@@ -85,6 +87,12 @@ local review_actions = {
   comment = function(_, range)
     require("didymus.review").comment({ range = range })
   end,
+  reply = function()
+    require("didymus.review").reply()
+  end,
+  resolve = function()
+    require("didymus.review").resolve()
+  end,
 }
 
 local groups = {
@@ -94,7 +102,7 @@ local groups = {
   },
   review = {
     actions = review_actions,
-    usage = "Use :Didymus review open, close, files, thread, next, prev or comment.",
+    usage = "Use :Didymus review open, close, files, thread, next, prev, comment, reply or resolve.",
   },
 }
 

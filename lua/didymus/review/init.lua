@@ -7,6 +7,7 @@ local patch = require("didymus.review.patch")
 local picker = require("didymus.ui.picker")
 local providers = require("didymus.review.provider")
 local Session = require("didymus.review.session")
+local threads = require("didymus.review.threads")
 local workspace = require("didymus.review.workspace")
 
 local M = {}
@@ -571,6 +572,122 @@ function M.comment(opts)
     then
       open_comment_input(session, file.path, range)
     end
+  end)
+end
+
+--- Add the reply with the provider: post it at once, or add it to the pending review. Then show it
+--- in the thread. If the provider fails, keep the text for the next reply to the thread.
+---@param session didymus.review.Session
+---@param thread didymus.review.Thread
+---@param draft didymus.review.ReplyDraft
+local function add_reply(session, thread, draft)
+  local location = threads.get_location(thread)
+  local verb = draft.pending and "add" or "post"
+  track(("%s a reply at %s"):format(verb, location), function(done)
+    session.provider:reply(session.change, draft, done)
+  end, function(err, comment)
+    if err then
+      local message = ("cannot %s the reply at %s: %s"):format(verb, location, err)
+      if session:is_open() then
+        session.failed_reply = draft
+        -- One line, because a message with more lines makes the user press Enter.
+        message = ("%s. The next reply to this thread starts with its text."):format(
+          (message:gsub("%.$", ""))
+        )
+      end
+      return show_error(message)
+    end
+    -- The reply is on the code host, also after a close of the review.
+    if session:is_open() then
+      session:add_reply(thread.id, comment)
+    end
+    local done = draft.pending and "added a pending reply" or "posted a reply"
+    vim.notify(("didymus: %s at %s"):format(done, location))
+  end)
+end
+
+--- Open the input float at the cursor line, for a reply to `thread`.
+---@param session didymus.review.Session
+---@param thread didymus.review.Thread
+local function open_reply_input(session, thread)
+  local options = config.options.review.input
+  local failed = session.failed_reply
+  local text
+  if failed and failed.thread_id == thread.id then
+    text = failed.body
+    session.failed_reply = nil
+  end
+  input.open({
+    title = "Reply to " .. threads.get_location(thread),
+    text = text,
+    width = options.width,
+    max_height = options.max_height,
+    keys = { cancel = options.keys.cancel },
+    -- A reply is a comment, so it has the actions and the keys of a comment.
+    actions = {
+      {
+        key = options.keys.post,
+        name = "reply now",
+        on_submit = function(body)
+          add_reply(session, thread, { thread_id = thread.id, body = body, pending = false })
+        end,
+      },
+      {
+        key = options.keys.add,
+        name = "add to review",
+        on_submit = function(body)
+          add_reply(session, thread, { thread_id = thread.id, body = body, pending = true })
+        end,
+      },
+    },
+  })
+end
+
+--- Reply to the thread at the cursor, or to the thread of the open thread float. Post the reply at
+--- once, or add it to the pending review. The input float opens at the cursor line of the window
+--- under the thread float.
+function M.reply()
+  local session = get_open_review()
+  if not session then
+    return
+  end
+  session:pick_thread_at_cursor(function(thread)
+    if not thread.can_reply then
+      return show_warning(
+        ("you cannot reply to the thread at %s"):format(threads.get_location(thread))
+      )
+    end
+    threads.close_float()
+    open_reply_input(session, thread)
+  end)
+end
+
+--- Resolve the thread at the cursor. On a resolved thread, unresolve it. In the thread float, use
+--- its thread.
+function M.resolve()
+  local session = get_open_review()
+  if not session then
+    return
+  end
+  session:pick_thread_at_cursor(function(thread)
+    local resolved = not thread.resolved
+    local action = resolved and "resolve" or "unresolve"
+    local location = threads.get_location(thread)
+    if not (resolved and thread.can_resolve or not resolved and thread.can_unresolve) then
+      return show_warning(("you cannot %s the thread at %s"):format(action, location))
+    end
+    threads.close_float()
+    track(("%s the thread at %s"):format(action, location), function(done)
+      session.provider:set_resolved(session.change, thread.id, resolved, done)
+    end, function(err, new_thread)
+      if err then
+        return show_error(("cannot %s the thread at %s: %s"):format(action, location, err))
+      end
+      if session:is_open() then
+        session:update_thread(new_thread)
+      end
+      vim.notify(("didymus: %sd the thread at %s"):format(action, location))
+    end)
   end)
 end
 

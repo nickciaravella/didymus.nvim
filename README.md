@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation and new comments work now.
+> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation, new comments, replies and resolve work now.
 
 ## Goals
 
@@ -122,6 +122,8 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review thread` | Open the thread at the cursor in a float, with all its comments. |
 | `:Didymus review next [thread\|file\|hunk]`, `:Didymus review prev [thread\|file\|hunk]` | Go to the next or the previous thread, changed file or hunk, also in a different file. The default is `thread`. |
 | `:[range]Didymus review comment` | Add a comment on the current line, the selection or the range. Post it at once, or add it to your pending review. |
+| `:Didymus review reply` | Reply to the thread at the cursor. Post the reply at once, or add it to your pending review. |
+| `:Didymus review resolve` | Resolve the thread at the cursor. On a resolved thread, unresolve it. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
 
@@ -139,7 +141,7 @@ In the file, each thread has a sign with its comment count, and a summary under 
 
 Outdated threads, threads on deleted lines and threads on the file show only in the panel. `<CR>` on one of them opens its float next to the panel.
 
-`thread` opens a float next to the cursor. The float closes when the cursor moves. A second `thread` moves the focus into the float, and `q` closes it. If more than one thread is at the line, the picker asks which one to open.
+`thread` opens a float next to the cursor. The float closes when the cursor moves. A second `thread` moves the focus into the float, and `q` closes it. If more than one thread is at the line, the picker asks which one to open. Then a second `thread` focuses the float, with no question.
 
 `next` and `prev` go in the order of the panel, from the cursor. If the current window does not show a file of the pull request, they start at the cursor of the code window.
 
@@ -168,6 +170,12 @@ didymus refuses a comment, and shows the reason, in these cases:
 
 If GitHub does not add the comment, the error shows. The next `comment` on the same lines starts with your text.
 
+If the thread float is open, `reply` and `resolve` use the thread of the float, also from the window under the float. Else, they use the thread at the cursor line. If more than one thread is at the line, the picker asks which one. In the thread float, `r` replies and `x` resolves or unresolves. The footer of the float shows these keys if it is wide enough. For a thread that shows only in the panel, press `<CR>` two times on its row, then use the keys.
+
+`reply` opens a float at the cursor line. It has the keys of `comment`: `<C-s>` (reply now) posts the reply at once, and `<C-y>` (add to review) adds it to your pending review. `q` in normal mode cancels. GitHub posts a reply at once only if you have no pending review. A reply in your pending review has `*pending*` in the thread float, until you submit the review on github.com. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
+
+After a resolve, the thread is dim in the panel and at its line. If GitHub does not let you do the action, a message shows. For example, GitHub does not let you resolve a thread of your pending review.
+
 The highlight groups are `DidymusThread` (default: `DiagnosticInfo`), `DidymusThreadResolved` (default: `Comment`) and `DidymusThreadPending` (default: `DiagnosticHint`).
 
 `close` does not check out the branch from before the review. Its message names that branch. `:tabclose` of the review tabpage also closes the review.
@@ -186,11 +194,13 @@ vim.keymap.set("n", "<leader>rpf", "<Plug>(didymus-review-prev-file)")
 vim.keymap.set("n", "<leader>rnh", "<Plug>(didymus-review-next-hunk)")
 vim.keymap.set("n", "<leader>rph", "<Plug>(didymus-review-prev-hunk)")
 vim.keymap.set({ "n", "x" }, "<leader>rm", "<Plug>(didymus-review-comment)")
+vim.keymap.set("n", "<leader>rr", "<Plug>(didymus-review-reply)")
+vim.keymap.set("n", "<leader>rx", "<Plug>(didymus-review-resolve)")
 ```
 
 | Mapping | Modes |
 | --- | --- |
-| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)` | Normal |
+| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)` | Normal |
 | `<Plug>(didymus-review-next-thread)`, `<Plug>(didymus-review-next-file)`, `<Plug>(didymus-review-next-hunk)`, `<Plug>(didymus-review-prev-thread)`, `<Plug>(didymus-review-prev-file)`, `<Plug>(didymus-review-prev-hunk)` | Normal |
 | `<Plug>(didymus-review-comment)` | Normal, visual |
 
@@ -229,11 +239,14 @@ require("didymus").setup({
     provider = "github", -- "github", "test" for tests, or a provider table
     icons = { active = "💬", resolved = "✅" }, -- the state of a thread. "" shows no icon.
     panel = { keys = { toggle_active = "a" } }, -- false turns off a key
-    input = { -- the float of comment
+    input = { -- the float of comment and reply
       width = 60, -- below 1 is a fraction of the window width
       max_height = 10, -- the float grows to this height, then it scrolls
-      -- post: comment now. add: add to the pending review. cancel is in normal mode.
+      -- post: comment or reply now. add: add to the pending review. cancel is in normal mode.
       keys = { post = "<C-s>", add = "<C-y>", cancel = "q" },
+    },
+    thread = { -- the thread float
+      keys = { reply = "r", resolve = "x" }, -- false turns a key off
     },
   },
 })
