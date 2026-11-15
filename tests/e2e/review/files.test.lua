@@ -111,12 +111,23 @@ T["the panel shows the header and one row for each file, in the order of the pro
   eq(calls[1].items[5].segments[1], { "A", "Added" })
 end
 
-T["each file row has a location for the preview, except a deleted file and the header"] = function()
-  open_review()
-  local locations = vim.tbl_map(function(item)
+--- The location of each item of the first panel. False if the item has no location.
+---@return ({ path: string, line: integer? }|false)[]
+local function locations()
+  return vim.tbl_map(function(item)
     return item.location or false
   end, panels()[1].items)
-  eq(locations, { false, false, { path = "file.txt" }, { path = "new.txt" }, false })
+end
+
+T["each file row has a location at its first change, except a deleted file and the header"] = function()
+  open_review()
+  eq(locations(), {
+    false,
+    false,
+    { path = "file.txt", line = 2 },
+    { path = "new.txt", line = 1 },
+    false,
+  })
 end
 
 T["to choose a file opens the real file in the code window. The panel stays open"] = function()
@@ -196,6 +207,7 @@ T["to choose a file puts the cursor on the first change of its first hunk"] = fu
   choose("M long.txt +2 -2")
   eq(current_path(), "long.txt")
   eq(child.api.nvim_win_get_cursor(0), { 6, 2 })
+  eq(locations()[3], { path = "long.txt", line = 6 })
 end
 
 T["to choose the file of the code window again moves the cursor, also in a modified buffer"] = function()
@@ -214,12 +226,13 @@ T["to choose the file of the code window again moves the cursor, also in a modif
   eq(child.cmd_capture("messages"):find("cannot open"), nil)
 end
 
-T["a file with no patch opens at line 1"] = function()
+T["a file with no patch opens at line 1, and its location has no line"] = function()
   open_review({
     edit = function(change)
       change.files[1].patch = nil
     end,
   })
+  eq(locations()[3], { path = "file.txt" })
   choose("M file.txt +1 -1")
   child.api.nvim_win_set_cursor(0, { 3, 0 })
   choose("M file.txt +1 -1")

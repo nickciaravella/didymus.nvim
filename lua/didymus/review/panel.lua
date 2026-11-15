@@ -44,6 +44,14 @@ local function get_header_items(session)
   }
 end
 
+--- The head line of the first change of the first hunk. Nil if the file has no hunks.
+---@param file didymus.review.ChangedFile
+---@return integer?
+local function get_first_change(file)
+  local first_hunk = patch.parse(file.patch).hunks[1]
+  return first_hunk and first_hunk.first_change
+end
+
 ---@param file didymus.review.ChangedFile
 ---@param thread_count integer
 ---@return didymus.picker.Item
@@ -63,7 +71,7 @@ local function get_file_item(file, thread_count)
   local item = make_item("file:" .. file.path, segments, { kind = "file", file = file })
   -- The preview shows the location. A deleted file is not in the checkout.
   if file.status ~= "deleted" then
-    item.location = { path = file.path }
+    item.location = { path = file.path, line = get_first_change(file) }
   end
   return item
 end
@@ -95,8 +103,7 @@ local function choose(session, item)
     vim.notify(("didymus: %s is deleted in %s"):format(value.file.path, session.label))
     return
   end
-  local first_hunk = patch.parse(value.file.patch).hunks[1]
-  session:open_file(value.file.path, first_hunk and first_hunk.first_change or 1)
+  session:open_file(value.file.path, get_first_change(value.file) or 1)
 end
 
 --- Open the files panel of `session` in the current tabpage.

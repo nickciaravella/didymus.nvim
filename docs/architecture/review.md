@@ -114,7 +114,7 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 1. The status letters are `A`, `M`, `D` and `R`. The full path comes before the counts. A long path can hide the counts in a narrow panel.
 2. The thread count shows only if it is above 0. A count of 0 on each row makes the rows long.
 3. `<CR>` on a header row does nothing. On a deleted file, it shows a message and opens nothing, because the file is not in the checkout.
-4. Each file row has a `location` with the path from the provider, for the preview. A deleted file and the header rows have no `location`.
+4. Each file row has a `location` with the path from the provider and the line of its first change, for the preview. With no hunks, the `location` has no line. A deleted file and the header rows have no `location`.
 5. `<CR>` on a file opens the real file in the code window at its first change, and focuses the code window. The code window is the first window of the tabpage. If the user closed it, the file opens in a new window on the right, and that window becomes the code window. See [Patch parser](#patch-parser).
 6. In the review tabpage, `:Didymus review files` shows or hides the panel. In a different tabpage, it goes to the review tabpage and shows the panel. A hidden panel is closed, so a new panel starts with the cursor on the first row.
 7. `close` and `:tabclose` also close the panel.
@@ -142,7 +142,7 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 3. A file with no `patch` has no hunks, and its commentable lines are unknown. An empty `patch` has no hunks and no commentable lines.
 4. `first_change` is the first added line. If deleted lines have no added lines after them, it is the head line before the deletion, as in a unified diff. At the start of the file, it is line 1.
 5. The parser skips `\ No newline at end of file` and the lines before the first hunk. An empty line in a hunk is a context line.
-6. The panel parses the patch when it opens a file. There is no cache, because a refresh replaces the change.
+6. The panel parses the patch when it makes the file rows and when it opens a file. There is no cache, because a refresh replaces the change.
 7. The cursor goes to the first non-blank character of `first_change` of the first hunk, or to line 1 with no hunks. If the buffer is shorter, the cursor goes to the last line. The file in the checkout can be different from the change head.
 
 ## Parts
