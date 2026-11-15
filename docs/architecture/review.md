@@ -114,12 +114,13 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 1. The status letters are `A`, `M`, `D` and `R`. The full path comes before the counts. A long path can hide the counts in a narrow panel.
 2. The thread count shows only if it is above 0. A count of 0 on each row makes the rows long.
 3. `<CR>` on a header row does nothing. On a deleted file, it shows a message and opens nothing, because the file is not in the checkout.
-4. `<CR>` on a file opens the real file in the code window at its first change, and focuses the code window. The code window is the first window of the tabpage. If the user closed it, the file opens in a new window on the right, and that window becomes the code window. See [Patch parser](#patch-parser).
-5. In the review tabpage, `:Didymus review files` shows or hides the panel. In a different tabpage, it goes to the review tabpage and shows the panel. A hidden panel is closed, so a new panel starts with the cursor on the first row.
-6. `close` and `:tabclose` also close the panel.
-7. If the panel cannot open, for example with no snacks.nvim, the review opens without it, and the error shows.
-8. If the code window already shows the file, `<CR>` only moves the cursor. `:edit` of a modified buffer gives E37.
-9. If Neovim cannot open the file, the error shows, and the focus goes back to the panel. For example, with 'nohidden', a modified buffer in the code window gives E37.
+4. Each file row has a `location` with the path from the provider, for the preview. A deleted file and the header rows have no `location`.
+5. `<CR>` on a file opens the real file in the code window at its first change, and focuses the code window. The code window is the first window of the tabpage. If the user closed it, the file opens in a new window on the right, and that window becomes the code window. See [Patch parser](#patch-parser).
+6. In the review tabpage, `:Didymus review files` shows or hides the panel. In a different tabpage, it goes to the review tabpage and shows the panel. A hidden panel is closed, so a new panel starts with the cursor on the first row.
+7. `close` and `:tabclose` also close the panel.
+8. If the panel cannot open, for example with no snacks.nvim, the review opens without it, and the error shows.
+9. If the code window already shows the file, `<CR>` only moves the cursor. `:edit` of a modified buffer gives E37.
+10. If Neovim cannot open the file, the error shows, and the focus goes back to the panel. For example, with 'nohidden', a modified buffer in the code window gives E37.
 
 ### Patch parser
 

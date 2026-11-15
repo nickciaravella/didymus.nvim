@@ -60,7 +60,12 @@ local function get_file_item(file, thread_count)
     local noun = thread_count == 1 and "thread" or "threads"
     table.insert(segments, { (" %d %s"):format(thread_count, noun), "Comment" })
   end
-  return make_item("file:" .. file.path, segments, { kind = "file", file = file })
+  local item = make_item("file:" .. file.path, segments, { kind = "file", file = file })
+  -- The preview shows the location. A deleted file is not in the checkout.
+  if file.status ~= "deleted" then
+    item.location = { path = file.path }
+  end
+  return item
 end
 
 --- The header, then a row for each changed file, in the order of the provider.
