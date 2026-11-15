@@ -118,6 +118,13 @@ function Session:toggle_files()
   end
 end
 
+--- The full path of a file of the change. It stays correct if the current directory changes.
+---@param path string Relative to `cwd`, as the provider gives it.
+---@return string
+function Session:get_full_path(path)
+  return vim.fs.joinpath(self.cwd, path)
+end
+
 ---@param win integer
 ---@param path string
 ---@return boolean
@@ -148,7 +155,7 @@ function Session:open_file(path, line)
   end
   local previous_win = vim.api.nvim_get_current_win()
   self:focus()
-  local full_path = vim.fs.joinpath(self.cwd, path)
+  local full_path = self:get_full_path(path)
   ---@type vim.api.keyset.cmd?
   local command = { cmd = "edit", args = { full_path }, magic = { file = false } }
   if

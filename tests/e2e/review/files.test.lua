@@ -111,23 +111,37 @@ T["the panel shows the header and one row for each file, in the order of the pro
   eq(calls[1].items[5].segments[1], { "A", "Added" })
 end
 
---- The location of each item of the first panel. False if the item has no location.
+--- The location of each item of the last panel. False if the item has no location.
 ---@return ({ path: string, line: integer? }|false)[]
 local function locations()
+  local calls = panels()
   return vim.tbl_map(function(item)
     return item.location or false
-  end, panels()[1].items)
+  end, calls[#calls].items)
 end
 
-T["each file row has a location at its first change, except a deleted file and the header"] = function()
+T["each file row has the full path and the first change, except a deleted file and the header"] = function()
   open_review()
-  eq(locations(), {
+  local dir = child.fn.getcwd()
+  local expected = {
     false,
     false,
-    { path = "file.txt", line = 2 },
-    { path = "new.txt", line = 1 },
+    { path = vim.fs.joinpath(dir, "file.txt"), line = 2 },
+    { path = vim.fs.joinpath(dir, "new.txt"), line = 1 },
     false,
-  })
+  }
+  eq(locations(), expected)
+
+  -- A new panel after a change of the current directory has the same paths.
+  child.cmd("cd /")
+  child.cmd("Didymus review files")
+  child.cmd("Didymus review files")
+  eq(#panels(), 2)
+  eq(locations(), expected)
+  eq(child.fn.filereadable(expected[3].path), 1)
+  -- `<CR>` opens the same path.
+  choose("M file.txt +1 -1")
+  eq(child.api.nvim_buf_get_name(0), expected[3].path)
 end
 
 T["to choose a file opens the real file in the code window. The panel stays open"] = function()
@@ -207,7 +221,7 @@ T["to choose a file puts the cursor on the first change of its first hunk"] = fu
   choose("M long.txt +2 -2")
   eq(current_path(), "long.txt")
   eq(child.api.nvim_win_get_cursor(0), { 6, 2 })
-  eq(locations()[3], { path = "long.txt", line = 6 })
+  eq(locations()[3], { path = vim.fs.joinpath(child.fn.getcwd(), "long.txt"), line = 6 })
 end
 
 T["to choose the file of the code window again moves the cursor, also in a modified buffer"] = function()
@@ -232,7 +246,7 @@ T["a file with no patch opens at line 1, and its location has no line"] = functi
       change.files[1].patch = nil
     end,
   })
-  eq(locations()[3], { path = "file.txt" })
+  eq(locations()[3], { path = vim.fs.joinpath(child.fn.getcwd(), "file.txt") })
   choose("M file.txt +1 -1")
   child.api.nvim_win_set_cursor(0, { 3, 0 })
   choose("M file.txt +1 -1")

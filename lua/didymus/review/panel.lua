@@ -52,10 +52,11 @@ local function get_first_change(file)
   return first_hunk and first_hunk.first_change
 end
 
+---@param session didymus.review.Session
 ---@param file didymus.review.ChangedFile
 ---@param thread_count integer
 ---@return didymus.picker.Item
-local function get_file_item(file, thread_count)
+local function get_file_item(session, file, thread_count)
   local status = statuses[file.status]
   local segments = {
     { status[1], status[2] },
@@ -71,7 +72,7 @@ local function get_file_item(file, thread_count)
   local item = make_item("file:" .. file.path, segments, { kind = "file", file = file })
   -- The preview shows the location. A deleted file is not in the checkout.
   if file.status ~= "deleted" then
-    item.location = { path = file.path, line = get_first_change(file) }
+    item.location = { path = session:get_full_path(file.path), line = get_first_change(file) }
   end
   return item
 end
@@ -86,7 +87,7 @@ local function get_items(session)
   end
   local items = get_header_items(session)
   for _, file in ipairs(session.change.files) do
-    table.insert(items, get_file_item(file, thread_counts[file.path] or 0))
+    table.insert(items, get_file_item(session, file, thread_counts[file.path] or 0))
   end
   return items
 end
