@@ -139,7 +139,7 @@ In the file, each thread has a sign with its comment count, and a summary under 
 
 Outdated threads, threads on deleted lines and threads on the file show only in the panel. `<CR>` on one of them opens its float next to the panel.
 
-`thread` opens a float next to the cursor. The float closes when the cursor moves. A second `thread` moves the focus into the float, and `q` closes it. If more than one thread is at the line, the picker asks which one to open.
+`thread` opens a float next to the cursor. The float closes when the cursor moves. A second `thread` moves the focus into the float, and `q` closes it. If more than one thread is at the line, the picker asks which one to open. Then a second `thread` focuses the float, with no question.
 
 `next` and `prev` go through the threads in the order of the panel, from the cursor. If the current window does not show a file of the pull request, they start at the cursor of the code window. They skip the threads that show only in the panel, and the threads at the same line are one stop. At the last or the first thread, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. In a different tabpage, `next` and `prev` go to the review tabpage first.
 
@@ -153,7 +153,7 @@ didymus refuses a comment, and shows the reason, in these cases:
 
 If GitHub does not add the comment, the error shows. The next `comment` on the same lines starts with your text.
 
-`reply` and `resolve` use the thread at the cursor line. In the thread float, they use the thread of the float. If more than one thread is at the line, the picker asks which one. In the thread float, `r` replies and `x` resolves or unresolves. The footer of the float shows these keys if it is wide enough. For a thread that shows only in the panel, press `<CR>` two times on its row, then use the keys.
+If the thread float is open, `reply` and `resolve` use the thread of the float, also from the window under the float. Else, they use the thread at the cursor line. If more than one thread is at the line, the picker asks which one. In the thread float, `r` replies and `x` resolves or unresolves. The footer of the float shows these keys if it is wide enough. For a thread that shows only in the panel, press `<CR>` two times on its row, then use the keys.
 
 `reply` opens a float at the cursor line. Type the reply, then press `<C-s>` to add it, or `q` in normal mode to cancel. The reply goes into your pending review, as a comment does. It stays pending until you submit the review on github.com. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
 

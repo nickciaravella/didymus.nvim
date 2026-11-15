@@ -317,6 +317,43 @@ T["with two threads at the line, the picker asks which one"] = function()
   eq(#session_thread("second").comments, 1)
 end
 
+T["with the thread float open, the commands use its thread, also with two threads at the line"] = function()
+  open_review({
+    make_thread("first", "file.txt", {
+      range = { first = 19, last = 19 },
+      resolved = true,
+      comments = { { author = "octocat", body = "Please rename this variable.", pending = false } },
+    }),
+    make_thread("second", "file.txt", {
+      range = { first = 18, last = 19 },
+      comments = { { author = "hubot", body = "Second.", pending = false } },
+    }),
+  })
+  child.cmd("Didymus review thread")
+  choose("@octocat Please rename this variable. [resolved]")
+  -- A real picker closes the float when it opens. So a second `thread` must not ask again.
+  child.cmd("Didymus review thread")
+  eq(#helpers.picker_calls(child, "select"), 1)
+  eq(child.api.nvim_get_current_win(), float_win())
+  eq(float_content().footer, " r reply  x unresolve ")
+  child.type_keys("x")
+  wait_for(function()
+    return not session_thread("first").resolved
+  end, "the unresolved thread")
+  eq(session_thread("second").resolved, false)
+  eq(has_message("didymus: unresolved the thread at file.txt:19"), true)
+
+  -- In the code window under the float, `resolve` also uses the thread of the float.
+  child.cmd("Didymus review thread")
+  choose("@octocat Please rename this variable.")
+  child.cmd("Didymus review resolve")
+  eq(#helpers.picker_calls(child, "select"), 2)
+  wait_for(function()
+    return session_thread("first").resolved
+  end, "the resolved thread")
+  eq(session_thread("second").resolved, false)
+end
+
 T["after an error, the message shows, and the next reply to the thread starts with the text"] = function()
   open_review()
   child.lua("require('didymus.review.provider.test').errors.reply = 'no network'")
@@ -369,6 +406,11 @@ T["the mappings reply and resolve"] = function()
   wait_for(function()
     return session_thread("old").resolved
   end, "the resolved thread")
+  -- The mapping also unresolves.
+  eq(
+    child.lua_get("vim.fn.maparg('<Plug>(didymus-review-resolve)', 'n', false, true).desc"),
+    "didymus: review resolve or unresolve"
+  )
 end
 
 return T

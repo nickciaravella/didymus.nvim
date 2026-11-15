@@ -87,6 +87,20 @@ Neovim 0.12 has no `nvim_win_add_ns()`. `nvim__ns_set(ns, { wins = { … } })` s
 
 - Checked: Neovim 0.12.5
 
+## Floats
+
+### The float of `open_floating_preview()` closes when you leave its source buffer, also for a picker
+
+The float has a `BufLeave` autocmd on the buffer where it opened. A picker, such as snacks, opens its own windows, so the float closes. Then a second call with the same `focus_id` cannot focus the float, and opens a new float with no focus. So when the float is open, do not open a picker before the second call.
+
+- Proof: this command prints `before: 1, after :new: 0`. See also `close_preview_autocmd()` in `runtime/lua/vim/lsp/util.lua`.
+
+  ```sh
+  nvim --clean --headless -c 'lua vim.lsp.util.open_floating_preview({ "a" }, "", {}) local function count() return #vim.tbl_filter(function(w) return vim.api.nvim_win_get_config(w).relative ~= "" end, vim.api.nvim_list_wins()) end io.write("before: ", count()) vim.cmd("new") vim.wait(50) io.write(", after :new: ", count(), "\n")' -c qa
+  ```
+
+- Checked: Neovim 0.12.5
+
 ## Lua scripts (`nvim -l`)
 
 ### A script that blocks in `io.read` does not exit on SIGTERM or SIGHUP

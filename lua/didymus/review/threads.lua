@@ -243,10 +243,15 @@ function M.open_float(thread)
   set_keys(buf, win, thread)
 end
 
---- The id of the thread of the thread float, if the float is the current window.
+--- The id of the thread of the open thread float, if the float or the window where it opened is
+--- the current window. A move of the cursor closes the float, so the cursor is at the thread.
 ---@return string?
 function M.get_float_thread_id()
-  if float and vim.api.nvim_get_current_win() == float.win then
+  if not (float and vim.api.nvim_win_is_valid(float.win)) then
+    return
+  end
+  local win = vim.api.nvim_get_current_win()
+  if win == float.win or win == float.origin_win then
     return float.thread_id
   end
 end

@@ -162,7 +162,7 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 9. With `signcolumn=auto`, a window outside the review tabpage that shows a review buffer has an empty sign column. The sign column counts the signs of the buffer, not of the window.
 10. `thread` opens the float with `vim.lsp.util.open_floating_preview()`, as a hover: next to the cursor, closed by a move of the cursor, focused by a second call, closed by `q`. In the focused float, `thread` goes back to the window under the float. The float is markdown. Each comment is `**@author**`, with `*pending*` for a pending comment, then the body. A line separates the comments. The title is the path, the line, and the tags `base`, `resolved` and `outdated`.
 11. A float that opens from the panel is not wider than the panel, because the float of Neovim is not wider than the current window.
-12. If more than one thread is at the line, `thread` asks which one with the select role of the picker.
+12. If more than one thread is at the line, `thread` asks which one with the select role of the picker. If the float is open, `thread` uses its thread and does not ask again, because the select closes the float. See [Replies and resolve](#replies-and-resolve).
 13. The order of the threads is the order of the panel: the files in the order of the provider. In each file, the threads with a line come first, by line. The other threads stay in the order of the provider.
 
 ### Thread navigation
@@ -197,16 +197,17 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 
 `M.reply()` and `M.resolve()` in `lua/didymus/review/init.lua` act on the thread at the cursor. `Session:pick_thread_at_cursor()` finds it.
 
-1. If the thread float is the current window, the thread is the thread of the float. Else, it is the thread with a mark at the cursor line. If more than one thread is at the line, the select role asks which one, as `thread` does.
-2. In the panel, the commands find no thread. `<CR>` on a thread row opens the float, and a second `<CR>` focuses it. Then the float keys work.
-3. The thread float has the keys of `review.thread.keys`: `r` replies, and `x` resolves or unresolves. They call the same functions as the commands. `false` turns a key off. The footer shows the keys only if it fits, because Neovim cuts a long footer from the start.
-4. Before an action, didymus checks `can_reply`, `can_resolve` or `can_unresolve` of the thread. If the viewer cannot do the action, a warning shows, and the provider gets no call. On a resolved thread, `resolve` unresolves it.
-5. Each action closes the thread float first. If the float is the current window, the focus goes back to the window where the float opened.
-6. `reply` opens the input float at the cursor line of that window: the code window or the panel. The title is `Reply to path:19`, or `Reply to path` for a thread with no line. It uses `review.input`. The submit key is `keys.comment`, because a reply is a comment.
-7. A reply has no line numbers, so didymus does not check the file on disk. Replies also work on outdated threads and on threads on the base side.
-8. On submit, `provider:reply()` runs with a progress message. The session adds the comment to the thread, and updates the panel and the marks. If the provider fails, the session keeps the text. The next reply to the same thread starts with it.
-9. `provider:set_resolved()` gives the thread with its new state, because the `can_…` fields change. The session replaces the thread, and updates the panel and the marks. A resolved thread is dim.
-10. If the review closed before the provider replies, only the message shows.
+1. If the thread float is open, and the current window is the float or the window where it opened, the thread is the thread of the float. A move of the cursor closes the float, so the cursor is still at that thread. Else, the thread is the thread with a mark at the cursor line. If more than one thread is at the line, the select role asks which one, as `thread` does.
+2. Rule 1 is necessary on a line with more than one thread. The select closes the float, because the float closes when you leave its buffer. Without rule 1, a second `thread` asks again, and the float never gets the focus.
+3. In the panel, the commands use only the thread of an open float. `<CR>` on a thread row opens the float, and a second `<CR>` focuses it. Then the float keys work.
+4. The thread float has the keys of `review.thread.keys`: `r` replies, and `x` resolves or unresolves. They call the same functions as the commands. `false` turns a key off. The footer shows the keys only if it fits, because Neovim cuts a long footer from the start.
+5. Before an action, didymus checks `can_reply`, `can_resolve` or `can_unresolve` of the thread. If the viewer cannot do the action, a warning shows, and the provider gets no call. On a resolved thread, `resolve` unresolves it. The description of `<Plug>(didymus-review-resolve)` is "resolve or unresolve".
+6. Each action closes the thread float first. If the float is the current window, the focus goes back to the window where the float opened.
+7. `reply` opens the input float at the cursor line of that window: the code window or the panel. The title is `Reply to path:19`, or `Reply to path` for a thread with no line. It uses `review.input`. The submit key is `keys.comment`, because a reply is a comment.
+8. A reply has no line numbers, so didymus does not check the file on disk. Replies also work on outdated threads and on threads on the base side.
+9. On submit, `provider:reply()` runs with a progress message. The session adds the comment to the thread, and updates the panel and the marks. If the provider fails, the session keeps the text. The next reply to the same thread starts with it.
+10. `provider:set_resolved()` gives the thread with its new state, because the `can_…` fields change. The session replaces the thread, and updates the panel and the marks. A resolved thread is dim.
+11. If the review closed before the provider replies, only the message shows.
 
 ## Parts
 

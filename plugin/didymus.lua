@@ -33,11 +33,15 @@ for _, action in ipairs({ "append", "send" }) do
   end, { desc = "didymus: agent " .. action })
 end
 
-for _, action in ipairs({ "open", "close", "files", "thread", "next", "prev", "reply", "resolve" }) do
+for _, action in ipairs({ "open", "close", "files", "thread", "next", "prev", "reply" }) do
   vim.keymap.set("n", ("<Plug>(didymus-review-%s)"):format(action), function()
     require("didymus.review")[action]()
   end, { desc = "didymus: review " .. action })
 end
+
+vim.keymap.set("n", "<Plug>(didymus-review-resolve)", function()
+  require("didymus.review").resolve()
+end, { desc = "didymus: review resolve or unresolve" })
 
 vim.keymap.set({ "n", "x" }, "<Plug>(didymus-review-comment)", function()
   require("didymus.review").comment()

@@ -257,18 +257,15 @@ function Session:add_reply(thread_id, comment)
   end
 end
 
---- Call `cb` with the thread at the cursor: the thread of the thread float if it is the current
---- window, else the thread with a mark on the cursor line. If more than one thread is at the line,
---- ask which one.
+--- Call `cb` with the thread at the cursor: the thread of the open thread float, else the thread
+--- with a mark on the cursor line. If more than one thread is at the line, ask which one.
 ---@param cb fun(thread: didymus.review.Thread)
 function Session:pick_thread_at_cursor(cb)
-  local found
   local float_thread_id = threads.get_float_thread_id()
-  if float_thread_id then
-    found = { self:get_thread(float_thread_id) }
-  else
-    found = threads.at_cursor(self.threads)
-  end
+  local float_thread = float_thread_id and self:get_thread(float_thread_id)
+  -- The select closes the float. So with the float open, a second `thread` must focus the float,
+  -- and not ask again.
+  local found = float_thread and { float_thread } or threads.at_cursor(self.threads)
   local line = vim.api.nvim_win_get_cursor(0)[1]
   if #found == 0 then
     vim.notify(("didymus: no thread at line %d"):format(line), vim.log.levels.WARN)
