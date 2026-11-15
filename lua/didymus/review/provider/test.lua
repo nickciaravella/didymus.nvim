@@ -55,4 +55,8 @@ function M:checkout(change, cb)
   )
 end
 
+function M.health()
+  vim.health.ok("the test provider is configured (review.provider)")
+end
+
 return M

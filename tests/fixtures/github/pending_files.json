@@ -1,0 +1,13 @@
+[
+  [
+    {
+      "sha": "f3d127a75e0a7163c315a46f3ab2a4e66054b83c",
+      "filename": "lua/didymus/config.lua",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 0,
+      "changes": 1,
+      "patch": "@@ -17,6 +17,7 @@ M.defaults = {\n   },\n   review = {\n     picker = \"snacks\", -- \"snacks\", \"test\" or an adapter table. See lua/didymus/ui/picker/.\n+    provider = \"github\", -- \"github\", \"test\" or a provider table. See lua/didymus/review/provider/.\n   },\n }\n "
+    }
+  ]
+]

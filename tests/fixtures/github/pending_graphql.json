@@ -1,0 +1,52 @@
+[
+  {
+    "data": {
+      "repository": {
+        "pullRequest": {
+          "id": "PR_kwDOVmiVUM8AAAABNxBuZA",
+          "number": 57,
+          "title": "Add the provider interface and the test provider",
+          "body": "Closes #37",
+          "isDraft": false,
+          "author": {
+            "login": "nickciaravella"
+          },
+          "baseRefName": "feat/review-picker",
+          "headRefName": "feat/review-provider",
+          "baseRefOid": "852c6c85e3c3b3f280f16ef35443274b9813f575",
+          "headRefOid": "2b9a84c0d506d36719ee04e01830567be4a8add0",
+          "isCrossRepository": false,
+          "headRepositoryOwner": {
+            "login": "nickciaravella"
+          },
+          "reviews": {
+            "nodes": [
+              {
+                "id": "PRR_kwDOVmiVUM7other",
+                "viewerDidAuthor": false
+              },
+              {
+                "id": "PRR_kwDOVmiVUM7viewer",
+                "viewerDidAuthor": true
+              }
+            ]
+          },
+          "files": {
+            "pageInfo": {
+              "hasNextPage": false,
+              "endCursor": "OA"
+            },
+            "nodes": [
+              {
+                "path": "lua/didymus/config.lua",
+                "changeType": "MODIFIED",
+                "additions": 1,
+                "deletions": 0
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]

@@ -22,8 +22,8 @@ T["setup() keeps the configuration"] = function()
 end
 
 T[":checkhealth didymus reports no errors"] = function()
-  -- The default picker needs snacks.nvim. End-to-end tests have no snacks.
-  child.lua('require("didymus").setup({ review = { picker = "test" } })')
+  -- The default picker needs snacks.nvim, and the default provider needs `gh` and the network.
+  child.lua('require("didymus").setup({ review = { picker = "test", provider = "test" } })')
   child.cmd("checkhealth didymus")
   local report = table.concat(child.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
   MiniTest.expect.no_equality(report:find("OK Neovim"), nil)

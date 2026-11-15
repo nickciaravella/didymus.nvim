@@ -1,0 +1,26 @@
+[
+  {
+    "author": {
+      "id": "MDQ6VXNlcjUwMzEzMTgx",
+      "is_bot": false,
+      "login": "helmipradita",
+      "name": "Helmi Pradita"
+    },
+    "body": "Problem:\n`vim.Range` is documented as 0-indexed and end-exclusive (`[start, end)`). However, `Range:has()` compared inner position against outer end bounds using `cmp_pos.ge`, causing positions located exactly at the end boundary (`col == range.end_col`) or empty ranges to be evaluated as inside the range.\n\nSolution:\nCompare inner position against outer end bounds with `cmp_pos.gt` so that the end bound is strictly exclusive for `vim.Pos`.\n\nFixes #41225",
+    "isDraft": false,
+    "number": 42760,
+    "title": "fix(range): make Range:has() end-exclusive for vim.Pos"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjQxNjcxNjMx",
+      "is_bot": false,
+      "login": "glepnir",
+      "name": ""
+    },
+    "body": "Problem:\nCTRL-W commands can enter a split with focusable=false. Only floats are skipped.\n\nSolution:\nSkip non-focusable windows, regardless of whether they are floating.\n\nFixes #29365",
+    "isDraft": true,
+    "number": 42739,
+    "title": "fix(window): CTRL-W commands enter non-focusable split"
+  }
+]

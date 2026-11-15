@@ -1,0 +1,35 @@
+[
+  [
+    {
+      "sha": "1cdcf59fec9a874d7659dc0ddba31d524cb03b35",
+      "filename": "src/nvim/tui/tui.c",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "patch": "@@ -37,8 +37,8 @@\n #include \"nvim/tui/input.h\"\n #include \"nvim/tui/terminfo.h\"\n #include \"nvim/tui/tui.h\"\n+#include \"nvim/tui/ugrid.h\"\n #include \"nvim/types_defs.h\"\n-#include \"nvim/ugrid.h\"\n #include \"nvim/ui_client.h\"\n #include \"nvim/ui_defs.h\"\n #include \"nvim/vim_defs.h\""
+    },
+    {
+      "sha": "7c7b06ec08cb0c7e15291ffed855534fcceef308",
+      "filename": "src/nvim/tui/ugrid.c",
+      "status": "renamed",
+      "additions": 2,
+      "deletions": 2,
+      "changes": 4,
+      "patch": "@@ -3,9 +3,9 @@\n \n #include \"nvim/grid.h\"\n #include \"nvim/memory.h\"\n-#include \"nvim/ugrid.h\"\n+#include \"nvim/tui/ugrid.h\"\n \n-#include \"ugrid.c.generated.h\"\n+#include \"tui/ugrid.c.generated.h\"\n \n void ugrid_init(UGrid *grid)\n {",
+      "previous_filename": "src/nvim/ugrid.c"
+    }
+  ],
+  [
+    {
+      "sha": "c957ed364bc8152f41beb109cf2f213ab7d625b8",
+      "filename": "src/nvim/tui/ugrid.h",
+      "status": "renamed",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "patch": "@@ -23,4 +23,4 @@ typedef struct {\n     } \\\n   } while (0)\n \n-#include \"ugrid.h.generated.h\"\n+#include \"tui/ugrid.h.generated.h\"",
+      "previous_filename": "src/nvim/ugrid.h"
+    }
+  ]
+]

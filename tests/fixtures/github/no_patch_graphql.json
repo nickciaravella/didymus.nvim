@@ -1,0 +1,49 @@
+[
+  {
+    "data": {
+      "repository": {
+        "pullRequest": {
+          "id": "PR_kwDOAPphoM5l5d38",
+          "number": 27317,
+          "title": "feat: update unicode tables",
+          "body": "",
+          "isDraft": false,
+          "author": {
+            "login": "zeertzjq"
+          },
+          "baseRefName": "master",
+          "headRefName": "unicode-update",
+          "baseRefOid": "6709f7f8f130377f44c36b2150a167a2afcbdff9",
+          "headRefOid": "1871ec87fc4d194c751ce052d6abd60760af83e0",
+          "isCrossRepository": true,
+          "headRepositoryOwner": {
+            "login": "zeertzjq"
+          },
+          "reviews": {
+            "nodes": []
+          },
+          "files": {
+            "pageInfo": {
+              "hasNextPage": false,
+              "endCursor": "NA"
+            },
+            "nodes": [
+              {
+                "path": "src/unicode/EastAsianWidth.txt",
+                "changeType": "MODIFIED",
+                "additions": 2586,
+                "deletions": 2584
+              },
+              {
+                "path": "src/unicode/emoji-data.txt",
+                "changeType": "MODIFIED",
+                "additions": 3,
+                "deletions": 3
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]
