@@ -131,15 +131,19 @@ local function marks()
   ]])
 end
 
-T["a comment on one line shows as pending in the panel and at the line"] = function()
+T["add to review shows the comment as pending in the panel and at the line"] = function()
   open_review()
   local code_win = child.api.nvim_get_current_win()
   child.api.nvim_win_set_cursor(0, { 3, 0 })
   child.cmd("Didymus review comment")
   eq(wait_for_input(), { title = " file.txt:3 ", lines = { "" } })
   eq(child.api.nvim_get_mode().mode, "i")
+  eq(
+    child.api.nvim_win_get_config(assert(float_win())).footer[1][1],
+    " <C-s> comment now  <C-y> add to review  q cancel "
+  )
 
-  child.type_keys("Looks good.", "<C-s>")
+  child.type_keys("Looks good.", "<C-y>")
   helpers.wait_for_threads(child, 2)
   eq(child.api.nvim_get_current_win(), code_win)
   eq(float_win(), nil)
@@ -169,6 +173,22 @@ T["a comment on one line shows as pending in the panel and at the line"] = funct
   eq(has_message("didymus: added a pending comment at file.txt:3"), true)
 end
 
+T["comment now posts the comment, with no pending tag"] = function()
+  open_review()
+  child.api.nvim_win_set_cursor(0, { 3, 0 })
+  child.cmd("Didymus review comment")
+  wait_for_input()
+  child.type_keys("Looks good.", "<C-s>")
+  helpers.wait_for_threads(child, 2)
+  eq(
+    provider_threads()[2].comments,
+    { { author = "reviewer", body = "Looks good.", pending = false } }
+  )
+  eq(panel_rows()[2], "@reviewer Looks good.")
+  eq(marks()[1], { 2, "@reviewer Looks good." })
+  eq(has_message("didymus: posted a comment at file.txt:3"), true)
+end
+
 T["a comment on the selection in visual mode is a range comment"] = function()
   open_review()
   child.lua("vim.keymap.set({ 'n', 'x' }, 'gC', '<Plug>(didymus-review-comment)')")
@@ -182,7 +202,7 @@ T["a comment on the selection in visual mode is a range comment"] = function()
     { 16, 17 }
   )
 
-  child.type_keys("Two lines.", "<C-s>")
+  child.type_keys("Two lines.", "<C-y>")
   helpers.wait_for_threads(child, 2)
   local thread = provider_threads()[2]
   eq({ thread.range, thread.comments[1].body }, { { first = 16, last = 17 }, "Two lines." })
@@ -276,7 +296,7 @@ T["after an error, the next comment at the same lines starts with the text"] = f
   -- `type_keys()` gives the error message as an error of the test.
   child.api.nvim_input("<C-s>")
   wait_for_message(
-    "didymus: cannot add the comment at file.txt:3: no network. "
+    "didymus: cannot post the comment at file.txt:3: no network. "
       .. "The next comment at these lines starts with its text."
   )
   eq(child.lua_get("#require('didymus.review').current().threads"), 1)
@@ -290,9 +310,11 @@ T["after an error, the next comment at the same lines starts with the text"] = f
   child.api.nvim_win_set_cursor(0, { 3, 0 })
   child.cmd("Didymus review comment")
   eq(wait_for_input(), { title = " file.txt:3 ", lines = { "First try." } })
-  child.type_keys(" Again.", "<C-s>")
+  -- The text stays also for the other action.
+  child.type_keys(" Again.", "<C-y>")
   helpers.wait_for_threads(child, 2)
-  eq(provider_threads()[2].comments[1].body, "First try. Again.")
+  local comment = provider_threads()[2].comments[1]
+  eq({ comment.body, comment.pending }, { "First try. Again.", true })
 end
 
 return T

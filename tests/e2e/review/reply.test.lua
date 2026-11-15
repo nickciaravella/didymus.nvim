@@ -148,11 +148,11 @@ T["a reply adds a pending comment to the thread"] = function()
   child.cmd("Didymus review reply")
   eq(wait_for_input(), {
     title = " Reply to file.txt:19 ",
-    footer = " <C-s> reply  q cancel ",
+    footer = " <C-y> reply  q cancel ",
     lines = { "" },
   })
 
-  child.type_keys("Thanks.", "<C-s>")
+  child.type_keys("Thanks.", "<C-y>")
   wait_for(function()
     return #session_thread("old").comments == 2
   end, "the reply in the session")
@@ -285,7 +285,7 @@ T["a thread with no line gets a reply from its float"] = function()
   eq(child.api.nvim_get_current_win(), float_win())
   child.type_keys("r")
   eq(wait_for_input().title, " Reply to file.txt ")
-  child.type_keys("Still true.", "<C-s>")
+  child.type_keys("Still true.", "<C-y>")
   wait_for_message("didymus: added a pending reply at file.txt")
   eq(#provider_threads()[1].comments, 2)
 end
@@ -310,7 +310,7 @@ T["with two threads at the line, the picker asks which one"] = function()
   child.cmd("Didymus review reply")
   choose("@octocat A comment.")
   eq(wait_for_input().title, " Reply to file.txt:19 ")
-  child.type_keys("To the first.", "<C-s>")
+  child.type_keys("To the first.", "<C-y>")
   wait_for(function()
     return #session_thread("first").comments == 2
   end, "the reply in the session")
@@ -361,7 +361,7 @@ T["after an error, the message shows, and the next reply to the thread starts wi
   wait_for_input()
   child.type_keys("First try.")
   -- `type_keys()` gives the error message as an error of the test.
-  child.api.nvim_input("<C-s>")
+  child.api.nvim_input("<C-y>")
   wait_for_message(
     "didymus: cannot add the reply at file.txt:19: no network. "
       .. "The next reply to this thread starts with its text."
@@ -370,7 +370,7 @@ T["after an error, the message shows, and the next reply to the thread starts wi
 
   child.cmd("Didymus review reply")
   eq(wait_for_input().lines, { "First try." })
-  child.type_keys(" Again.", "<C-s>")
+  child.type_keys(" Again.", "<C-y>")
   wait_for(function()
     return #session_thread("old").comments == 2
   end, "the reply in the session")

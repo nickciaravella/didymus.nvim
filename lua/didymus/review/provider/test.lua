@@ -71,7 +71,8 @@ function M:get_threads(change, cb)
   end)
 end
 
---- Add a thread with one pending comment of `viewer` to the threads of the change.
+--- Add a thread with one comment of `viewer` to the threads of the change. The comment is pending,
+--- or posted at once.
 ---@param change didymus.review.Change
 ---@param draft didymus.review.CommentDraft
 ---@param cb fun(err: string?, thread: didymus.review.Thread?)
@@ -90,9 +91,9 @@ function M:add_comment(change, draft, cb)
     outdated = false,
     -- GitHub does not let the viewer resolve a thread of a pending review.
     can_reply = true,
-    can_resolve = false,
+    can_resolve = not draft.pending,
     can_unresolve = false,
-    comments = { { author = self.viewer, body = draft.body, pending = true } },
+    comments = { { author = self.viewer, body = draft.body, pending = draft.pending } },
   }
   self.threads[change.id] = self.threads[change.id] or {}
   table.insert(self.threads[change.id], thread)
