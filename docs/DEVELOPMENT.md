@@ -49,6 +49,8 @@ flowchart TB
 | Review questions | The select role of the picker, because `vim.fn.confirm()` blocks the UI. See [`architecture/review.md`](architecture/review.md#workspace-flow). |
 | Open reviews | One at a time, in its own tabpage. |
 | Pickers | Only snacks.nvim in the MVP. The picker interface keeps the select role and the panel role apart, so that other pickers can come later. The health check reports a missing picker. See [`architecture/review.md`](architecture/review.md#picker-interface). |
+| Picker config | `review.picker_config[kind][adapter_name]`, for the kinds `changes`, `choice` and `files`. The defaults of each adapter are in the adapter. See [`architecture/review.md`](architecture/review.md#picker-config). |
+| Preview in the files panel | The code window shows the item under the cursor, only while the panel has the focus. |
 | Review types | Only the fields that the MVP uses. A thread and a draft use a line range. A changed file has the raw patch from the code host. See [`architecture/review.md`](architecture/review.md#review-types). |
 | Test provider | It keeps changes in memory, and calls each `cb` in `vim.schedule()`, as a real provider does. Its `checkout` runs `git checkout` in a temporary repo. |
 | GitHub provider | `gh` with `vim.system`. A PR number or a PR URL. One GraphQL query and the REST files, at the same time. See [`architecture/review.md`](architecture/review.md#github-provider). |
