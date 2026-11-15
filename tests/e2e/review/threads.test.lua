@@ -347,6 +347,7 @@ T["with two threads at the line, the picker asks which one to open"] = function(
   child.cmd("Didymus review thread")
   local select = helpers.picker_calls(child, "select")[1]
   eq(select.title, "Threads at line 2")
+  eq(select.kind, "choice")
   eq(
     vim.tbl_map(function(item)
       return item.text

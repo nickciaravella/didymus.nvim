@@ -70,6 +70,12 @@ local function format(snacks_item, snacks_picker)
   return result
 end
 
+---@param snacks_item table?
+---@return boolean
+local function has_preview(snacks_item)
+  return snacks_item ~= nil and (snacks_item.preview ~= nil or snacks_item.file ~= nil)
+end
+
 local function preview(ctx)
   local previewers = require("snacks").picker.preview
   if ctx.item.preview then
@@ -80,14 +86,54 @@ local function preview(ctx)
   ctx.preview:reset()
 end
 
+--- A preview in the main window is a float over the code. Show it only for an item with a preview,
+--- and only while the picker has the focus.
+local function update_main_preview(snacks_picker)
+  if snacks_picker.closed or not snacks_picker.preview.main then
+    return
+  end
+  local show = has_preview(snacks_picker:current()) and snacks_picker:is_focused()
+  if show == snacks_picker.layout:is_hidden("preview") then
+    snacks_picker:toggle("preview", { enable = show })
+  end
+end
+
+--- The snacks options of each kind. The user options of the kind go over them.
+local kind_defaults = {
+  changes = { layout = { preset = "default" } },
+  choice = { layout = { preset = "select" } },
+}
+
+--- Merge the options: first `base`, then the options of the kind, then the user options of the
+--- kind, then `required`. didymus needs the options in `required`, so the user cannot change them.
+---@param kind didymus.picker.Kind?
+---@param config didymus.picker.Config?
+---@param base table
+---@param required table
+---@return table
+local function merge_options(kind, config, base, required)
+  local kind_config = config and kind and config[kind]
+  local user = kind_config and kind_config.snacks or {}
+  -- `tbl_deep_extend()` does not copy a table that only one argument has, and snacks can change it.
+  return vim.tbl_deep_extend(
+    "force",
+    base,
+    vim.deepcopy(kind_defaults[kind] or {}),
+    vim.deepcopy(user),
+    required
+  )
+end
+
 ---@param opts didymus.picker.SelectOpts
-function M.select(opts)
+---@param config didymus.picker.Config?
+function M.select(opts, config)
   local done = false
-  require_snacks_picker().pick({
+  require_snacks_picker().pick(merge_options(opts.kind, config, {
     title = opts.title,
+    preview = preview,
+  }, {
     items = to_snacks_items(opts.items),
     format = format,
-    preview = preview,
     confirm = function(snacks_picker, snacks_item)
       if done then
         return
@@ -112,7 +158,7 @@ function M.select(opts)
         vim.schedule(opts.on_cancel)
       end
     end,
-  })
+  }))
 end
 
 ---@class didymus.picker.snacks.Panel: didymus.picker.Panel
@@ -121,8 +167,9 @@ local Panel = {}
 Panel.__index = Panel
 
 ---@param opts didymus.picker.PanelOpts
+---@param config didymus.picker.Config?
 ---@return didymus.picker.Panel
-function M.panel(opts)
+function M.panel(opts, config)
   local width = layout.resolve_size(opts.width or picker.default_width, vim.o.columns)
   local actions, keys = {}, {}
   for index, action in ipairs(opts.actions or {}) do
@@ -136,26 +183,28 @@ function M.panel(opts)
     keys[action.key] = name
   end
 
-  local snacks_picker = require_snacks_picker().pick({
+  local snacks_picker = require_snacks_picker().pick(merge_options(opts.kind, config, {
     title = opts.title,
-    finder = function()
-      return to_snacks_items(opts.items())
-    end,
-    format = format,
     -- The options of the snacks explorer, so that the panel stays open next to the code.
     layout = {
       preset = "sidebar",
-      -- The sidebar shows the preview in the code window.
-      preview = false,
+      preview = "main",
       layout = { position = opts.position or "left", width = width, min_width = width },
     },
+    preview = preview,
+    on_change = update_main_preview,
     auto_close = false,
     jump = { close = false },
     focus = "list",
     tree = true,
-    show_empty = true,
     -- A search keeps the order of the tree.
     sort = { fields = { "idx" } },
+  }, {
+    finder = function()
+      return to_snacks_items(opts.items())
+    end,
+    format = format,
+    show_empty = true,
     confirm = function(snacks_picker, snacks_item)
       if snacks_item then
         snacks_picker:norm(function()
@@ -165,7 +214,12 @@ function M.panel(opts)
     end,
     actions = actions,
     win = { list = { keys = keys } },
-  })
+  }))
+  -- snacks shows the main preview again only when the focus goes to a window that is not a float.
+  -- The list of a sidebar is a float.
+  snacks_picker.list.win:on("WinEnter", function()
+    update_main_preview(snacks_picker)
+  end, { buf = true })
   return setmetatable({ picker = snacks_picker }, Panel)
 end
 

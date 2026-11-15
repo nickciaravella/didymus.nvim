@@ -80,6 +80,19 @@ local function settle()
   child.lua("vim.wait(50)")
 end
 
+--- The preview window of the current tabpage, else 0.
+---@return integer
+local function preview_win()
+  return child.lua_get([[(function()
+    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+      if vim.w[win].snacks_picker_preview then
+        return win
+      end
+    end
+    return 0
+  end)()]])
+end
+
 T["select()"] = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -129,6 +142,62 @@ T["select()"]["calls on_cancel when the user closes it"] = function()
   wait_for_global("cancelled", true)
   eq(find_win("snacks_picker_list"), 0)
   eq(child.lua_get("_G.chosen"), vim.NIL)
+end
+
+--- Open a select of `kind` through `get()`, as the review does.
+---@param kind string?
+---@param config string? The Lua source of the config. A function cannot go through RPC.
+local function open_select(kind, config)
+  child.lua(
+    [[
+      local kind, config = ...
+      _G.chosen = vim.NIL
+      require("didymus.ui.picker").get("snacks", loadstring("return " .. config)()).select({
+        title = "Kind",
+        kind = kind,
+        items = {
+          { text = "one", value = 1, preview = { lines = { "preview of one" } } },
+          { text = "two", value = 2, preview = { lines = { "preview of two" } } },
+        },
+        on_choose = function(item)
+          _G.chosen = item.value
+        end,
+      })
+    ]],
+    { kind, config or "{}" }
+  )
+  wait_for_lines("snacks_picker_list", { "one", "two" })
+end
+
+T["select() kinds"] = MiniTest.new_set()
+
+T["select() kinds"]["changes shows the preview on the right of the list"] = function()
+  open_select("changes")
+  wait_for_lines("snacks_picker_preview", { "preview of one" })
+  local list_col = child.fn.win_screenpos(find_win("snacks_picker_list"))[2]
+  local preview_col = child.fn.win_screenpos(find_win("snacks_picker_preview"))[2]
+  eq(preview_col > list_col + 20, true)
+end
+
+T["select() kinds"]["choice shows no preview"] = function()
+  open_select("choice")
+  settle()
+  eq(preview_win(), 0)
+end
+
+T["select() kinds"]["the user options of the kind go over the defaults, but not over the callbacks"] = function()
+  open_select(
+    "changes",
+    [[{
+      changes = { snacks = { layout = { preset = "select" }, confirm = function() _G.chosen = "user" end } },
+      choice = { snacks = { layout = { preset = "default" } } },
+    }]]
+  )
+  settle()
+  eq(preview_win(), 0)
+
+  child.type_keys("<CR>")
+  wait_for_global("chosen", 1)
 end
 
 --- Open a panel with the items of `_G.items`.
@@ -295,6 +364,79 @@ T["panel()"]["close() closes the panel"] = function()
   eq(is_open(), false)
   settle()
   eq(find_win("snacks_picker_list"), 0)
+end
+
+local preview_items = {
+  { text = "header" },
+  {
+    text = "numbers.txt",
+    location = { path = "tests/fixtures/picker/numbers.txt", line = 20 },
+    value = "numbers",
+  },
+  { text = "text", preview = { lines = { "a text preview" } } },
+}
+
+---@param expected integer
+local function wait_for_preview_line(expected)
+  wait_for(function()
+    local win = preview_win()
+    return win ~= 0 and child.api.nvim_win_get_cursor(win)[1] == expected
+  end, "the preview at line " .. expected)
+end
+
+T["panel()"]["a cursor move shows the item in the code window, and a header shows no preview"] = function()
+  child.lua("_G.items = ...", { preview_items })
+  open_panel()
+  wait_for_lines("snacks_picker_list", { "header", "numbers.txt", "text" })
+  settle()
+  eq(preview_win(), 0)
+
+  child.type_keys("j")
+  wait_for_preview_line(20)
+  local win = preview_win()
+  local win_config = child.api.nvim_win_get_config(win)
+  eq({ win_config.relative, win_config.win }, { "win", child.lua_get("_G.code_win") })
+  local buf = child.api.nvim_win_get_buf(win)
+  eq(child.api.nvim_buf_get_lines(buf, 19, 20, false), { "line 20" })
+
+  child.type_keys("j")
+  wait_for_lines("snacks_picker_preview", { "a text preview" })
+
+  child.type_keys("gg")
+  wait_for(function()
+    return preview_win() == 0
+  end, "no preview on the header")
+
+  child.type_keys("j", "<CR>")
+  wait_for_global("chosen", { "numbers" })
+  eq(is_open(), true)
+end
+
+T["panel()"]["the preview hides while the focus is in the code window"] = function()
+  child.lua("_G.items = ...", { { preview_items[2] } })
+  open_panel()
+  wait_for_preview_line(20)
+
+  child.lua("vim.api.nvim_set_current_win(_G.code_win)")
+  settle()
+  eq(preview_win(), 0)
+  child.lua("_G.panel:update()")
+  settle()
+  eq(preview_win(), 0)
+
+  child.lua("_G.panel:focus()")
+  wait_for_preview_line(20)
+end
+
+T["panel()"]["the user options of files go over the defaults"] = function()
+  child.lua("_G.items = ...", { preview_items })
+  child.lua([[
+    _G.panel = require("didymus.ui.picker").get("snacks", {
+      files = { snacks = { layout = { layout = { width = 50, min_width = 50 } } } },
+    }).panel({ title = "Files", kind = "files", items = function() return _G.items end, on_choose = function() end })
+  ]])
+  wait_for_lines("snacks_picker_list", { "header", "numbers.txt", "text" })
+  eq(child.api.nvim_win_get_width(find_win("snacks_picker_list")), 50)
 end
 
 T["health() reports OK"] = function()

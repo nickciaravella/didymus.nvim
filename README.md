@@ -158,12 +158,36 @@ vim.keymap.set("n", "<leader>rt", "<Plug>(didymus-review-thread)")
 
 To check snacks.nvim and `gh`, run `:checkhealth didymus`.
 
+`review.picker_config` sets the picker options of each kind of list. In each kind, the options of an adapter go under its name, such as `snacks`:
+
+| Kind | List | snacks default |
+| --- | --- | --- |
+| `changes` | The pull request list. | The `default` preset: a float with the list on the left and the description on the right. |
+| `choice` | A question, such as "Uncommitted changes. Check out #12?". | The `select` preset: a small float. It hides the preview. Press `<a-p>` to show it. |
+| `files` | The files panel. | The `sidebar` preset, with the preview in the code window. |
+
+For example, show the pull request list at the bottom, and make the files panel wider:
+
+```lua
+require("didymus").setup({
+  review = {
+    picker_config = {
+      changes = { snacks = { layout = { preset = "ivy" } } },
+      files = { snacks = { layout = { layout = { width = 50, min_width = 50 } } } },
+    },
+  },
+})
+```
+
+didymus merges your options over the default of the kind. You cannot change the options that didymus needs, such as `items`, `format` and `confirm`.
+
 The defaults:
 
 ```lua
 require("didymus").setup({
   review = {
     picker = "snacks", -- "snacks", "test" for tests, or an adapter table
+    picker_config = {}, -- the options of each kind of list, for each adapter
     provider = "github", -- "github", "test" for tests, or a provider table
     icons = { active = "💬", resolved = "✅" }, -- the state of a thread. "" shows no icon.
     panel = { keys = { toggle_active = "a" } }, -- false turns off a key
