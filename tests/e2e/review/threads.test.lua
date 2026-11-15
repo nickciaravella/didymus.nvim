@@ -148,27 +148,98 @@ end
 T["the panel shows the threads under their files, with the resolved and outdated states"] = function()
   open_review()
   local items = panel().items
+  eq(items[3].text, "All threads")
   eq(
     vim.tbl_map(function(item)
       return { item.depth or 0, item.text }
-    end, vim.list_slice(items, 3)),
+    end, vim.list_slice(items, 4)),
     {
       { 0, "M file.txt +3 -3 4 threads" },
-      { 1, "@octocat Why TWO?" },
-      { 1, "@hubot Rename this. [resolved]" },
-      { 1, "@octocat Old note. [outdated]" },
-      { 1, "@octocat Was two." },
+      { 1, "💬 @octocat Why TWO?" },
+      { 1, "✅ @hubot Rename this." },
+      { 1, "💬 @octocat Old note. [outdated]" },
+      { 1, "💬 @octocat Was two." },
       { 0, "D old.txt +0 -1 1 thread" },
-      { 1, "@octocat Why delete?" },
+      { 1, "💬 @octocat Why delete?" },
     }
   )
-  eq(items[4].segments, { { "@octocat", "DidymusThread" }, { " Why TWO?" } })
-  eq(items[5].segments, {
+  eq(items[5].segments, { { "💬 " }, { "@octocat", "DidymusThread" }, { " Why TWO?" } })
+  eq(items[6].segments, {
+    { "✅ ", "DidymusThreadResolved" },
     { "@hubot", "DidymusThreadResolved" },
     { " Rename this.", "DidymusThreadResolved" },
-    { " [resolved]", "DidymusThreadResolved" },
   })
-  eq(items[6].segments[3], { " [outdated]", "DiagnosticWarn" })
+  eq(items[7].segments[4], { " [outdated]", "DiagnosticWarn" })
+end
+
+T["a thread row with a line has the location of the thread"] = function()
+  local review = open_review()
+  local dir = child.fn.getcwd()
+  local items = panel().items
+  eq(items[5].location, { path = dir .. "/file.txt", line = 2 })
+  eq(items[6].location, { path = dir .. "/file.txt", line = 5 })
+  -- Outdated, base side and deleted file: no line.
+  eq({ items[7].location, items[8].location, items[10].location }, { nil, nil, nil })
+  eq(review.tabpage, child.api.nvim_get_current_tabpage())
+end
+
+T["the icons come from the config"] = function()
+  child.lua([[require("didymus").setup({
+    review = { picker = "test", provider = "test", icons = { active = "A", resolved = "" } },
+  })]])
+  open_review()
+  local items = panel().items
+  eq({ items[5].text, items[6].text }, { "A @octocat Why TWO?", "@hubot Rename this." })
+end
+
+T["the panel key shows only the active threads, and then all threads again"] = function()
+  open_review()
+  child.lua("require('didymus.ui.picker.test').press('a', '💬 @octocat Why TWO?')")
+  local items = panel().items
+  eq(
+    vim.tbl_map(function(item)
+      return item.text
+    end, vim.list_slice(items, 3)),
+    {
+      "Active threads",
+      "M file.txt +3 -3 3 threads",
+      "💬 @octocat Why TWO?",
+      "💬 @octocat Old note. [outdated]",
+      "💬 @octocat Was two.",
+      "D old.txt +0 -1 1 thread",
+      "💬 @octocat Why delete?",
+    }
+  )
+  eq(panel().cursor, 5)
+
+  -- The panel keeps the filter when it opens again.
+  child.cmd("Didymus review files")
+  child.cmd("Didymus review files")
+  local calls = helpers.picker_calls(child, "panel")
+  eq(calls[2].items[3].text, "Active threads")
+  child.lua("require('didymus.ui.picker.test').press('a')")
+  calls = helpers.picker_calls(child, "panel")
+  eq(calls[2].items[3].text, "All threads")
+  eq(#calls[2].items, 10)
+end
+
+T["the panel key can change, or be off"] = function()
+  child.lua([[require("didymus").setup({
+    review = { picker = "test", provider = "test", panel = { keys = { toggle_active = "<C-a>" } } },
+  })]])
+  open_review()
+  child.lua("require('didymus.ui.picker.test').press('<C-a>')")
+  eq(panel().items[3].text, "Active threads")
+
+  child.cmd("Didymus review close")
+  child.lua([[require("didymus").setup({
+    review = { picker = "test", provider = "test", panel = { keys = { toggle_active = false } } },
+  })]])
+  child.cmd("Didymus review open 1")
+  helpers.wait_for_review(child, "1")
+  MiniTest.expect.error(function()
+    child.lua("require('didymus.ui.picker.test').press('a')")
+  end, 'no action for "a"')
 end
 
 T["to choose a thread goes to its line in the code window"] = function()
@@ -176,7 +247,7 @@ T["to choose a thread goes to its line in the code window"] = function()
   local code_win = child.api.nvim_get_current_win()
   child.cmd("leftabove vnew")
 
-  choose("@hubot Rename this. [resolved]")
+  choose("✅ @hubot Rename this.")
   eq(child.api.nvim_get_current_tabpage(), review.tabpage)
   eq(child.api.nvim_get_current_win(), code_win)
   eq(current_path(), "file.txt")
@@ -206,7 +277,7 @@ end
 T["to choose a thread with no line opens its float"] = function()
   open_review()
   local win = child.api.nvim_get_current_win()
-  choose("@octocat Old note. [outdated]")
+  choose("💬 @octocat Old note. [outdated]")
   eq(child.api.nvim_get_current_win(), win)
   eq(
     float_content(),
@@ -216,7 +287,7 @@ T["to choose a thread with no line opens its float"] = function()
   -- In a real panel, the move to a different row closes the float.
   child.cmd("doautocmd CursorMoved")
   eq(float_win(), nil)
-  choose("@octocat Why delete?")
+  choose("💬 @octocat Why delete?")
   eq(float_content().title, " old.txt:1 (base) ")
 end
 
@@ -278,13 +349,14 @@ T["with two threads at the line, the picker asks which one to open"] = function(
   child.cmd("Didymus review thread")
   local select = helpers.picker_calls(child, "select")[1]
   eq(select.title, "Threads at line 2")
+  eq(select.kind, "choice")
   eq(
     vim.tbl_map(function(item)
       return item.text
     end, select.items),
-    { "@octocat A comment.", "@hubot Second." }
+    { "💬 @octocat A comment.", "💬 @hubot Second." }
   )
-  choose("@hubot Second.")
+  choose("💬 @hubot Second.")
   eq(float_content().lines, { "**@hubot**", "", "Second." })
 end
 

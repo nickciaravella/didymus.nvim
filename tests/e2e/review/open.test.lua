@@ -107,7 +107,8 @@ T["open shows the changes in the picker. The choice opens the review tabpage"] =
   child.cmd("Didymus review open")
   wait_for_picker(1)
   local call = picker_calls()[1]
-  eq(call.kind, "select")
+  eq(call.role, "select")
+  eq(call.kind, "changes")
   eq(call.title, "Pull requests")
   eq(texts(call), { "#1 Change the second line @octocat", "#2 Draft @octocat [draft]" })
   eq(call.items[2].segments[4], { " [draft]", "DiagnosticWarn" })
@@ -123,6 +124,18 @@ T["open shows the changes in the picker. The choice opens the review tabpage"] =
   eq(head(repo), repo.change.head_sha)
   eq(review().merge_base, repo.change.base_sha)
   expect_message("didymus: opened the review of #1: Change the second line")
+end
+
+T["the picker gets review.picker_config"] = function()
+  setup_repo()
+  local picker_config = { changes = { test = { width = 10 } } }
+  child.lua(
+    "require('didymus').setup({ review = { picker = 'test', provider = 'test', picker_config = ... } })",
+    { picker_config }
+  )
+  child.cmd("Didymus review open")
+  wait_for_picker(1)
+  eq(picker_calls()[1].config, picker_config)
 end
 
 T["open 1 opens the review with no picker"] = function()
@@ -163,6 +176,7 @@ T["with uncommitted changes, a warning shows the files, and a question asks firs
   child.cmd("Didymus review open 1")
   wait_for_picker(1)
   local call = picker_calls()[1]
+  eq({ call.role, call.kind }, { "select", "choice" })
   eq(call.title, "Uncommitted changes. Check out #1?")
   eq(texts(call), { "Check out", "Cancel" })
   eq(call.items[1].preview, { lines = { "other.txt" } })
@@ -357,6 +371,7 @@ T["open of a different change asks to close the review first"] = function()
   child.cmd("Didymus review open 2")
   wait_for_picker(1)
   local call = picker_calls()[1]
+  eq({ call.role, call.kind }, { "select", "choice" })
   eq(call.title, "Close the review of #1 and open #2?")
   eq(texts(call), { "Open #2", "Cancel" })
   eq(call.items[1].preview.lines[1], "# Second")
@@ -438,6 +453,7 @@ T["the command completes the review actions"] = function()
     child.fn.getcompletion("Didymus review submit ", "cmdline"),
     { "approve", "comment", "request_changes" }
   )
+  eq(child.fn.getcompletion("Didymus review next ", "cmdline"), { "file", "hunk", "thread" })
   eq(child.fn.getcompletion("Didymus ", "cmdline"), { "agent", "review" })
 end
 

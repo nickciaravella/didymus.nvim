@@ -56,6 +56,13 @@
 ---@field path string
 ---@field range didymus.review.Range
 ---@field body string
+---@field pending boolean True adds the comment to the pending review. False posts it at once.
+
+--- A reply to a thread.
+---@class didymus.review.ReplyDraft
+---@field thread_id string
+---@field body string
+---@field pending boolean True adds the reply to the pending review. False posts it at once.
 
 --- All methods are async. Each one calls `cb` later, and does not block the UI.
 ---@class didymus.review.Provider
@@ -63,8 +70,8 @@
 ---@field get_change fun(self, id: string, cb: fun(err: string?, change: didymus.review.Change?)) Files, patches and the pending review.
 ---@field checkout fun(self, change: didymus.review.Change, cb: fun(err: string?)) Make the change head the current checkout.
 ---@field get_threads fun(self, change: didymus.review.Change, cb: fun(err: string?, threads: didymus.review.Thread[]?))
----@field add_comment fun(self, change: didymus.review.Change, draft: didymus.review.CommentDraft, cb: fun(err: string?, thread: didymus.review.Thread?)) Start a pending review if there is none.
----@field reply fun(self, change: didymus.review.Change, thread_id: string, body: string, cb: fun(err: string?, comment: didymus.review.Comment?)) Start a pending review if there is none.
+---@field add_comment fun(self, change: didymus.review.Change, draft: didymus.review.CommentDraft, cb: fun(err: string?, thread: didymus.review.Thread?)) Add to the pending review, and start one if there is none. Or post at once.
+---@field reply fun(self, change: didymus.review.Change, draft: didymus.review.ReplyDraft, cb: fun(err: string?, comment: didymus.review.Comment?)) Add to the pending review, and start one if there is none. Or post at once.
 ---@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?, thread: didymus.review.Thread?)) Give the thread with its new state.
 ---@field submit_review fun(self, change: didymus.review.Change, verdict: didymus.review.Verdict, body: string?, cb: fun(err: string?)) Submit the pending review. With no pending review, add a review with no comments.
 ---@field discard_review fun(self, change: didymus.review.Change, cb: fun(err: string?)) Delete the pending review and its comments. Give an error if there is none.

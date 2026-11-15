@@ -17,11 +17,16 @@ M.defaults = {
   },
   review = {
     picker = "snacks", -- "snacks", "test" or an adapter table. See lua/didymus/ui/picker/.
+    -- The options of each kind of list, for each adapter. For example:
+    -- { changes = { snacks = { layout = { preset = "ivy" } } } }
+    picker_config = {},
     provider = "github", -- "github", "test" or a provider table. See lua/didymus/review/provider/.
+    icons = { active = "💬", resolved = "✅" }, -- The state of a thread. "" shows no icon.
+    panel = { keys = { toggle_active = "a" } }, -- false turns off a key.
     input = {
       width = 60,
       max_height = 10,
-      keys = { comment = "<C-s>", cancel = "q" }, -- `comment` also adds a reply and submits.
+      keys = { post = "<C-s>", add = "<C-y>", cancel = "q" }, -- Also for a reply. A submit has only `post`.
     },
     thread = {
       keys = { reply = "r", resolve = "x" }, -- In the thread float. False turns a key off.

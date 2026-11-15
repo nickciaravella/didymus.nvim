@@ -351,10 +351,10 @@ function M:get_threads(change, cb)
   end)
 end
 
---- Get the pending review of the viewer. Nil if there is none. Do not use
---- `change.pending_review_id`, because the user can start, submit or discard a review on github.com.
+--- Find the pending review of the viewer. Do not use `change.pending_review_id`, because the user
+--- can start, submit or discard a review on github.com.
 ---@param change didymus.review.provider.github.Change
----@param cb fun(err: string?, review_id: string?)
+---@param cb fun(err: string?, review_id: string?) Nil `review_id` if there is no pending review.
 local function find_pending_review(change, cb)
   local target = change.github
   local args = get_graphql_args(target, graphql.pending_reviews, { "-f", "id=" .. target.node_id })
@@ -371,86 +371,178 @@ local function find_pending_review(change, cb)
   end)
 end
 
+--- Start a pending review at the change head.
+---@param change didymus.review.provider.github.Change
+---@param cb fun(err: string?, review_id: string?)
+local function start_review(change, cb)
+  local target = change.github
+  local args = get_graphql_args(target, graphql.start_review, {
+    "-f",
+    "pullRequestId=" .. target.node_id,
+    "-f",
+    "commitOID=" .. change.head_sha,
+  })
+  run_json("gh api graphql", args, function(err, result)
+    if err then
+      return cb(err)
+    end
+    cb(nil, result.data.addPullRequestReview.pullRequestReview.id)
+  end)
+end
+
 --- Get the pending review of the viewer, or start one at the change head.
 ---@param change didymus.review.provider.github.Change
 ---@param cb fun(err: string?, review_id: string?)
 local function get_pending_review(change, cb)
-  local target = change.github
-  local label = "gh api graphql"
   find_pending_review(change, function(err, review_id)
     if err or review_id then
       return cb(err, review_id)
     end
-    local args = get_graphql_args(target, graphql.start_review, {
-      "-f",
-      "pullRequestId=" .. target.node_id,
-      "-f",
-      "commitOID=" .. change.head_sha,
-    })
-    run_json(label, args, function(start_err, started)
-      if start_err then
-        return cb(start_err)
-      end
-      cb(nil, started.data.addPullRequestReview.pullRequestReview.id)
+    start_review(change, cb)
+  end)
+end
+
+--- Add a thread on the head side to the pending review `review_id`.
+---@param change didymus.review.provider.github.Change
+---@param review_id string
+---@param draft didymus.review.CommentDraft
+---@param cb fun(err: string?, thread: didymus.review.Thread?)
+local function add_thread(change, review_id, draft, cb)
+  local label = "gh api graphql"
+  local fields = { "-f", "reviewId=" .. review_id, "-f", "path=" .. draft.path }
+  vim.list_extend(fields, { "-f", "body=" .. draft.body, "-F", "line=" .. draft.range.last })
+  if draft.range.first ~= draft.range.last then
+    vim.list_extend(fields, { "-F", "startLine=" .. draft.range.first, "-f", "startSide=RIGHT" })
+  end
+  local args = get_graphql_args(change.github, graphql.add_thread, fields)
+  run_json(label, args, function(err, result)
+    if err then
+      return cb(err)
+    end
+    local thread = result.data.addPullRequestReviewThread.thread
+    if not thread then
+      -- GitHub gives no error for a line out of the diff.
+      return cb(("%s: GitHub did not add the thread. Are the lines in the diff?"):format(label))
+    end
+    cb(nil, to_thread(thread, thread.comments.nodes))
+  end)
+end
+
+--- Get one thread with all its comments.
+---@param target didymus.review.provider.github.Target
+---@param thread_id string
+---@param cb fun(err: string?, thread: didymus.review.Thread?)
+local function get_thread(target, thread_id, cb)
+  local label = "gh api graphql"
+  local args = get_graphql_args(target, graphql.thread, { "-f", "id=" .. thread_id })
+  run_json(label, args, function(err, result)
+    if err then
+      return cb(err)
+    end
+    if not result.data.node then
+      return cb(("%s: GitHub did not give the thread"):format(label))
+    end
+    complete_threads(target, { result.data.node }, function(threads_err, threads)
+      cb(threads_err, threads and threads[1])
     end)
   end)
 end
 
---- Add a thread on the head side to the pending review of the viewer. Start the review if there
---- is none.
+--- Post a thread at once: start a review, add the thread, and submit the review as a comment. Only
+--- this order gives the id of the thread. GitHub posts a comment at once only with no pending
+--- review, so give an error if the viewer has one.
+---@param change didymus.review.provider.github.Change
+---@param draft didymus.review.CommentDraft
+---@param cb fun(err: string?, thread: didymus.review.Thread?)
+local function post_thread(change, draft, cb)
+  local target = change.github
+  find_pending_review(change, function(err, pending_id)
+    if err then
+      return cb(err)
+    end
+    if pending_id then
+      return cb(
+        "you have a pending review, and GitHub posts a comment at once only with no pending review. "
+          .. "Add the comment to the review, or submit the review first"
+      )
+    end
+    start_review(change, function(start_err, review_id)
+      if start_err then
+        return cb(start_err)
+      end
+      add_thread(change, review_id, draft, function(add_err, thread)
+        if add_err then
+          -- An empty pending review blocks the next post.
+          local args =
+            get_graphql_args(target, graphql.delete_review, { "-f", "reviewId=" .. review_id })
+          return run_json("gh api graphql", args, function(delete_err)
+            cb(
+              delete_err and ("%s (cannot delete the new review: %s)"):format(add_err, delete_err)
+                or add_err
+            )
+          end)
+        end
+        local args = get_graphql_args(target, graphql.submit_review, {
+          "-f",
+          "reviewId=" .. review_id,
+          "-f",
+          "event=COMMENT",
+        })
+        run_json("gh api graphql", args, function(submit_err)
+          if submit_err then
+            return cb(("%s. The comment stays in your pending review"):format(submit_err))
+          end
+          change.pending_review_id = nil
+          -- After the submit, the viewer can resolve the thread. So get its `viewerCan…` fields
+          -- again.
+          get_thread(target, thread.id, function(get_err, posted)
+            if get_err then
+              -- The comment is posted, so do not give an error. Else the user posts it again.
+              thread.comments[1].pending = false
+              return cb(nil, thread)
+            end
+            cb(nil, posted)
+          end)
+        end)
+      end)
+    end)
+  end)
+end
+
+--- Add a thread on the head side to the pending review of the viewer, and start the review if
+--- there is none. Or post the thread at once.
 ---@param change didymus.review.provider.github.Change
 ---@param draft didymus.review.CommentDraft
 ---@param cb fun(err: string?, thread: didymus.review.Thread?)
 function M:add_comment(change, draft, cb)
-  local label = "gh api graphql"
+  if not draft.pending then
+    return post_thread(change, draft, cb)
+  end
   get_pending_review(change, function(err, review_id)
     if err then
       return cb(err)
     end
     change.pending_review_id = review_id
-    local fields = { "-f", "reviewId=" .. review_id, "-f", "path=" .. draft.path }
-    vim.list_extend(fields, { "-f", "body=" .. draft.body, "-F", "line=" .. draft.range.last })
-    if draft.range.first ~= draft.range.last then
-      vim.list_extend(fields, { "-F", "startLine=" .. draft.range.first, "-f", "startSide=RIGHT" })
-    end
-    local args = get_graphql_args(change.github, graphql.add_thread, fields)
-    run_json(label, args, function(add_err, result)
-      if add_err then
-        return cb(add_err)
-      end
-      local thread = result.data.addPullRequestReviewThread.thread
-      if not thread then
-        -- GitHub gives no error for a line out of the diff.
-        return cb(("%s: GitHub did not add the thread. Are the lines in the diff?"):format(label))
-      end
-      cb(nil, to_thread(thread, thread.comments.nodes))
-    end)
+    add_thread(change, review_id --[[@as string]], draft, cb)
   end)
 end
 
---- Add a reply to the pending review of the viewer. Start the review if there is none.
+--- Add a reply to the pending review of the viewer, and start the review if there is none. Or
+--- post the reply at once. GitHub posts it at once only with no pending review, so give an error
+--- if the viewer has one.
 ---@param change didymus.review.provider.github.Change
----@param thread_id string
----@param body string
+---@param draft didymus.review.ReplyDraft
 ---@param cb fun(err: string?, comment: didymus.review.Comment?)
-function M:reply(change, thread_id, body, cb)
+function M:reply(change, draft, cb)
   local label = "gh api graphql"
-  get_pending_review(change, function(err, review_id)
-    if err then
-      return cb(err)
-    end
-    change.pending_review_id = review_id
-    local args = get_graphql_args(change.github, graphql.reply, {
-      "-f",
-      "reviewId=" .. review_id,
-      "-f",
-      "threadId=" .. thread_id,
-      "-f",
-      "body=" .. body,
-    })
-    run_json(label, args, function(reply_err, result)
-      if reply_err then
-        return cb(reply_err)
+  ---@param review_id string? Nil posts the reply at once.
+  local function send(review_id)
+    local fields = review_id and { "-f", "reviewId=" .. review_id } or {}
+    vim.list_extend(fields, { "-f", "threadId=" .. draft.thread_id, "-f", "body=" .. draft.body })
+    local args = get_graphql_args(change.github, graphql.reply, fields)
+    run_json(label, args, function(err, result)
+      if err then
+        return cb(err)
       end
       local comment = result.data.addPullRequestReviewThreadReply.comment
       if not comment then
@@ -458,6 +550,29 @@ function M:reply(change, thread_id, body, cb)
       end
       cb(nil, to_comment(comment))
     end)
+  end
+
+  if draft.pending then
+    return get_pending_review(change, function(err, review_id)
+      if err then
+        return cb(err)
+      end
+      change.pending_review_id = review_id
+      send(review_id)
+    end)
+  end
+  find_pending_review(change, function(err, pending_id)
+    if err then
+      return cb(err)
+    end
+    if pending_id then
+      -- With no `reviewId`, GitHub puts the reply into the pending review, with no error.
+      return cb(
+        "you have a pending review, and GitHub posts a reply at once only with no pending review. "
+          .. "Add the reply to the review, or submit the review first"
+      )
+    end
+    send(nil)
   end)
 end
 

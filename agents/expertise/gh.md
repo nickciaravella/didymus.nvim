@@ -61,11 +61,18 @@ The thread has the `startLine` and the `line` of the input. But its `diff_hunk` 
 - Proof: on nickciaravella/didymus.nvim#64 (hunks at head lines 1-6 and 22-28), `startLine: 5, line: 23` gives a thread with `startLine: 5` and `line: 23`. `gh api repos/{owner}/{repo}/pulls/64/reviews/<id>/comments` gives a `diff_hunk` that starts at `@@ -21,7 +22,7 @@` and stops at line 23.
 - Checked: gh 2.103.2
 
-### A user can have only one pending review on a PR
+### A user can have only one pending review on a PR, and then cannot post a single comment
 
-A second `addPullRequestReview` with no `event` fails with `User can only have one pending review per pull request`. Find the pending review first, also one that the user started on github.com. Only its author can see a pending review.
+A second `addPullRequestReview` fails with `User can only have one pending review per pull request`, also with `event: COMMENT`. REST `POST pulls/{n}/comments` fails with 422 and `user_id can only have one pending review per pull request`. `addPullRequestReviewThread` with only `pullRequestId` adds the thread to the pending review. After these calls, the pending review and its comments stay. github.com also does not let you add a single comment then. Find the pending review first, also one from github.com. Only its author can see it.
 
-- Proof: on nickciaravella/didymus.nvim#64, run `addPullRequestReview` with `pullRequestId` and `commitOID` two times. The second call exits with 1, with that message.
+- Proof: on nickciaravella/didymus.nvim#64, start a review with `addPullRequestReview` (`pullRequestId`, `commitOID`). Then each of the three calls above gives that result.
+- Checked: gh 2.103.2
+
+### To post a comment at once and get its thread id, start a review, add the thread, and submit
+
+With no pending review, REST `POST pulls/{n}/comments` posts the comment, but its reply has only the comment ids, and `PullRequestReviewComment` has no field for its thread. `addPullRequestReview` with `threads` also gives no thread id. So start a review with no `event`, add the thread with `addPullRequestReviewThread`, and submit the review with `submitPullRequestReview` and `event: COMMENT`. The thread of the second call has the id, and after the submit its comment is `SUBMITTED`.
+
+- Proof: `add_comment()` with `pending = false` in `lua/didymus/review/provider/github/init.lua` gave the fixtures `tests/fixtures/github/comment_post_*_graphql.json` on nickciaravella/didymus.nvim#64. A query of `reviews(states: [PENDING])` after the submit gave no review.
 - Checked: gh 2.103.2
 
 ### `viewerCanResolve` and `viewerCanUnresolve` depend on the state, and are false on a pending thread
@@ -73,6 +80,20 @@ A second `addPullRequestReview` with no `event` fails with `User can only have o
 On a submitted thread, `viewerCanResolve` is true only if the thread is not resolved, and `viewerCanUnresolve` only if it is resolved. So read the fields again after a change: the payload of `resolveReviewThread` has `thread`. On a thread of a pending review, both fields are always false, but `resolveReviewThread` and `unresolveReviewThread` still work. github.com shows no resolve button there. `viewerCanReply` is true on both.
 
 - Proof: on nickciaravella/didymus.nvim#64, submit a review with `event: COMMENT` and one thread. `resolveReviewThread` gives `viewerCanResolve: false, viewerCanUnresolve: true`, and `unresolveReviewThread` gives the opposite. In a pending review, `addPullRequestReviewThread`, then `resolveReviewThread`, give `isResolved: true` with both fields false.
+- Checked: gh 2.103.2
+
+### `addPullRequestReviewThreadReply` with no `pullRequestReviewId` posts at once, but only with no pending review
+
+With no pending review, the reply is posted at once: its `state` is `SUBMITTED`, in a new review with the state `COMMENTED`. With a pending review, the same call puts the reply into the pending review as `PENDING`, with no error. REST `POST pulls/{n}/comments/{id}/replies` then fails with 422 and `user_id can only have one pending review per pull request`. So find the pending review first, as for a single comment.
+
+- Proof: on nickciaravella/didymus.nvim#64, call `addPullRequestReviewThreadReply` with only `pullRequestReviewThreadId` and `body`: the comment is `SUBMITTED`. Start a review with `addPullRequestReview`, and call it again: the comment is `PENDING` in that review. Then the REST call gives 422.
+- Checked: gh 2.103.2
+
+### After a post at once, the thread of the add still has the `viewerCan…` fields of a pending thread
+
+The thread in the payload of `addPullRequestReviewThread` has `viewerCanResolve: false`, because the review is still pending. After `submitPullRequestReview`, a query of the thread gives `viewerCanResolve: true`. So get the thread again after the submit.
+
+- Proof: on nickciaravella/didymus.nvim#64, start a review, add a thread, submit with `event: COMMENT`, then query `node(id:)` of the thread. See `tests/fixtures/github/comment_post_get_thread_graphql.json`.
 - Checked: gh 2.103.2
 
 ### `addPullRequestReviewThreadReply` gives only the comment, with no link to its thread
@@ -94,6 +115,13 @@ The reply comes at once, but `reviewThreads` of the PR still has the threads for
 `event: COMMENT` with no body and no comment fails. On a pending review, the error is `You need to leave a comment indicating the requested changes.` With `addPullRequestReview`, the message is empty. A comment review with comments and an empty body works. The docs say that `REQUEST_CHANGES` also needs a body. On your own PR, you cannot check this, because GitHub refuses `APPROVE` and `REQUEST_CHANGES` before it checks the body.
 
 - Proof: on nickciaravella/didymus.nvim#64, as its author, `submitPullRequestReview` of an empty pending review gives `Could not comment for pull request review. You need to leave a comment indicating the requested changes.` for `COMMENT`, and `… Can not approve your own pull request` for `APPROVE`. `REQUEST_CHANGES` with a body gives `Review Can not request changes on your own pull request`. See [the REST docs](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request): the body is "Required when using REQUEST_CHANGES or COMMENT".
+- Checked: gh 2.103.2
+
+### A delete of the only comment of a submitted review also deletes the review
+
+`deletePullRequestReviewComment` gives the review in its reply, but after the delete, `reviews` of the PR does not have it. So you can clean up a test comment on a throwaway PR with no empty review.
+
+- Proof: on nickciaravella/didymus.nvim#64, post a comment with REST `POST pulls/64/comments`, then delete it with `deletePullRequestReviewComment`. `reviews(first: 20)` of the PR does not have its review.
 - Checked: gh 2.103.2
 
 ## `gh pr checkout`
