@@ -137,7 +137,7 @@ Then drive it in the child with `require("didymus.ui.picker.test")`:
 
 | Function | Behavior |
 | --- | --- |
-| `calls` | One record for each `select()` and `panel()`: `kind`, `opts`, `items`, `cursor`, `open` and `focus_count`. |
+| `calls` | One record for each `select()` and `panel()`: `kind`, `opts`, `config`, `items`, `cursor`, `open` and `focus_count`. The `kind` of a record is `"select"` or `"panel"`. `opts.kind` is the kind of list, such as `"files"`. |
 | `choose(target)` | Choose an item in the last open picker. A select closes first. A panel stays open. |
 | `cancel()` | Close the last open picker with no choice. |
 | `press(key, target)` | Call the action of `key` in the last open panel, with the item under the cursor. |
@@ -165,7 +165,7 @@ The helpers in `tests/e2e/review/helpers.lua` run in the test process:
 | `wait_for_threads(child, count)` | Wait until the open review has `count` threads. The review gets its threads after the tabpage opens. |
 | `call(child, method, ...)` | Call a method of the configured provider in the child. Wait for its `cb`, and return `{ err, result }`. |
 | `review(child)`, `wait_for_review(child, id)` | Get the open review in the child, or wait for it. |
-| `picker_calls(child, kind)` | Get the calls of the test picker, with no functions. `kind` is `"select"` or `"panel"`. Nil gives all calls. |
+| `picker_calls(child, role)` | Get the calls of the test picker, with no functions: `role`, `kind`, `config`, `title`, `items`, `cursor`, `open` and `focus_count`. `role` is `"select"` or `"panel"`. Nil gives all calls. `kind` is the kind of list, such as `"files"`. |
 | `git(dir, args)`, `write(dir, files)` | Run git, or write files, in the repo. In `write()` and `make_repo()`, `false` deletes a file. |
 
 The test provider has two more fields:
@@ -198,8 +198,10 @@ The unit tests of the GitHub provider replace `vim.system` with a mock. The mock
 | `threads_graphql.json` | The threads of neovim/neovim#42726, with `first: 2` threads and `first: 5` comments: 2 pages, and a thread with more comments. | None. |
 | `thread_comments_graphql.json` | The comments of the long thread of `threads_graphql.json`, with `first: 5`: 3 pages. | None. |
 | `base_threads_graphql.json` | The threads of neovim/neovim#42735: a thread on the base side, and outdated threads. | None. A test changes some fields after it reads the file. |
-| `comment_*_graphql.json` | `add_comment()` on nickciaravella/didymus.nvim#64, a throwaway PR: no pending review, a new review, a thread on one line, a range, and a line out of the diff. | Formatted with `jq`. |
+| `comment_*_graphql.json` | `add_comment()` on nickciaravella/didymus.nvim#64, a throwaway PR: no pending review, a new review, a thread on one line, a range, and a line out of the diff. `comment_post_*` and `comment_delete_review` are posts at once. | Formatted with `jq`. |
 | `reply_graphql.json`, `resolve_graphql.json`, `unresolve_graphql.json` | `reply()` and `set_resolved()` on a submitted thread of #64, in the same pending review as the `comment_*` fixtures. | Formatted with `jq`. |
+| `reply_post_graphql.json` | A reply that is posted at once, on a submitted thread of #64, with no pending review. | Formatted with `jq`. |
+| `comment_post_get_thread_graphql.json` | The get of a thread after a post at once on #64. It is from a second post of the comment of `comment_post_*`, so its thread id is different. | Formatted with `jq`. |
 | `submit_graphql.json`, `submit_no_body_graphql.json`, `discard_graphql.json` | `submit_review()` and `discard_review()` on #64: a submit of a pending review, a comment with no body and no pending review, and a discard. | Formatted with `jq`. |
 
 The REST fixtures (`*_files.json`) do not have the URL fields. To record again, run the queries of `lua/didymus/review/provider/github/graphql.lua` and the REST call with `--paginate --slurp`. A smaller page size, such as `first: 2` and `per_page=2`, gives more than one page.
@@ -223,6 +225,8 @@ In the MVP, people test the GitHub provider with the real `gh` by hand. See [#50
 Do manual tests on a throwaway PR, not on a PR that other persons use.
 
 The throwaway PR of the review is [#64](https://github.com/nickciaravella/didymus.nvim/pull/64), from the branch `test/review-comments`. It changes `lua/didymus/init.lua` at two places, so its patch has two hunks: head lines 1-6 and 22-28. Do not merge it, close it or delete its branch. Delete each pending review that a check leaves.
+
+Warning: the user and all agents use the same GitHub account on #64, and an account has only one pending review on a PR. So a pending review on #64 can belong to a different check or manual test. Before you delete a pending review, look at its comments. Make your checks short, because your pending review also blocks the checks of other agents.
 
 ### Load the plugin from a worktree
 

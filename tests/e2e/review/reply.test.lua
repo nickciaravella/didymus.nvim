@@ -148,11 +148,11 @@ T["a reply adds a pending comment to the thread"] = function()
   child.cmd("Didymus review reply")
   eq(wait_for_input(), {
     title = " Reply to file.txt:19 ",
-    footer = " <C-s> reply  q cancel ",
+    footer = " <C-s> reply now  <C-y> add to review  q cancel ",
     lines = { "" },
   })
 
-  child.type_keys("Thanks.", "<C-s>")
+  child.type_keys("Thanks.", "<C-y>")
   wait_for(function()
     return #session_thread("old").comments == 2
   end, "the reply in the session")
@@ -165,8 +165,49 @@ T["a reply adds a pending comment to the thread"] = function()
   eq(provider_threads()[1].comments, comments)
   eq(session_thread("old").comments, comments)
   eq(sign(), { "2", "DidymusThread" })
-  eq(panel_item("old").text, "@octocat A comment.")
+  eq(panel_item("old").text, "💬 @octocat A comment.")
   eq(has_message("didymus: added a pending reply at file.txt:19"), true)
+end
+
+T["reply now posts the reply at once, with no pending tag"] = function()
+  open_review()
+  child.cmd("Didymus review reply")
+  wait_for_input()
+  child.type_keys("Posted.", "<C-s>")
+  wait_for(function()
+    return #session_thread("old").comments == 2
+  end, "the reply in the session")
+  local comment = { author = "reviewer", body = "Posted.", pending = false }
+  eq(provider_threads()[1].comments[2], comment)
+  eq(session_thread("old").comments[2], comment)
+  eq(has_message("didymus: posted a reply at file.txt:19"), true)
+
+  child.cmd("Didymus review thread")
+  eq(float_content().lines[#float_content().lines - 2], "**@reviewer**")
+end
+
+T["if the code host refuses a reply now, the message shows, and the text stays"] = function()
+  open_review()
+  -- The GitHub provider gives this error if the viewer has a pending review.
+  child.lua("require('didymus.review.provider.test').errors.reply = 'you have a pending review'")
+  child.cmd("Didymus review reply")
+  wait_for_input()
+  child.type_keys("Not yet.")
+  -- `type_keys()` gives the error message as an error of the test.
+  child.api.nvim_input("<C-s>")
+  wait_for_message(
+    "didymus: cannot post the reply at file.txt:19: you have a pending review. "
+      .. "The next reply to this thread starts with its text."
+  )
+  eq(#session_thread("old").comments, 1)
+
+  child.cmd("Didymus review reply")
+  eq(wait_for_input().lines, { "Not yet." })
+  child.type_keys("<C-y>")
+  wait_for(function()
+    return #session_thread("old").comments == 2
+  end, "the reply in the session")
+  eq(session_thread("old").comments[2].pending, true)
 end
 
 T["resolve resolves the thread, and the panel shows it dim. resolve again unresolves it"] = function()
@@ -177,9 +218,9 @@ T["resolve resolves the thread, and the panel shows it dim. resolve again unreso
   end, "the resolved thread")
   eq(provider_threads()[1].resolved, true)
   eq(panel_item("old").segments, {
+    { "✅ ", "DidymusThreadResolved" },
     { "@octocat", "DidymusThreadResolved" },
     { " A comment.", "DidymusThreadResolved" },
-    { " [resolved]", "DidymusThreadResolved" },
   })
   eq(sign(), { "1", "DidymusThreadResolved" })
   eq(has_message("didymus: resolved the thread at file.txt:19"), true)
@@ -189,7 +230,10 @@ T["resolve resolves the thread, and the panel shows it dim. resolve again unreso
     return not session_thread("old").resolved
   end, "the unresolved thread")
   eq(provider_threads()[1].resolved, false)
-  eq(panel_item("old").segments, { { "@octocat", "DidymusThread" }, { " A comment." } })
+  eq(
+    panel_item("old").segments,
+    { { "💬 " }, { "@octocat", "DidymusThread" }, { " A comment." } }
+  )
   eq(sign(), { "1", "DidymusThread" })
   eq(has_message("didymus: unresolved the thread at file.txt:19"), true)
 end
@@ -280,12 +324,12 @@ T["a thread with no line gets a reply from its float"] = function()
     }),
   })
   -- The test picker has no window. A second choice focuses the float, as in a real panel.
-  choose("@octocat Old note. [outdated]")
-  choose("@octocat Old note. [outdated]")
+  choose("💬 @octocat Old note. [outdated]")
+  choose("💬 @octocat Old note. [outdated]")
   eq(child.api.nvim_get_current_win(), float_win())
   child.type_keys("r")
   eq(wait_for_input().title, " Reply to file.txt ")
-  child.type_keys("Still true.", "<C-s>")
+  child.type_keys("Still true.", "<C-y>")
   wait_for_message("didymus: added a pending reply at file.txt")
   eq(#provider_threads()[1].comments, 2)
 end
@@ -301,20 +345,57 @@ T["with two threads at the line, the picker asks which one"] = function()
   child.cmd("Didymus review resolve")
   local select = helpers.picker_calls(child, "select")[1]
   eq(select.title, "Threads at line 19")
-  choose("@hubot Second.")
+  choose("💬 @hubot Second.")
   wait_for(function()
     return session_thread("second").resolved
   end, "the resolved thread")
   eq(session_thread("first").resolved, false)
 
   child.cmd("Didymus review reply")
-  choose("@octocat A comment.")
+  choose("💬 @octocat A comment.")
   eq(wait_for_input().title, " Reply to file.txt:19 ")
-  child.type_keys("To the first.", "<C-s>")
+  child.type_keys("To the first.", "<C-y>")
   wait_for(function()
     return #session_thread("first").comments == 2
   end, "the reply in the session")
   eq(#session_thread("second").comments, 1)
+end
+
+T["with the thread float open, the commands use its thread, also with two threads at the line"] = function()
+  open_review({
+    make_thread("first", "file.txt", {
+      range = { first = 19, last = 19 },
+      resolved = true,
+      comments = { { author = "octocat", body = "Please rename this variable.", pending = false } },
+    }),
+    make_thread("second", "file.txt", {
+      range = { first = 18, last = 19 },
+      comments = { { author = "hubot", body = "Second.", pending = false } },
+    }),
+  })
+  child.cmd("Didymus review thread")
+  choose("✅ @octocat Please rename this variable.")
+  -- A real picker closes the float when it opens. So a second `thread` must not ask again.
+  child.cmd("Didymus review thread")
+  eq(#helpers.picker_calls(child, "select"), 1)
+  eq(child.api.nvim_get_current_win(), float_win())
+  eq(float_content().footer, " r reply  x unresolve ")
+  child.type_keys("x")
+  wait_for(function()
+    return not session_thread("first").resolved
+  end, "the unresolved thread")
+  eq(session_thread("second").resolved, false)
+  eq(has_message("didymus: unresolved the thread at file.txt:19"), true)
+
+  -- In the code window under the float, `resolve` also uses the thread of the float.
+  child.cmd("Didymus review thread")
+  choose("💬 @octocat Please rename this variable.")
+  child.cmd("Didymus review resolve")
+  eq(#helpers.picker_calls(child, "select"), 2)
+  wait_for(function()
+    return session_thread("first").resolved
+  end, "the resolved thread")
+  eq(session_thread("second").resolved, false)
 end
 
 T["after an error, the message shows, and the next reply to the thread starts with the text"] = function()
@@ -324,7 +405,7 @@ T["after an error, the message shows, and the next reply to the thread starts wi
   wait_for_input()
   child.type_keys("First try.")
   -- `type_keys()` gives the error message as an error of the test.
-  child.api.nvim_input("<C-s>")
+  child.api.nvim_input("<C-y>")
   wait_for_message(
     "didymus: cannot add the reply at file.txt:19: no network. "
       .. "The next reply to this thread starts with its text."
@@ -333,7 +414,7 @@ T["after an error, the message shows, and the next reply to the thread starts wi
 
   child.cmd("Didymus review reply")
   eq(wait_for_input().lines, { "First try." })
-  child.type_keys(" Again.", "<C-s>")
+  child.type_keys(" Again.", "<C-y>")
   wait_for(function()
     return #session_thread("old").comments == 2
   end, "the reply in the session")
@@ -369,6 +450,11 @@ T["the mappings reply and resolve"] = function()
   wait_for(function()
     return session_thread("old").resolved
   end, "the resolved thread")
+  -- The mapping also unresolves.
+  eq(
+    child.lua_get("vim.fn.maparg('<Plug>(didymus-review-resolve)', 'n', false, true).desc"),
+    "didymus: review resolve or unresolve"
+  )
 end
 
 return T

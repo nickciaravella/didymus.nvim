@@ -15,14 +15,25 @@
 ---@field name string
 ---@field fn fun(item: didymus.picker.Item?) The item under the cursor. Nil if the panel is empty.
 
+---@alias didymus.picker.Kind
+---| "changes" The list of changes, such as the PR list.
+---| "choice" A short list of choices, such as a confirm prompt or the verdict.
+---| "files" The files panel.
+
+--- The options of each kind, such as `review.picker_config`. `config[kind][adapter_name]` has the
+--- options of one adapter. Each adapter reads its own options.
+---@alias didymus.picker.Config table<didymus.picker.Kind|string, table<string, table>>
+
 ---@class didymus.picker.SelectOpts
 ---@field title string
+---@field kind? didymus.picker.Kind The adapter uses the options of this kind.
 ---@field items didymus.picker.Item[]
 ---@field on_choose fun(item: didymus.picker.Item) The picker closes first.
 ---@field on_cancel? fun()
 
 ---@class didymus.picker.PanelOpts
 ---@field title string
+---@field kind? didymus.picker.Kind The adapter uses the options of this kind.
 ---@field items fun(): didymus.picker.Item[] The panel calls it on open and on `update()`.
 ---@field on_choose fun(item: didymus.picker.Item) The panel stays open, and its window stays current.
 ---@field actions? didymus.picker.Action[] Keys in the panel, such as `R` for refresh.
@@ -36,8 +47,8 @@
 ---@field is_open fun(self): boolean
 
 ---@class didymus.picker.Adapter
----@field select fun(opts: didymus.picker.SelectOpts)
----@field panel fun(opts: didymus.picker.PanelOpts): didymus.picker.Panel
+---@field select fun(opts: didymus.picker.SelectOpts, config: didymus.picker.Config?)
+---@field panel fun(opts: didymus.picker.PanelOpts, config: didymus.picker.Config?): didymus.picker.Panel
 ---@field health fun() Report the dependencies with `vim.health`.
 
 local M = {}
@@ -49,20 +60,32 @@ local builtin = {
   test = "didymus.ui.picker.test",
 }
 
---- The adapter of `spec`: the name of a built-in adapter, or an adapter table.
----@param spec string|didymus.picker.Adapter
+--- The adapter of `spec`, with `config`: `select()` and `panel()` give `config` to the adapter.
+---@param spec string|didymus.picker.Adapter The name of a built-in adapter, or an adapter table.
+---@param config didymus.picker.Config?
 ---@return didymus.picker.Adapter? adapter
 ---@return string? err
-function M.get(spec)
-  if type(spec) == "table" then
-    return spec
+function M.get(spec, config)
+  local adapter = spec
+  if type(spec) ~= "table" then
+    local module = builtin[spec]
+    if not module then
+      return nil,
+        ('unknown picker %q. Use "snacks", "test" or an adapter table.'):format(tostring(spec))
+    end
+    adapter = require(module)
   end
-  local module = builtin[spec]
-  if not module then
-    return nil,
-      ('unknown picker %q. Use "snacks", "test" or an adapter table.'):format(tostring(spec))
-  end
-  return require(module)
+  ---@cast adapter didymus.picker.Adapter
+  config = config or {}
+  return {
+    select = function(opts)
+      return adapter.select(opts, config)
+    end,
+    panel = function(opts)
+      return adapter.panel(opts, config)
+    end,
+    health = adapter.health,
+  }
 end
 
 ---@param item didymus.picker.Item
@@ -99,13 +122,14 @@ end
 ---@field preview? { lines: string[], filetype: string? } The preview of both items.
 ---@field cb fun(confirmed: boolean)
 
---- Ask a question with the select role, because `vim.fn.confirm()` blocks the UI. The items are
---- `choice` and "Cancel". A close with no choice is a cancel.
+--- Ask a question with the select role and the `choice` kind, because `vim.fn.confirm()` blocks
+--- the UI. The items are `choice` and "Cancel". A close with no choice is a cancel.
 ---@param adapter didymus.picker.Adapter
 ---@param opts didymus.picker.ConfirmOpts
 function M.confirm(adapter, opts)
   adapter.select({
     title = opts.title,
+    kind = "choice",
     items = {
       { text = opts.choice, value = true, preview = opts.preview },
       { text = "Cancel", value = false, preview = opts.preview },

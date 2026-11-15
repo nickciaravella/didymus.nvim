@@ -50,7 +50,8 @@ function M.get_line(thread)
   end
 end
 
---- The author, the first line of the first comment, and the tags of the state.
+--- The icon of the state, the author, the first line of the first comment, and the pending and
+--- outdated tags.
 ---@param thread didymus.review.Thread
 ---@param text_hl string? The highlight of the text. A resolved thread is dim.
 ---@return [string, string?][]
@@ -59,16 +60,19 @@ function M.get_summary(thread, text_hl)
   local author = comment and comment.author or "ghost"
   local first_line = comment and vim.trim(vim.trim(comment.body):match("^[^\n]*")) or ""
   local dim = thread.resolved and "DidymusThreadResolved" or nil
-  local segments = {
+  local icons = config.options.review.icons
+  local icon = thread.resolved and icons.resolved or icons.active
+  local segments = {}
+  if icon ~= "" then
+    table.insert(segments, { icon .. " ", dim })
+  end
+  vim.list_extend(segments, {
     { "@" .. author, dim or "DidymusThread" },
     { " " .. first_line, dim or text_hl },
-  }
+  })
   -- The first comment is pending until the user submits the review that started the thread.
   if comment and comment.pending then
     table.insert(segments, { " [pending]", dim or "DidymusThreadPending" })
-  end
-  if thread.resolved then
-    table.insert(segments, { " [resolved]", dim })
   end
   if thread.outdated then
     table.insert(segments, { " [outdated]", dim or "DiagnosticWarn" })
@@ -243,10 +247,15 @@ function M.open_float(thread)
   set_keys(buf, win, thread)
 end
 
---- The id of the thread of the thread float, if the float is the current window.
+--- The id of the thread of the open thread float, if the float or the window where it opened is
+--- the current window. A move of the cursor closes the float, so the cursor is at the thread.
 ---@return string?
 function M.get_float_thread_id()
-  if float and vim.api.nvim_get_current_win() == float.win then
+  if not (float and vim.api.nvim_win_is_valid(float.win)) then
+    return
+  end
+  local win = vim.api.nvim_get_current_win()
+  if win == float.win or win == float.origin_win then
     return float.thread_id
   end
 end

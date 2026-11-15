@@ -38,10 +38,7 @@ for _, action in ipairs({
   "close",
   "files",
   "thread",
-  "next",
-  "prev",
   "reply",
-  "resolve",
   "submit",
   "discard",
   "refresh",
@@ -50,6 +47,18 @@ for _, action in ipairs({
     require("didymus.review")[action]()
   end, { desc = "didymus: review " .. action })
 end
+
+for _, action in ipairs({ "next", "prev" }) do
+  for _, kind in ipairs({ "thread", "file", "hunk" }) do
+    vim.keymap.set("n", ("<Plug>(didymus-review-%s-%s)"):format(action, kind), function()
+      require("didymus.review")[action]({ kind = kind })
+    end, { desc = ("didymus: review %s %s"):format(action, kind) })
+  end
+end
+
+vim.keymap.set("n", "<Plug>(didymus-review-resolve)", function()
+  require("didymus.review").resolve()
+end, { desc = "didymus: review resolve or unresolve" })
 
 vim.keymap.set({ "n", "x" }, "<Plug>(didymus-review-comment)", function()
   require("didymus.review").comment()

@@ -153,11 +153,48 @@ T["a refresh shows the new threads and the new data of the change"] = function()
   eq(panel_rows(), {
     "#1 A new title",
     "@octocat main ← feature",
+    "All threads",
     "M file.txt +1 -1 2 threads",
-    "@hubot New.",
-    "@octocat A comment.",
+    "💬 @hubot New.",
+    "💬 @octocat A comment.",
   })
   eq(mark_lines(), { 2, 3 })
+end
+
+T["a refresh keeps the thread filter, the icons and the preview locations"] = function()
+  open_review({ line_thread("old", 3), line_thread("done", 4, { resolved = true }) })
+  child.lua("require('didymus.ui.picker.test').press('a')")
+  helpers.set_threads(child, "1", {
+    line_thread("old", 3),
+    line_thread("done", 4, { resolved = true }),
+    line_thread("new", 5),
+  })
+
+  refresh()
+  eq(thread_ids(), { "old", "done", "new" })
+  -- The filter hides the resolved thread.
+  eq(vim.list_slice(panel_rows(), 3), {
+    "Active threads",
+    "M file.txt +1 -1 2 threads",
+    "💬 @octocat A comment.",
+    "💬 @octocat A comment.",
+  })
+  local path = child.lua_get("require('didymus.review').current():get_full_path('file.txt')")
+  local locations = vim.tbl_map(function(item)
+    return item.location or false
+  end, helpers.picker_calls(child, "panel")[1].items)
+  eq(locations, {
+    false,
+    false,
+    false,
+    { path = path, line = 2 },
+    { path = path, line = 3 },
+    { path = path, line = 5 },
+  })
+
+  child.lua("require('didymus.ui.picker.test').press('a')")
+  eq(panel_rows()[3], "All threads")
+  eq(panel_rows()[6], "✅ @octocat A comment.")
 end
 
 T["a refresh gets the change with the id of open"] = function()
@@ -231,7 +268,13 @@ end
 T["review.panel.keys.refresh = false turns off the key"] = function()
   setup({ panel = { keys = { refresh = false } } })
   open_review()
-  eq(child.lua_get("require('didymus.ui.picker.test').calls[1].opts.actions"), {})
+  -- The key of the thread filter stays.
+  eq(
+    child.lua_get([[vim.tbl_map(function(action)
+      return action.key
+    end, require("didymus.ui.picker.test").calls[1].opts.actions)]]),
+    { "a" }
+  )
 end
 
 T["an error shows the message, and the review keeps its data"] = MiniTest.new_set({
@@ -302,7 +345,7 @@ T["just after a discard, a refresh has no pending comments"] = function()
   eq(thread_ids(), { "old", "new" })
 end
 
-T["after a discard, a new comment shows the pending comments on a refresh"] = function()
+T["after a discard, a new pending comment shows the pending comments on a refresh"] = function()
   open_review({
     line_thread("old", 3),
     line_thread("new", 4, { comments = { { author = "reviewer", body = "P.", pending = true } } }),
@@ -316,15 +359,27 @@ T["after a discard, a new comment shows the pending comments on a refresh"] = fu
   child.lua("require('didymus.ui.picker.test').choose('Discard')")
   helpers.wait_for_threads(child, 1)
 
-  child.api.nvim_win_set_cursor(0, { 2, 0 })
-  child.cmd("Didymus review comment")
-  wait_for(function()
-    return float_win() ~= nil
-  end, "the input float")
-  child.type_keys("Added.", "<C-s>")
-  wait_for_message("didymus: added a pending comment at file.txt:2")
+  ---@param line integer
+  ---@param key string `<C-s>` posts the comment at once. `<C-y>` adds it to the review.
+  ---@param message string
+  local function comment(line, key, message)
+    child.api.nvim_win_set_cursor(0, { line, 0 })
+    child.cmd("Didymus review comment")
+    wait_for(function()
+      return float_win() ~= nil
+    end, "the input float")
+    child.type_keys("A new comment.", key)
+    wait_for_message(message)
+  end
+
+  -- A comment that is posted at once is not pending. The deleted threads stay hidden.
+  comment(2, "<C-s>", "didymus: posted a comment at file.txt:2")
   refresh()
-  eq(thread_ids(), { "added-1", "old", "new" })
+  eq(thread_ids(), { "added-1", "old" })
+
+  comment(1, "<C-y>", "didymus: added a pending comment at file.txt:1")
+  refresh()
+  eq(thread_ids(), { "added-2", "added-1", "old", "new" })
 end
 
 T["with no open review, a warning shows"] = function()

@@ -350,6 +350,7 @@ local function pick(flow)
       end
       call_picker(flow.adapter.select, {
         title = "Pull requests",
+        kind = "changes",
         items = vim.tbl_map(to_item, changes),
         on_choose = guard(flow, function(item)
           open_id(flow, item.value.id)
@@ -364,7 +365,7 @@ end
 function M.open(opts)
   opts = opts or {}
   local options = config.options.review
-  local adapter, picker_err = picker.get(options.picker)
+  local adapter, picker_err = picker.get(options.picker, options.picker_config)
   if not adapter then
     return show_error(("%s (review.picker)"):format(picker_err))
   end
@@ -417,20 +418,33 @@ function M.thread()
   end
 end
 
---- Go to the next thread in the order of the panel, also in a different file.
-function M.next()
+---@type table<string, boolean>
+local stop_kinds = { thread = true, file = true, hunk = true }
+
+---@param direction 1|-1
+---@param opts { kind: didymus.review.StopKind? }?
+local function go_to(direction, opts)
+  local kind = opts and opts.kind or "thread"
+  if not stop_kinds[kind] then
+    local name = direction > 0 and "next" or "previous"
+    return show_error(("cannot go to the %s %s. Use thread, file or hunk."):format(name, kind))
+  end
   local session = get_open_review()
   if session then
-    session:go_to_thread(1)
+    session:go_to(kind, direction)
   end
 end
 
---- Go to the previous thread in the order of the panel, also in a different file.
-function M.prev()
-  local session = get_open_review()
-  if session then
-    session:go_to_thread(-1)
-  end
+--- Go to the next thread, file or hunk in the order of the panel, also in a different file.
+---@param opts { kind: didymus.review.StopKind? }? The default kind is "thread".
+function M.next(opts)
+  go_to(1, opts)
+end
+
+--- Go to the previous thread, file or hunk in the order of the panel, also in a different file.
+---@param opts { kind: didymus.review.StopKind? }? The default kind is "thread".
+function M.prev(opts)
+  go_to(-1, opts)
 end
 
 --- Get the change and the threads again, at the same time, and show them. If the head of the change
@@ -550,11 +564,12 @@ end
 ---@param draft didymus.review.CommentDraft
 local function add_comment(session, draft)
   local location = format_location(draft.path, draft.range)
-  track(("add a comment at %s"):format(location), function(done)
+  local verb = draft.pending and "add" or "post"
+  track(("%s a comment at %s"):format(verb, location), function(done)
     session.provider:add_comment(session.change, draft, done)
   end, function(err, thread)
     if err then
-      local message = ("cannot add the comment at %s: %s"):format(location, err)
+      local message = ("cannot %s the comment at %s: %s"):format(verb, location, err)
       if session:is_open() then
         session.failed_draft = draft
         -- One line, because a message with more lines makes the user press Enter.
@@ -566,11 +581,14 @@ local function add_comment(session, draft)
     end
     -- The comment is on the code host, also after a close of the review.
     if session:is_open() then
-      -- The pending comments from the provider are now new, not deleted.
-      session.discarded_at = nil
+      if draft.pending then
+        -- The pending comments from the provider are now new, not deleted.
+        session.discarded_at = nil
+      end
       session:add_thread(thread)
     end
-    vim.notify(("didymus: added a pending comment at %s"):format(location))
+    local done = draft.pending and "added a pending comment" or "posted a comment"
+    vim.notify(("didymus: %s at %s"):format(done, location))
   end)
 end
 
@@ -594,17 +612,25 @@ local function open_comment_input(session, path, range)
     keys = { cancel = options.keys.cancel },
     actions = {
       {
-        key = options.keys.comment,
-        name = "comment",
+        key = options.keys.post,
+        name = "comment now",
         on_submit = function(body)
-          add_comment(session, { path = path, range = range, body = body })
+          add_comment(session, { path = path, range = range, body = body, pending = false })
+        end,
+      },
+      {
+        key = options.keys.add,
+        name = "add to review",
+        on_submit = function(body)
+          add_comment(session, { path = path, range = range, body = body, pending = true })
         end,
       },
     },
   })
 end
 
---- Add a comment on the current line, the selection or `range`, in the pending review. Check the
+--- Add a comment on the current line, the selection or `range`. Post it at once, or add it to the
+--- pending review. Check the
 --- lines first. Then open the input float above them.
 ---@param opts { range: integer[]? }? The first and the last line.
 function M.comment(opts)
@@ -658,20 +684,21 @@ function M.comment(opts)
   end)
 end
 
---- Add the reply with the provider. Then show it in the thread. If the provider fails, keep the
---- text for the next reply to the thread.
+--- Add the reply with the provider: post it at once, or add it to the pending review. Then show it
+--- in the thread. If the provider fails, keep the text for the next reply to the thread.
 ---@param session didymus.review.Session
 ---@param thread didymus.review.Thread
----@param body string
-local function add_reply(session, thread, body)
+---@param draft didymus.review.ReplyDraft
+local function add_reply(session, thread, draft)
   local location = threads.get_location(thread)
-  track(("add a reply at %s"):format(location), function(done)
-    session.provider:reply(session.change, thread.id, body, done)
+  local verb = draft.pending and "add" or "post"
+  track(("%s a reply at %s"):format(verb, location), function(done)
+    session.provider:reply(session.change, draft, done)
   end, function(err, comment)
     if err then
-      local message = ("cannot add the reply at %s: %s"):format(location, err)
+      local message = ("cannot %s the reply at %s: %s"):format(verb, location, err)
       if session:is_open() then
-        session.failed_reply = { thread_id = thread.id, body = body }
+        session.failed_reply = draft
         -- One line, because a message with more lines makes the user press Enter.
         message = ("%s. The next reply to this thread starts with its text."):format(
           (message:gsub("%.$", ""))
@@ -681,11 +708,14 @@ local function add_reply(session, thread, body)
     end
     -- The reply is on the code host, also after a close of the review.
     if session:is_open() then
-      -- The pending comments from the provider are now new, not deleted.
-      session.discarded_at = nil
+      if draft.pending then
+        -- The pending comments from the provider are now new, not deleted.
+        session.discarded_at = nil
+      end
       session:add_reply(thread.id, comment)
     end
-    vim.notify(("didymus: added a pending reply at %s"):format(location))
+    local done = draft.pending and "added a pending reply" or "posted a reply"
+    vim.notify(("didymus: %s at %s"):format(done, location))
   end)
 end
 
@@ -706,21 +736,29 @@ local function open_reply_input(session, thread)
     width = options.width,
     max_height = options.max_height,
     keys = { cancel = options.keys.cancel },
+    -- A reply is a comment, so it has the actions and the keys of a comment.
     actions = {
       {
-        -- A reply is a comment, so it uses the key of a comment.
-        key = options.keys.comment,
-        name = "reply",
+        key = options.keys.post,
+        name = "reply now",
         on_submit = function(body)
-          add_reply(session, thread, body)
+          add_reply(session, thread, { thread_id = thread.id, body = body, pending = false })
+        end,
+      },
+      {
+        key = options.keys.add,
+        name = "add to review",
+        on_submit = function(body)
+          add_reply(session, thread, { thread_id = thread.id, body = body, pending = true })
         end,
       },
     },
   })
 end
 
---- Reply to the thread at the cursor, in the pending review. In the thread float, reply to its
---- thread. The input float opens at the cursor line of the window under the thread float.
+--- Reply to the thread at the cursor, or to the thread of the open thread float. Post the reply at
+--- once, or add it to the pending review. The input float opens at the cursor line of the window
+--- under the thread float.
 function M.reply()
   local session = get_open_review()
   if not session then
@@ -831,8 +869,8 @@ local function open_submit_input(session, info)
     end,
     actions = {
       {
-        -- The body of a review is a comment, so it uses the key of a comment.
-        key = options.keys.comment,
+        -- A submit posts the review at once, so it uses the key of a post.
+        key = options.keys.post,
         name = "submit",
         on_submit = function(body)
           submit_review(session, info, body)
@@ -869,6 +907,7 @@ function M.submit(opts)
   end
   call_picker(session.adapter.select, {
     title = ("Submit the review of %s"):format(session.label),
+    kind = "choice",
     items = vim.tbl_map(function(item)
       return { text = item.text, value = item }
     end, verdicts),

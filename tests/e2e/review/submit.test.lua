@@ -176,7 +176,7 @@ T["submit with each verdict sends the verdict and the body"]["with"] = function(
   wait_for(function()
     return pending_count() == 0
   end, "no pending comments")
-  eq(panel_thread_rows(), { "@octocat A comment.", "@reviewer A pending comment." })
+  eq(panel_thread_rows(), { "💬 @octocat A comment.", "💬 @reviewer A pending comment." })
 end
 
 T["submit with no verdict shows the verdicts in the picker"] = function()
@@ -184,6 +184,7 @@ T["submit with no verdict shows the verdicts in the picker"] = function()
   child.cmd("Didymus review submit")
   local select = helpers.picker_calls(child, "select")[1]
   eq(select.title, "Submit the review of #1")
+  eq(select.kind, "choice")
   eq(
     vim.tbl_map(function(item)
       return item.text
@@ -238,6 +239,22 @@ T["an empty body is permitted for an approval, and for a review with pending com
   eq(provider_reviews()[2], { change_id = "1", verdict = "comment" })
 end
 
+T["a comment that is posted at once is not a pending comment"] = function()
+  open_review({})
+  child.api.nvim_win_set_cursor(0, { 2, 0 })
+  child.cmd("Didymus review comment")
+  wait_for_input()
+  child.type_keys("Posted now.", "<C-s>")
+  wait_for_message("didymus: posted a comment at file.txt:2")
+  eq(pending_count(), 0)
+
+  child.cmd("Didymus review submit comment")
+  wait_for_input()
+  child.type_keys("<C-s>")
+  eq(has_message('didymus: a "Comment" review needs a body or a pending comment'), true)
+  eq(child.api.nvim_get_current_win(), float_win())
+end
+
 T["after an error, the message shows, and the next submit starts with the body"] = function()
   open_review()
   child.lua("require('didymus.review.provider.test').errors.submit_review = 'no network'")
@@ -264,6 +281,7 @@ T["discard asks first, then removes the pending comments"] = function()
   child.cmd("Didymus review discard")
   local select = helpers.picker_calls(child, "select")[1]
   eq(select.title, "Discard your pending review of #1?")
+  eq(select.kind, "choice")
   eq(
     vim.tbl_map(function(item)
       return item.text
@@ -283,7 +301,7 @@ T["discard asks first, then removes the pending comments"] = function()
     provider = { { "old", { "A comment." } } },
     session = { { "old", { "A comment." } } },
   })
-  eq(panel_thread_rows(), { "@octocat A comment." })
+  eq(panel_thread_rows(), { "💬 @octocat A comment." })
 end
 
 T["cancel of the confirm keeps the pending review"] = function()
