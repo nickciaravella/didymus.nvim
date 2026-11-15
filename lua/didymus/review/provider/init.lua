@@ -51,6 +51,7 @@
 ---@field path string
 ---@field range didymus.review.Range
 ---@field body string
+---@field pending boolean True adds the comment to the pending review. False posts it at once.
 
 --- All methods are async. Each one calls `cb` later, and does not block the UI.
 ---@class didymus.review.Provider
@@ -58,7 +59,7 @@
 ---@field get_change fun(self, id: string, cb: fun(err: string?, change: didymus.review.Change?)) Files, patches and the pending review.
 ---@field checkout fun(self, change: didymus.review.Change, cb: fun(err: string?)) Make the change head the current checkout.
 ---@field get_threads fun(self, change: didymus.review.Change, cb: fun(err: string?, threads: didymus.review.Thread[]?))
----@field add_comment fun(self, change: didymus.review.Change, draft: didymus.review.CommentDraft, cb: fun(err: string?, thread: didymus.review.Thread?)) Start a pending review if there is none.
+---@field add_comment fun(self, change: didymus.review.Change, draft: didymus.review.CommentDraft, cb: fun(err: string?, thread: didymus.review.Thread?)) Add to the pending review, and start one if there is none. Or post at once.
 ---@field reply fun(self, change: didymus.review.Change, thread_id: string, body: string, cb: fun(err: string?))
 ---@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?))
 ---@field submit_review fun(self, change: didymus.review.Change, verdict: "approve"|"comment"|"request_changes", body: string?, cb: fun(err: string?))

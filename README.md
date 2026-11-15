@@ -121,7 +121,7 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review files` | Show the files panel, or hide it. |
 | `:Didymus review thread` | Open the thread at the cursor in a float, with all its comments. |
 | `:Didymus review next`, `:Didymus review prev` | Go to the next or the previous thread, also in a different file. |
-| `:[range]Didymus review comment` | Add a comment on the current line, the selection or the range. The comment goes into your pending review. |
+| `:[range]Didymus review comment` | Add a comment on the current line, the selection or the range. Post it at once, or add it to your pending review. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
 
@@ -141,7 +141,15 @@ Outdated threads, threads on deleted lines and threads on the file show only in 
 
 `next` and `prev` go through the threads in the order of the panel, from the cursor. If the current window does not show a file of the pull request, they start at the cursor of the code window. They skip the threads that show only in the panel, and the threads at the same line are one stop. At the last or the first thread, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. In a different tabpage, `next` and `prev` go to the review tabpage first.
 
-`comment` opens a float above the lines, with the location as the title. Type the comment, then press `<C-s>` to add it, or `q` in normal mode to cancel. The comment goes into your pending review. If you have no pending review, didymus starts one. A pending review that you started on github.com also works. The new thread shows in the panel and at the line, with the `[pending]` tag. It stays pending until you submit the review on github.com.
+`comment` opens a float above the lines, with the location as the title. Type the comment, then press a key:
+
+| Key | Action |
+| --- | --- |
+| `<C-s>` | Comment now: post the comment at once. GitHub does this only if you have no pending review. |
+| `<C-y>` | Add to review: add the comment to your pending review. If you have no pending review, didymus starts one. A pending review that you started on github.com also works. |
+| `q`, in normal mode | Cancel. |
+
+The new thread shows in the panel and at the line. A comment in your pending review has the `[pending]` tag. It stays pending until you submit the review on github.com.
 
 didymus refuses a comment, and shows the reason, in these cases:
 
@@ -184,7 +192,8 @@ require("didymus").setup({
     input = { -- the float of comment
       width = 60, -- below 1 is a fraction of the window width
       max_height = 10, -- the float grows to this height, then it scrolls
-      keys = { comment = "<C-s>", cancel = "q" }, -- cancel is in normal mode
+      -- post: comment now. add: add to the pending review. cancel is in normal mode.
+      keys = { post = "<C-s>", add = "<C-y>", cancel = "q" },
     },
   },
 })

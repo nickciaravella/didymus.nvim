@@ -459,11 +459,12 @@ end
 ---@param draft didymus.review.CommentDraft
 local function add_comment(session, draft)
   local location = format_location(draft.path, draft.range)
-  track(("add a comment at %s"):format(location), function(done)
+  local verb = draft.pending and "add" or "post"
+  track(("%s a comment at %s"):format(verb, location), function(done)
     session.provider:add_comment(session.change, draft, done)
   end, function(err, thread)
     if err then
-      local message = ("cannot add the comment at %s: %s"):format(location, err)
+      local message = ("cannot %s the comment at %s: %s"):format(verb, location, err)
       if session:is_open() then
         session.failed_draft = draft
         -- One line, because a message with more lines makes the user press Enter.
@@ -477,7 +478,8 @@ local function add_comment(session, draft)
     if session:is_open() then
       session:add_thread(thread)
     end
-    vim.notify(("didymus: added a pending comment at %s"):format(location))
+    local done = draft.pending and "added a pending comment" or "posted a comment"
+    vim.notify(("didymus: %s at %s"):format(done, location))
   end)
 end
 
@@ -501,17 +503,25 @@ local function open_comment_input(session, path, range)
     keys = { cancel = options.keys.cancel },
     actions = {
       {
-        key = options.keys.comment,
-        name = "comment",
+        key = options.keys.post,
+        name = "comment now",
         on_submit = function(body)
-          add_comment(session, { path = path, range = range, body = body })
+          add_comment(session, { path = path, range = range, body = body, pending = false })
+        end,
+      },
+      {
+        key = options.keys.add,
+        name = "add to review",
+        on_submit = function(body)
+          add_comment(session, { path = path, range = range, body = body, pending = true })
         end,
       },
     },
   })
 end
 
---- Add a comment on the current line, the selection or `range`, in the pending review. Check the
+--- Add a comment on the current line, the selection or `range`. Post it at once, or add it to the
+--- pending review. Check the
 --- lines first. Then open the input float above them.
 ---@param opts { range: integer[]? }? The first and the last line.
 function M.comment(opts)

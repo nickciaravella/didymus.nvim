@@ -21,7 +21,7 @@ M.defaults = {
     input = {
       width = 60,
       max_height = 10,
-      keys = { comment = "<C-s>", cancel = "q" },
+      keys = { post = "<C-s>", add = "<C-y>", cancel = "q" },
     },
   },
 }

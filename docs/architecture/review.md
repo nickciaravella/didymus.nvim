@@ -188,10 +188,11 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 4. didymus refuses a range across two hunks. GitHub accepts it, but keeps only the hunk of the last line. github.com does not let you select it.
 5. Then `git diff --quiet <head_sha> -- <path>` checks the file on disk. A file that is different from the change head has different line numbers, also after a local commit.
 6. The input float opens above the lines. Its title is `path:3` or `path:3-5`. `review.input` sets its size and its keys.
-7. On submit, `provider:add_comment()` runs with a progress message. The session adds the new thread, and updates the panel and the marks. If the review closed, only the message shows.
-8. If the first comment of a thread is pending, the thread has the `[pending]` tag, in the panel and at the line.
-9. If the provider fails, the error shows on one line, because a longer message makes the user press Enter. The session keeps the draft. The next comment on the same file and lines starts with its text.
-10. The session keeps the provider that gave the change, because only that provider knows its own fields of the change.
+7. The float has two actions, as the float of the agent. "comment now" (`keys.post`, `<C-s>`) posts the comment at once. "add to review" (`keys.add`, `<C-y>`) adds it to the pending review. The reply and the submit of the review use the same keys.
+8. On an action, `provider:add_comment()` runs with a progress message. `draft.pending` is false for "comment now". The session adds the new thread, and updates the panel and the marks. If the review closed, only the message shows.
+9. If the first comment of a thread is pending, the thread has the `[pending]` tag, in the panel and at the line. A comment that is posted at once has no tag.
+10. If the provider fails, the error shows on one line, because a longer message makes the user press Enter. The session keeps the draft. The next comment on the same file and lines starts with its text, for both actions.
+11. The session keeps the provider that gave the change, because only that provider knows its own fields of the change.
 
 ## Parts
 
@@ -282,7 +283,7 @@ All methods are async. Each one takes a final `cb(err, result)` and does not blo
 ---@field get_change fun(self, id: string, cb: fun(err: string?, change: didymus.review.Change?)) Files, patches and the pending review.
 ---@field checkout fun(self, change: didymus.review.Change, cb: fun(err: string?)) Make the change head the current checkout.
 ---@field get_threads fun(self, change: didymus.review.Change, cb: fun(err: string?, threads: didymus.review.Thread[]?))
----@field add_comment fun(self, change: didymus.review.Change, draft: didymus.review.CommentDraft, cb: fun(err: string?, thread: didymus.review.Thread?)) Start a pending review if there is none.
+---@field add_comment fun(self, change: didymus.review.Change, draft: didymus.review.CommentDraft, cb: fun(err: string?, thread: didymus.review.Thread?)) Add to the pending review, and start one if there is none. Or post at once.
 ---@field reply fun(self, change: didymus.review.Change, thread_id: string, body: string, cb: fun(err: string?))
 ---@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?))
 ---@field submit_review fun(self, change: didymus.review.Change, verdict: "approve"|"comment"|"request_changes", body: string?, cb: fun(err: string?))
@@ -293,7 +294,7 @@ All methods are async. Each one takes a final `cb(err, result)` and does not blo
 - `review.provider` is `"github"` (the default), `"test"` or a provider table.
 - The GitHub provider keeps all GraphQL documents as string constants in one module.
 - The `test` provider keeps its changes and threads in memory. Tests give it the data. Its `checkout` runs `git checkout` in a temporary repo of the test. It calls each `cb` in `vim.schedule()`, as a real provider does.
-- The `add_comment` of the `test` provider adds a thread with one pending comment of `viewer`. `errors.<method>` makes the next call of that method fail.
+- The `add_comment` of the `test` provider adds a thread with one comment of `viewer`. The comment is pending if `draft.pending` is true. `errors.<method>` makes the next call of that method fail.
 
 ### Review types
 
@@ -346,6 +347,7 @@ The types come from the [reference file](../reference/design-prompt.md#data-mode
 ---@field path string
 ---@field range didymus.review.Range
 ---@field body string
+---@field pending boolean            True adds the comment to the pending review. False posts it at once.
 ```
 
 1. A provider can add its own fields to a `Change`, such as the GraphQL node id of the PR. The review session gives the same table back to the provider.
@@ -383,6 +385,8 @@ The `github` provider is in `lua/didymus/review/provider/github/`. It runs the [
 12. `add_comment` gets the pending review of the viewer before each comment. It does not use `change.pending_review_id`, because the user can start, submit or discard a review on github.com after the open. If there is no pending review, `addPullRequestReview` with `commitOID` of `head_sha` and no `event` starts one. Then `change.pending_review_id` is its id.
 13. `addPullRequestReviewThread` gets `side: RIGHT` and `line`. A range also gets `startLine` and `startSide: RIGHT`. The reply has the new thread with the fields of `get_threads`.
 14. For a line out of the diff, GitHub gives `thread: null` and no error. Then `add_comment` gives an error.
+15. GitHub posts a comment at once only if the viewer has no pending review. So for a draft that is not pending, `add_comment` first gets the pending review. If there is one, it gives an error and writes nothing. Else it starts a review, adds the thread, and submits the review with `event: COMMENT`. Only this order gives the id of the thread, which a reply and a resolve need. REST and `addPullRequestReview` with `threads` do not give it.
+16. If GitHub does not add the thread to post, `add_comment` deletes the new review, because an empty pending review blocks the next post. If the submit fails, the comment stays in the pending review, and the error says so.
 
 ## Tests
 
