@@ -1,6 +1,7 @@
 --- The files panel: the header, the changed files and their threads, as picker items. The picker
 --- adapter draws them. See docs/architecture/review.md#parts.
 
+local config = require("didymus.config")
 local patch = require("didymus.review.patch")
 local picker = require("didymus.ui.picker")
 local threads = require("didymus.review.threads")
@@ -43,6 +44,9 @@ local function get_header_items(session)
       { "@" .. change.author, "Comment" },
       { (" %s ← %s"):format(change.base_branch, change.head_branch) },
     }, { kind = "header" }),
+    make_item("header:threads", {
+      { session.thread_filter == "active" and "Active threads" or "All threads", "Comment" },
+    }, { kind = "header" }),
   }
 end
 
@@ -65,34 +69,43 @@ local function get_file_item(file, thread_count)
   return make_item("file:" .. file.path, segments, { kind = "file", file = file })
 end
 
+---@param session didymus.review.Session
 ---@param thread didymus.review.Thread
 ---@return didymus.picker.Item
-local function get_thread_item(thread)
+local function get_thread_item(session, thread)
   local item = make_item(
     "thread:" .. thread.id,
     threads.get_summary(thread),
     { kind = "thread", thread = thread }
   )
   item.depth = 1
+  local line = threads.get_line(thread)
+  if line then
+    -- A full path, because the user can change the current directory during the review.
+    item.location = { path = vim.fs.joinpath(session.cwd, thread.path), line = line }
+  end
   return item
 end
 
 --- The header, then a row for each changed file, in the order of the provider. The threads of
---- each file come under it, in the order of the session.
+--- each file come under it, in the order of the session. The thread count counts the threads
+--- that show.
 ---@param session didymus.review.Session
 ---@return didymus.picker.Item[]
 local function get_items(session)
   local file_threads = {}
   for _, thread in ipairs(session.threads) do
-    file_threads[thread.path] = file_threads[thread.path] or {}
-    table.insert(file_threads[thread.path], thread)
+    if session.thread_filter == "all" or not thread.resolved then
+      file_threads[thread.path] = file_threads[thread.path] or {}
+      table.insert(file_threads[thread.path], thread)
+    end
   end
   local items = get_header_items(session)
   for _, file in ipairs(session.change.files) do
     local list = file_threads[file.path] or {}
     table.insert(items, get_file_item(file, #list))
     for _, thread in ipairs(list) do
-      table.insert(items, get_thread_item(thread))
+      table.insert(items, get_thread_item(session, thread))
     end
   end
   return items
@@ -127,6 +140,17 @@ end
 ---@param session didymus.review.Session
 ---@return didymus.picker.Panel
 function M.open(adapter, session)
+  local actions = {}
+  local key = config.options.review.panel.keys.toggle_active
+  if key then
+    table.insert(actions, {
+      key = key,
+      name = "show all threads or only the active threads",
+      fn = function()
+        session:toggle_thread_filter()
+      end,
+    })
+  end
   return adapter.panel({
     title = "Review " .. session.label,
     items = function()
@@ -135,6 +159,7 @@ function M.open(adapter, session)
     on_choose = function(item)
       choose(session, item)
     end,
+    actions = actions,
   })
 end
 

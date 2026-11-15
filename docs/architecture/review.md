@@ -109,8 +109,9 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 | --- | --- | --- |
 | Header 1 | `#12 <title>` | `Number`, `Title` |
 | Header 2 | `@author main ← feature` | `Comment` |
+| Header 3 | `All threads` or `Active threads`: the thread filter | `Comment` |
 | File | `M path +12 -3 2 threads`, in the order of the provider | `Added`, `Changed`, `Removed`, `Comment` |
-| Thread, at depth 1 under its file | `@author <first line of the first comment> [resolved] [outdated]` | `DidymusThread` for the author. A resolved thread is all `DidymusThreadResolved`. `[outdated]` is `DiagnosticWarn`. |
+| Thread, at depth 1 under its file | `💬 @author <first line of the first comment> [outdated]`. A resolved thread has ✅. | `DidymusThread` for the author. A resolved thread is all `DidymusThreadResolved`. `[outdated]` is `DiagnosticWarn`. |
 
 1. The status letters are `A`, `M`, `D` and `R`. The full path comes before the counts. A long path can hide the counts in a narrow panel.
 2. The thread count shows only if it is above 0. A count of 0 on each row makes the rows long.
@@ -121,8 +122,11 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 7. If the panel cannot open, for example with no snacks.nvim, the review opens without it, and the error shows.
 8. If the code window already shows the file, `<CR>` only moves the cursor. `:edit` of a modified buffer gives E37.
 9. If Neovim cannot open the file, the error shows, and the focus goes back to the panel. For example, with 'nohidden', a modified buffer in the code window gives E37.
-10. The thread count counts all threads of the file, also the resolved and outdated threads.
+10. The thread count counts the threads of the file that show, also the outdated threads.
 11. `<CR>` on a thread with a line opens its file at that line, as rule 4. `<CR>` on a thread that shows only in the panel opens the thread float next to the panel. See [Inline threads](#inline-threads).
+12. The icons of the state come from `review.icons`: `active` (default 💬) and `resolved` (default ✅). An active thread is not resolved. An empty icon shows no icon. [#69](https://github.com/nickciaravella/didymus.nvim/issues/69) uses the same icons.
+13. The key `review.panel.keys.toggle_active` (default `a`, false turns it off) shows only the active threads, or all threads again. The default is all threads. The session keeps the filter, also when the panel opens again. The filter does not change the marks in the files.
+14. A thread row with a line has `location = { path, line }`, with the full path and the line of the thread, for the preview of the picker. A thread with no line has no `location`. The full path stays correct if the user changes the current directory.
 
 ### Patch parser
 

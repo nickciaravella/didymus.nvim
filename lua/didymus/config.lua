@@ -18,6 +18,8 @@ M.defaults = {
   review = {
     picker = "snacks", -- "snacks", "test" or an adapter table. See lua/didymus/ui/picker/.
     provider = "github", -- "github", "test" or a provider table. See lua/didymus/review/provider/.
+    icons = { active = "💬", resolved = "✅" }, -- The state of a thread. "" shows no icon.
+    panel = { keys = { toggle_active = "a" } }, -- false turns off a key.
   },
 }
 

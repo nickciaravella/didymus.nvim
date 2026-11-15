@@ -19,6 +19,7 @@ local threads = require("didymus.review.threads")
 ---@field change didymus.review.Change
 ---@field label string
 ---@field threads didymus.review.Thread[] In the order of the panel.
+---@field thread_filter "all"|"active" The threads that the panel shows. Active threads are not resolved.
 ---@field cwd string
 ---@field merge_base string?
 ---@field old_branch string?
@@ -48,6 +49,7 @@ function Session.new(opts)
     old_head = opts.old_head,
     on_close = opts.on_close,
     thread_paths = {},
+    thread_filter = "all",
   }, Session)
   -- An unlisted scratch buffer, so that the close leaves no "[No Name]" buffer.
   local buf = vim.api.nvim_create_buf(false, true)
@@ -204,6 +206,14 @@ function Session:set_threads(list)
       self:draw_threads(buf)
     end
   end
+  if self:is_panel_open() then
+    self.panel:update()
+  end
+end
+
+--- Show all threads in the panel, or only the active threads.
+function Session:toggle_thread_filter()
+  self.thread_filter = self.thread_filter == "all" and "active" or "all"
   if self:is_panel_open() then
     self.panel:update()
   end
