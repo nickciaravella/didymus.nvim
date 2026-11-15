@@ -20,6 +20,7 @@ local threads = require("didymus.review.threads")
 ---@field change didymus.review.Change
 ---@field label string
 ---@field threads didymus.review.Thread[] In the order of the panel.
+---@field thread_filter "all"|"active" The threads that the panel shows. Active threads are not resolved.
 ---@field cwd string
 ---@field merge_base string?
 ---@field old_branch string?
@@ -49,6 +50,7 @@ function Session.new(opts)
     old_head = opts.old_head,
     on_close = opts.on_close,
     thread_paths = {},
+    thread_filter = "all",
   }, Session)
   -- An unlisted scratch buffer, so that the close leaves no "[No Name]" buffer.
   local buf = vim.api.nvim_create_buf(false, true)
@@ -218,6 +220,14 @@ function Session:set_threads(list)
   end
 end
 
+--- Show all threads in the panel, or only the active threads.
+function Session:toggle_thread_filter()
+  self.thread_filter = self.thread_filter == "all" and "active" or "all"
+  if self:is_panel_open() then
+    self.panel:update()
+  end
+end
+
 --- Open the thread at the cursor in a float. If more than one thread is at the line, ask which one.
 function Session:show_thread_at_cursor()
   local found = threads.at_cursor(self.threads)
@@ -365,12 +375,14 @@ end
 function Session:get_stops(kind)
   local stops = {}
   if kind == "thread" then
-    -- The panel shows only the threads of the files of the change.
+    -- The panel shows only the threads of the files of the change, and with the active filter, only
+    -- the threads that are not resolved.
     local file_indexes = get_file_indexes(self.change.files)
     for _, thread in ipairs(self.threads) do
       local line = threads.get_line(thread)
       local file_index = file_indexes[thread.path]
-      if line and file_index then
+      local shown = self.thread_filter == "all" or not thread.resolved
+      if line and file_index and shown then
         table.insert(stops, { path = thread.path, file_index = file_index, line = line })
       end
     end

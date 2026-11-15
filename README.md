@@ -130,7 +130,9 @@ The files panel opens on the left of the review tabpage. It shows the title, the
 
 `files` in a different tabpage goes to the review tabpage and shows the panel.
 
-Under each file, the panel shows its review threads: the author, the first line of the first comment, and the state. A resolved thread is dim. An outdated thread has the `[outdated]` tag. `<CR>` on a thread goes to its line in the code window. The file row shows the thread count.
+Under each file, the panel shows its review threads: an icon for the state (💬 active, ✅ resolved), the author and the first line of the first comment. A resolved thread is dim. An outdated thread has the `[outdated]` tag. `<CR>` on a thread goes to its line in the code window. The file row shows the thread count.
+
+`a` in the panel shows only the active threads, or all threads again. The default is all threads. The third row of the header shows the filter: `All threads` or `Active threads`. The thread count of a file counts only the threads that show.
 
 In the file, each thread has a sign with its comment count, and a summary under its line. A thread on a range shows at the last line of the range. The signs and the summaries show only in the windows of the review tabpage. In a window outside the review tabpage, the file can have an empty sign column.
 
@@ -140,7 +142,7 @@ Outdated threads, threads on deleted lines and threads on the file show only in 
 
 `next` and `prev` go in the order of the panel, from the cursor. If the current window does not show a file of the pull request, they start at the cursor of the code window.
 
-- `thread` skips the threads that show only in the panel. The threads at the same line are one stop.
+- `thread` skips the threads that show only in the panel. If the panel shows only the active threads, it also skips the resolved threads. The threads at the same line are one stop.
 - `file` goes to the first change of the file.
 - `hunk` goes to the first change of the hunk.
 - `file` and `hunk` skip the deleted files.
@@ -180,6 +182,8 @@ require("didymus").setup({
   review = {
     picker = "snacks", -- "snacks", "test" for tests, or an adapter table
     provider = "github", -- "github", "test" for tests, or a provider table
+    icons = { active = "💬", resolved = "✅" }, -- the state of a thread. "" shows no icon.
+    panel = { keys = { toggle_active = "a" } }, -- false turns off a key
   },
 })
 ```

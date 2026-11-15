@@ -82,7 +82,7 @@ local function expect_message(text)
   end
 end
 
-local header = { "#1 Change the second line", "@octocat main ← feature" }
+local header = { "#1 Change the second line", "@octocat main ← feature", "All threads" }
 
 T["the panel shows the header and one row for each file, in the order of the provider"] = function()
   open_review({
@@ -105,12 +105,13 @@ T["the panel shows the header and one row for each file, in the order of the pro
   )
   eq(calls[1].items[1].segments, { { "#1", "Number" }, { " Change the second line", "Title" } })
   eq(calls[1].items[2].segments, { { "@octocat", "Comment" }, { " main ← feature" } })
+  eq(calls[1].items[3].segments, { { "All threads", "Comment" } })
   eq(
-    calls[1].items[4].segments,
+    calls[1].items[5].segments,
     { { "M", "Changed" }, { " file.txt" }, { " +1", "Added" }, { " -1", "Removed" } }
   )
-  eq(calls[1].items[3].segments[1], { "D", "Removed" })
-  eq(calls[1].items[5].segments[1], { "A", "Added" })
+  eq(calls[1].items[4].segments[1], { "D", "Removed" })
+  eq(calls[1].items[6].segments[1], { "A", "Added" })
 end
 
 T["to choose a file opens the real file in the code window. The panel stays open"] = function()
@@ -137,6 +138,7 @@ T["to choose a header row does nothing"] = function()
   local buf = child.api.nvim_get_current_buf()
   choose(1)
   choose(2)
+  choose(3)
   eq(child.api.nvim_get_current_buf(), buf)
 end
 
@@ -278,7 +280,7 @@ T["a file row shows the thread count only if it is above 0"] = function()
       "D old.txt +0 -1",
     })
   )
-  eq(files[3].segments[5], { " 2 threads", "Comment" })
+  eq(files[4].segments[5], { " 2 threads", "Comment" })
 end
 
 T[":Didymus review files hides the panel, and shows it again"] = function()
