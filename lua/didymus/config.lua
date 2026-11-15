@@ -21,6 +21,8 @@ M.defaults = {
     -- { changes = { snacks = { layout = { preset = "ivy" } } } }
     picker_config = {},
     provider = "github", -- "github", "test" or a provider table. See lua/didymus/review/provider/.
+    icons = { active = "💬", resolved = "✅" }, -- The state of a thread. "" shows no icon.
+    panel = { keys = { toggle_active = "a" } }, -- false turns off a key.
   },
 }
 

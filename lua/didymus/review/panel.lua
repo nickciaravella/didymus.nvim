@@ -1,14 +1,17 @@
---- The files panel: the header and the changed files of a review, as picker items. The picker
+--- The files panel: the header, the changed files and their threads, as picker items. The picker
 --- adapter draws them. See docs/architecture/review.md#parts.
 
+local config = require("didymus.config")
 local patch = require("didymus.review.patch")
 local picker = require("didymus.ui.picker")
+local threads = require("didymus.review.threads")
 
 local M = {}
 
 ---@class didymus.review.panel.Value
----@field kind "header"|"file"
+---@field kind "header"|"file"|"thread"
 ---@field file? didymus.review.ChangedFile
+---@field thread? didymus.review.Thread
 
 --- The letter and the highlight of each file status.
 ---@type table<string, [string, string]>
@@ -40,6 +43,9 @@ local function get_header_items(session)
     make_item("header:branches", {
       { "@" .. change.author, "Comment" },
       { (" %s ← %s"):format(change.base_branch, change.head_branch) },
+    }, { kind = "header" }),
+    make_item("header:threads", {
+      { session.thread_filter == "active" and "Active threads" or "All threads", "Comment" },
     }, { kind = "header" }),
   }
 end
@@ -77,17 +83,43 @@ local function get_file_item(session, file, thread_count)
   return item
 end
 
---- The header, then a row for each changed file, in the order of the provider.
+---@param session didymus.review.Session
+---@param thread didymus.review.Thread
+---@return didymus.picker.Item
+local function get_thread_item(session, thread)
+  local item = make_item(
+    "thread:" .. thread.id,
+    threads.get_summary(thread),
+    { kind = "thread", thread = thread }
+  )
+  item.depth = 1
+  local line = threads.get_line(thread)
+  if line then
+    item.location = { path = session:get_full_path(thread.path), line = line }
+  end
+  return item
+end
+
+--- The header, then a row for each changed file, in the order of the provider. The threads of
+--- each file come under it, in the order of the session. The thread count counts the threads
+--- that show.
 ---@param session didymus.review.Session
 ---@return didymus.picker.Item[]
 local function get_items(session)
-  local thread_counts = {}
+  local file_threads = {}
   for _, thread in ipairs(session.threads) do
-    thread_counts[thread.path] = (thread_counts[thread.path] or 0) + 1
+    if session.thread_filter == "all" or not thread.resolved then
+      file_threads[thread.path] = file_threads[thread.path] or {}
+      table.insert(file_threads[thread.path], thread)
+    end
   end
   local items = get_header_items(session)
   for _, file in ipairs(session.change.files) do
-    table.insert(items, get_file_item(session, file, thread_counts[file.path] or 0))
+    local list = file_threads[file.path] or {}
+    table.insert(items, get_file_item(session, file, #list))
+    for _, thread in ipairs(list) do
+      table.insert(items, get_thread_item(session, thread))
+    end
   end
   return items
 end
@@ -97,6 +129,14 @@ end
 local function choose(session, item)
   ---@type didymus.review.panel.Value
   local value = item.value
+  if value.kind == "thread" then
+    local line = threads.get_line(value.thread)
+    if line then
+      return session:open_file(value.thread.path, line)
+    end
+    -- The thread has no line in the file. The float is the only place that shows it.
+    return threads.open_float(value.thread)
+  end
   if value.kind ~= "file" then
     return
   end
@@ -112,6 +152,17 @@ end
 ---@param session didymus.review.Session
 ---@return didymus.picker.Panel
 function M.open(adapter, session)
+  local actions = {}
+  local key = config.options.review.panel.keys.toggle_active
+  if key then
+    table.insert(actions, {
+      key = key,
+      name = "show all threads or only the active threads",
+      fn = function()
+        session:toggle_thread_filter()
+      end,
+    })
+  end
   return adapter.panel({
     title = "Review " .. session.label,
     kind = "files",
@@ -121,6 +172,7 @@ function M.open(adapter, session)
     on_choose = function(item)
       choose(session, item)
     end,
+    actions = actions,
   })
 end
 

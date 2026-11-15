@@ -1,10 +1,11 @@
 --- A provider that keeps its changes in memory, for end-to-end tests. Tests give it the data in
---- `changes`. It calls each `cb` in `vim.schedule()`, so that its timing is the same as the
---- timing of a real provider.
+--- `changes` and `threads`. It calls each `cb` in `vim.schedule()`, so that its timing is the
+--- same as the timing of a real provider.
 
 ---@class didymus.review.provider.Test: didymus.review.Provider
 ---@field changes didymus.review.Change[]
-local M = { changes = {} }
+---@field threads table<string, didymus.review.Thread[]> The threads of each change id.
+local M = { changes = {}, threads = {} }
 
 local summary_fields = { "id", "title", "author", "body", "is_draft" }
 
@@ -37,6 +38,15 @@ function M:get_change(id, cb)
   end
   vim.schedule(function()
     cb(("no change %q"):format(id))
+  end)
+end
+
+---@param change didymus.review.Change
+---@param cb fun(err: string?, threads: didymus.review.Thread[]?)
+function M:get_threads(change, cb)
+  local threads = vim.deepcopy(self.threads[change.id] or {})
+  vim.schedule(function()
+    cb(nil, threads)
   end)
 end
 

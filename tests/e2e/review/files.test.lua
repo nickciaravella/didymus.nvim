@@ -20,6 +20,7 @@ local T = MiniTest.new_set({
 ---@field base table<string, string>? The files of the base commit.
 ---@field head table<string, string|false>? The files of the head commit. False deletes a file.
 ---@field edit fun(change: didymus.review.Change)? Change the change before the review opens.
+---@field threads didymus.review.Thread[]? The threads of the change.
 
 --- Make a repo where the change modifies file.txt, adds new.txt and deletes old.txt. Make it the
 --- directory of the child, and give its change to the test provider. Then open the review.
@@ -37,6 +38,7 @@ local function open_review(opts)
   end
   child.fn.chdir(repo.dir)
   helpers.set_changes(child, { repo.change })
+  helpers.set_threads(child, "1", opts.threads or {})
   child.cmd("Didymus review open 1")
   return helpers.wait_for_review(child, "1")
 end
@@ -80,7 +82,7 @@ local function expect_message(text)
   end
 end
 
-local header = { "#1 Change the second line", "@octocat main ← feature" }
+local header = { "#1 Change the second line", "@octocat main ← feature", "All threads" }
 
 T["the panel shows the header and one row for each file, in the order of the provider"] = function()
   open_review({
@@ -104,12 +106,13 @@ T["the panel shows the header and one row for each file, in the order of the pro
   )
   eq(calls[1].items[1].segments, { { "#1", "Number" }, { " Change the second line", "Title" } })
   eq(calls[1].items[2].segments, { { "@octocat", "Comment" }, { " main ← feature" } })
+  eq(calls[1].items[3].segments, { { "All threads", "Comment" } })
   eq(
-    calls[1].items[4].segments,
+    calls[1].items[5].segments,
     { { "M", "Changed" }, { " file.txt" }, { " +1", "Added" }, { " -1", "Removed" } }
   )
-  eq(calls[1].items[3].segments[1], { "D", "Removed" })
-  eq(calls[1].items[5].segments[1], { "A", "Added" })
+  eq(calls[1].items[4].segments[1], { "D", "Removed" })
+  eq(calls[1].items[6].segments[1], { "A", "Added" })
 end
 
 --- The location of each item of the last panel. False if the item has no location.
@@ -127,6 +130,7 @@ T["each file row has the full path and the first change, except a deleted file a
   local expected = {
     false,
     false,
+    false,
     { path = vim.fs.joinpath(dir, "file.txt"), line = 2 },
     { path = vim.fs.joinpath(dir, "new.txt"), line = 1 },
     false,
@@ -139,10 +143,10 @@ T["each file row has the full path and the first change, except a deleted file a
   child.cmd("Didymus review files")
   eq(#panels(), 2)
   eq(locations(), expected)
-  eq(child.fn.filereadable(expected[3].path), 1)
+  eq(child.fn.filereadable(expected[4].path), 1)
   -- `<CR>` opens the same path.
   choose("M file.txt +1 -1")
-  eq(child.api.nvim_buf_get_name(0), expected[3].path)
+  eq(child.api.nvim_buf_get_name(0), expected[4].path)
 end
 
 T["the panel gets review.picker_config"] = function()
@@ -179,6 +183,7 @@ T["to choose a header row does nothing"] = function()
   local buf = child.api.nvim_get_current_buf()
   choose(1)
   choose(2)
+  choose(3)
   eq(child.api.nvim_get_current_buf(), buf)
 end
 
@@ -232,7 +237,7 @@ T["to choose a file puts the cursor on the first change of its first hunk"] = fu
   choose("M long.txt +2 -2")
   eq(current_path(), "long.txt")
   eq(child.api.nvim_win_get_cursor(0), { 6, 2 })
-  eq(locations()[3], { path = vim.fs.joinpath(child.fn.getcwd(), "long.txt"), line = 6 })
+  eq(locations()[4], { path = vim.fs.joinpath(child.fn.getcwd(), "long.txt"), line = 6 })
 end
 
 T["to choose the file of the code window again moves the cursor, also in a modified buffer"] = function()
@@ -257,7 +262,7 @@ T["a file with no patch opens at line 1, and its location has no line"] = functi
       change.files[1].patch = nil
     end,
   })
-  eq(locations()[3], { path = vim.fs.joinpath(child.fn.getcwd(), "file.txt") })
+  eq(locations()[4], { path = vim.fs.joinpath(child.fn.getcwd(), "file.txt") })
   choose("M file.txt +1 -1")
   child.api.nvim_win_set_cursor(0, { 3, 0 })
   choose("M file.txt +1 -1")
@@ -301,23 +306,28 @@ T["if Neovim cannot open the file, the error shows and the focus goes back"] = f
 end
 
 T["a file row shows the thread count only if it is above 0"] = function()
-  open_review()
-  -- The providers do not give threads yet.
-  child.lua([[
-    require("didymus.review").current().threads =
-      { { path = "file.txt" }, { path = "file.txt" }, { path = "new.txt" } }
-  ]])
-  child.cmd("Didymus review files")
-  child.cmd("Didymus review files")
+  open_review({
+    threads = {
+      helpers.make_thread("1", "file.txt"),
+      helpers.make_thread("2", "new.txt"),
+      helpers.make_thread("3", "file.txt"),
+    },
+  })
+  helpers.wait_for_threads(child, 3)
+  local files = vim.tbl_filter(function(item)
+    return (item.depth or 0) == 0
+  end, panels()[1].items)
   eq(
-    texts(panels()[2]),
+    vim.tbl_map(function(item)
+      return item.text
+    end, files),
     vim.list_extend(vim.deepcopy(header), {
       "M file.txt +1 -1 2 threads",
       "A new.txt +1 -0 1 thread",
       "D old.txt +0 -1",
     })
   )
-  eq(panels()[2].items[3].segments[5], { " 2 threads", "Comment" })
+  eq(files[4].segments[5], { " 2 threads", "Comment" })
 end
 
 T[":Didymus review files hides the panel, and shows it again"] = function()

@@ -38,6 +38,7 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Test picker | A picker adapter with no UI. End-to-end tests use it to choose items. |
 | Test provider | A provider that keeps changes in memory. End-to-end tests use it in place of GitHub. |
 | Thread | A list of comments on one line or range. |
+| Thread float | The float that shows all comments of one thread, as markdown. |
 | Unit test | A test of a pure function, or of a function that uses only Neovim. It has no external dependencies. |
 | View | The window that shows an agent session: a float or a split. |
 | Workspace | The git checkout of a review. In the MVP, the current checkout. |

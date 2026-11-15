@@ -33,4 +33,47 @@ query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
 }
 ]]
 
+--- The review threads of a PR, with the first comments of each thread. `gh --paginate` uses
+--- the first `pageInfo` in the reply, so the `pageInfo` of the threads comes before the comments.
+M.threads = [[
+query($id: ID!, $endCursor: String) {
+  node(id: $id) {
+    ... on PullRequest {
+      reviewThreads(first: 100, after: $endCursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          path
+          line
+          startLine
+          diffSide
+          startDiffSide
+          isResolved
+          isOutdated
+          subjectType
+          comments(first: 100) {
+            pageInfo { hasNextPage }
+            nodes { author { login } body state }
+          }
+        }
+      }
+    }
+  }
+}
+]]
+
+--- All comments of one review thread, for a thread with more comments than `M.threads` gets.
+M.thread_comments = [[
+query($id: ID!, $endCursor: String) {
+  node(id: $id) {
+    ... on PullRequestReviewThread {
+      comments(first: 100, after: $endCursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes { author { login } body state }
+      }
+    }
+  }
+}
+]]
+
 return M
