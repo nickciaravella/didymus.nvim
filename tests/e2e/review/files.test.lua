@@ -102,12 +102,37 @@ T["the panel shows the header and one row for each file, in the order of the pro
   eq(calls[1].items[5].segments[1], { "A", "Added" })
 end
 
-T["each file row has a location for the preview, except a deleted file and the header"] = function()
-  open_review()
-  local locations = vim.tbl_map(function(item)
+--- The location of each item of the last panel. False if the item has no location.
+---@return ({ path: string }|false)[]
+local function locations()
+  local calls = panels()
+  return vim.tbl_map(function(item)
     return item.location or false
-  end, panels()[1].items)
-  eq(locations, { false, false, { path = "file.txt" }, { path = "new.txt" }, false })
+  end, calls[#calls].items)
+end
+
+T["each file row has the full path for the preview, except a deleted file and the header"] = function()
+  open_review()
+  local dir = child.fn.getcwd()
+  local expected = {
+    false,
+    false,
+    { path = vim.fs.joinpath(dir, "file.txt") },
+    { path = vim.fs.joinpath(dir, "new.txt") },
+    false,
+  }
+  eq(locations(), expected)
+
+  -- A new panel after a change of the current directory has the same paths.
+  child.cmd("cd /")
+  child.cmd("Didymus review files")
+  child.cmd("Didymus review files")
+  eq(#panels(), 2)
+  eq(locations(), expected)
+  eq(child.fn.filereadable(expected[3].path), 1)
+  -- `<CR>` opens the same path.
+  choose("M file.txt +1 -1")
+  eq(child.api.nvim_buf_get_name(0), expected[3].path)
 end
 
 T["to choose a file opens the real file in the code window. The panel stays open"] = function()

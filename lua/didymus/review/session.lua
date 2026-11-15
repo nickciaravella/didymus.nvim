@@ -118,6 +118,13 @@ function Session:toggle_files()
   end
 end
 
+--- The full path of a file of the change. It stays correct if the current directory changes.
+---@param path string Relative to `cwd`, as the provider gives it.
+---@return string
+function Session:get_full_path(path)
+  return vim.fs.joinpath(self.cwd, path)
+end
+
 --- Open a file of the change in the code window, and focus that window. If the user closed the
 --- code window, open a new one on the right.
 ---@param path string Relative to `cwd`.
@@ -135,7 +142,7 @@ function Session:open_file(path)
   else
     command = "botright vsplit "
   end
-  local ok, err = pcall(vim.cmd, command .. vim.fn.fnameescape(vim.fs.joinpath(self.cwd, path)))
+  local ok, err = pcall(vim.cmd, command .. vim.fn.fnameescape(self:get_full_path(path)))
   if not ok then
     vim.notify(("didymus: cannot open %s: %s"):format(path, err), vim.log.levels.ERROR)
     return
