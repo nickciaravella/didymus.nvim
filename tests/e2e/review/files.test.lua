@@ -93,6 +93,7 @@ T["the panel shows the header and one row for each file, in the order of the pro
   local calls = panels()
   eq(#calls, 1)
   eq(calls[1].open, true)
+  eq(calls[1].kind, "files")
   eq(calls[1].title, "Review #1")
   eq(
     texts(calls[1]),
@@ -142,6 +143,16 @@ T["each file row has the full path and the first change, except a deleted file a
   -- `<CR>` opens the same path.
   choose("M file.txt +1 -1")
   eq(child.api.nvim_buf_get_name(0), expected[3].path)
+end
+
+T["the panel gets review.picker_config"] = function()
+  local picker_config = { files = { test = { width = 10 } } }
+  child.lua(
+    "require('didymus').setup({ review = { picker = 'test', provider = 'test', picker_config = ... } })",
+    { picker_config }
+  )
+  open_review()
+  eq(panels()[1].config, picker_config)
 end
 
 T["to choose a file opens the real file in the code window. The panel stays open"] = function()

@@ -137,7 +137,7 @@ Then drive it in the child with `require("didymus.ui.picker.test")`:
 
 | Function | Behavior |
 | --- | --- |
-| `calls` | One record for each `select()` and `panel()`: `kind`, `opts`, `items`, `cursor`, `open` and `focus_count`. |
+| `calls` | One record for each `select()` and `panel()`: `kind`, `opts`, `config`, `items`, `cursor`, `open` and `focus_count`. The `kind` of a record is `"select"` or `"panel"`. `opts.kind` is the kind of list, such as `"files"`. |
 | `choose(target)` | Choose an item in the last open picker. A select closes first. A panel stays open. |
 | `cancel()` | Close the last open picker with no choice. |
 | `press(key, target)` | Call the action of `key` in the last open panel, with the item under the cursor. |
@@ -162,7 +162,7 @@ The helpers in `tests/e2e/review/helpers.lua` run in the test process:
 | `set_changes(child, changes)` | Give the changes to the test provider in the child. |
 | `call(child, method, ...)` | Call a method of the configured provider in the child. Wait for its `cb`, and return `{ err, result }`. |
 | `review(child)`, `wait_for_review(child, id)` | Get the open review in the child, or wait for it. |
-| `picker_calls(child, kind)` | Get the calls of the test picker, with no functions. `kind` is `"select"` or `"panel"`. Nil gives all calls. |
+| `picker_calls(child, role)` | Get the calls of the test picker, with no functions: `role`, `kind`, `config`, `title`, `items`, `cursor`, `open` and `focus_count`. `role` is `"select"` or `"panel"`. Nil gives all calls. `kind` is the kind of list, such as `"files"`. |
 | `git(dir, args)`, `write(dir, files)` | Run git, or write files, in the repo. In `write()` and `make_repo()`, `false` deletes a file. |
 
 The `files` of the change come from `git diff`, with the patch as GitHub gives it. The helpers do not use the git config of the user. Before you call `checkout`, set the directory of the child to the repo with `child.fn.chdir(repo.dir)`. See `tests/e2e/review/provider.test.lua`.
