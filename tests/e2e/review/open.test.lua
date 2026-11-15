@@ -444,6 +444,7 @@ T["the command completes the review actions"] = function()
     "next",
     "open",
     "prev",
+    "refresh",
     "reply",
     "resolve",
     "submit",
@@ -462,7 +463,7 @@ T["an unknown review action shows the usage"] = function()
   child.lua("require('didymus.command').run('review foo')")
   expect_message(
     "didymus: unknown command. Use :Didymus review open, close, files, thread, next, prev, comment, "
-      .. "reply, resolve, submit or discard."
+      .. "reply, resolve, submit, discard or refresh."
   )
 end
 

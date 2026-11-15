@@ -100,7 +100,7 @@ These rules apply to `open` and `close`:
 8. A newer `open` wins. The callbacks of an older `open` do nothing.
 9. The review tabpage starts with an unlisted scratch buffer. `:tabclose` of the review tabpage also ends the review.
 
-Comments need the line numbers of the PR head. So didymus refuses a new comment on a file with local changes: a modified buffer, or a file that is different from the change head. See [Comments](#comments).
+Comments need the line numbers of the PR head. So didymus refuses a new comment if `HEAD` is not the change head, or on a file with local changes: a modified buffer, or a file that is different from the change head. See [Comments](#comments).
 
 ### Files panel
 
@@ -157,7 +157,7 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 
 `lua/didymus/review/threads.lua` draws the threads in the files, and opens the thread float.
 
-1. The review gets the threads after the review tabpage opens, with a progress message. Then the session updates the panel and the marks. On an error, the message shows and the review stays open. A close or a newer review ignores the result.
+1. The review gets the threads after the review tabpage opens, with a progress message. Then the session updates the panel and the marks. On an error, the message shows and the review stays open. A close, a newer review or a newer get of the threads ignores the result. See [Refresh](#refresh).
 2. A thread shows in the file at the last line of its range, as on GitHub. The `<CR>` of the panel and `thread` use this line.
 3. Outdated threads, threads on the base side and threads on the file show only in the panel.
 4. Each thread has one extmark in the namespace `didymus.review`. It has a sign with the comment count (`9+` above 9), and a summary in `virt_lines` under the line, with the indent of the line. The summary is the text of the panel row.
@@ -200,7 +200,7 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 2. The current window must show a file of the change, in any tabpage. If a check fails, the reason shows as a warning, and no float opens.
 3. The buffer must not be modified, and all lines must be in one commentable range. If the commentable ranges are unknown, the code host decides.
 4. didymus refuses a range across two hunks. GitHub accepts it, but keeps only the hunk of the last line. github.com does not let you select it.
-5. Then `git diff --quiet <head_sha> -- <path>` checks the file on disk. A file that is different from the change head has different line numbers, also after a local commit.
+5. Then `HEAD` must be the change head. After a [refresh](#refresh) with a new head, git can have no commit of the new head, and `git diff` gives an error that does not tell the reason. A local commit also moves `HEAD`. Then `git diff --quiet <head_sha> -- <path>` checks the file on disk. A file that is different from the change head has different line numbers.
 6. The input float opens above the lines. Its title is `path:3` or `path:3-5`. `review.input` sets its size and its keys.
 7. The float has two actions, as the float of the agent. "comment now" (`keys.post`, `<C-s>`) posts the comment at once. "add to review" (`keys.add`, `<C-y>`) adds it to the pending review. The reply and the submit of the review use the same keys.
 8. On an action, `provider:add_comment()` runs with a progress message. `draft.pending` is false for "comment now". The session adds the new thread, and updates the panel and the marks. If the review closed, only the message shows.
@@ -233,8 +233,23 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 3. An approval needs no body. A comment or a request for changes needs a body if the session has no pending comment, as on GitHub. A comment that is posted at once is not pending, so it does not count. A submit with no text then shows a warning, and the float stays open. If the threads of the session are old, the error of the code host shows.
 4. `provider:submit_review()` runs with a progress message. If it fails, the session keeps the body. The next submit starts with it.
 5. `discard` asks to confirm with `picker.confirm()`. The preview lists the pending comments of the session. It always asks, because the session can be old. Then `provider:discard_review()` runs with a progress message.
-6. After a submit or a discard, the session gets the threads again. After a discard, it removes the pending comments and the empty threads from the result, because GitHub gives the deleted threads for a few seconds.
+6. After a submit or a discard, the session gets the threads again. After a discard, it removes the pending comments and the empty threads from the result, because GitHub gives the deleted threads for a few seconds. See [Refresh](#refresh), rule 7.
 7. The review stays open. If the review closed before the provider replies, only the message shows.
+
+### Refresh
+
+`M.refresh()` in `lua/didymus/review/init.lua` gets the change and the threads again. `R` in the files panel calls it.
+
+1. `provider:get_change()` and `provider:get_threads()` run at the same time, with one progress message: `refresh #12`. `get_threads()` gets the change of the session, because the id of the change does not change.
+2. `get_change()` gets the id that `open` used: a PR number or a PR URL. The `change.id` of a URL is only the number, and the GitHub provider looks for a number in the current repo.
+3. If both calls work, `Session:set_change()` replaces the change and the threads, and updates the panel and the marks. Then `didymus: refreshed #12` shows. If one call fails, the error shows, and the session keeps its data.
+4. The panel stays open and keeps its thread filter, because the filter is in the session. The rows get the new icons and preview locations.
+5. If `head_sha` is new, a warning names the new head, and didymus does not check it out. `open` of the open change only goes to its tabpage. So the warning tells the user to close the review and open it again. Until then, a new comment shows a warning before the input float opens, because `HEAD` is not the change head. So both actions of the float need the head. A reply works, because it has no line numbers.
+6. Each get of the threads has a number: at the open, after a submit or a discard, and at a refresh. Only the result of the newest get applies. A close ignores all results.
+7. For 10 seconds after a discard, the session removes the pending comments and the empty threads from each threads result, also from a refresh. A new comment or reply that goes into the pending review ends this time, because then the pending comments are new. A comment or reply that is posted at once does not end it.
+8. `review.panel.keys.refresh` sets the key of the panel, next to `toggle_active`. `false` turns it off.
+9. A new comment, a reply or a resolve can finish during a refresh. If the code host gave the threads before that change, the refresh result does not show it. The next refresh shows it.
+10. A refresh with a new head can finish while the comment float is open. Then the comment goes to the new head with the lines of the old head. The float closes on a submit, so a check at that time loses the text.
 
 ## Parts
 

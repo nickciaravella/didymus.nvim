@@ -147,22 +147,40 @@ local function choose(session, item)
   session:open_file(value.file.path, get_first_change(value.file) or 1)
 end
 
---- Open the files panel of `session` in the current tabpage.
----@param adapter didymus.picker.Adapter
+--- The keys of `review.panel.keys`. False turns a key off.
 ---@param session didymus.review.Session
----@return didymus.picker.Panel
-function M.open(adapter, session)
+---@return didymus.picker.Action[]
+local function get_actions(session)
+  local keys = config.options.review.panel.keys
   local actions = {}
-  local key = config.options.review.panel.keys.toggle_active
-  if key then
+  if keys.toggle_active then
     table.insert(actions, {
-      key = key,
+      key = keys.toggle_active,
       name = "show all threads or only the active threads",
       fn = function()
         session:toggle_thread_filter()
       end,
     })
   end
+  if keys.refresh then
+    table.insert(actions, {
+      key = keys.refresh,
+      name = "refresh",
+      fn = function()
+        -- A require at the top makes a loop: the review module loads the session, which loads
+        -- this module.
+        require("didymus.review").refresh()
+      end,
+    })
+  end
+  return actions
+end
+
+--- Open the files panel of `session` in the current tabpage.
+---@param adapter didymus.picker.Adapter
+---@param session didymus.review.Session
+---@return didymus.picker.Panel
+function M.open(adapter, session)
   return adapter.panel({
     title = "Review " .. session.label,
     kind = "files",
@@ -172,7 +190,7 @@ function M.open(adapter, session)
     on_choose = function(item)
       choose(session, item)
     end,
-    actions = actions,
+    actions = get_actions(session),
   })
 end
 
