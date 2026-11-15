@@ -370,20 +370,33 @@ function M.thread()
   end
 end
 
---- Go to the next thread in the order of the panel, also in a different file.
-function M.next()
+---@type table<string, boolean>
+local stop_kinds = { thread = true, file = true, hunk = true }
+
+---@param direction 1|-1
+---@param opts { kind: didymus.review.StopKind? }?
+local function go_to(direction, opts)
+  local kind = opts and opts.kind or "thread"
+  if not stop_kinds[kind] then
+    local name = direction > 0 and "next" or "previous"
+    return show_error(("cannot go to the %s %s. Use thread, file or hunk."):format(name, kind))
+  end
   local session = get_open_review()
   if session then
-    session:go_to_thread(1)
+    session:go_to(kind, direction)
   end
 end
 
---- Go to the previous thread in the order of the panel, also in a different file.
-function M.prev()
-  local session = get_open_review()
-  if session then
-    session:go_to_thread(-1)
-  end
+--- Go to the next thread, file or hunk in the order of the panel, also in a different file.
+---@param opts { kind: didymus.review.StopKind? }? The default kind is "thread".
+function M.next(opts)
+  go_to(1, opts)
+end
+
+--- Go to the previous thread, file or hunk in the order of the panel, also in a different file.
+---@param opts { kind: didymus.review.StopKind? }? The default kind is "thread".
+function M.prev(opts)
+  go_to(-1, opts)
 end
 
 --- `path:3` for one line, `path:3-5` for more lines.

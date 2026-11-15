@@ -2,6 +2,7 @@
 --- before the review.
 
 local panel = require("didymus.review.panel")
+local patch = require("didymus.review.patch")
 local picker = require("didymus.ui.picker")
 local threads = require("didymus.review.threads")
 
@@ -360,65 +361,104 @@ function Session:get_cursor_position()
   end
 end
 
---- The first thread with a line after `position` in `direction`, in the order of the panel. With no
---- position, the first or the last thread with a line.
+---@alias didymus.review.StopKind "thread"|"file"|"hunk"
+
+---@class didymus.review.Stop A place where `next` and `prev` put the cursor.
+---@field path string
+---@field file_index integer
+---@field line integer A head line.
+
+--- The stops of `kind`, in the order of the panel. A deleted file is not in the checkout, so it
+--- has no stops.
+---@param kind didymus.review.StopKind
+---@return didymus.review.Stop[]
+function Session:get_stops(kind)
+  local stops = {}
+  if kind == "thread" then
+    -- The panel shows only the threads of the files of the change.
+    local file_indexes = get_file_indexes(self.change.files)
+    for _, thread in ipairs(self.threads) do
+      local line = threads.get_line(thread)
+      local file_index = file_indexes[thread.path]
+      if line and file_index then
+        table.insert(stops, { path = thread.path, file_index = file_index, line = line })
+      end
+    end
+    return stops
+  end
+  for file_index, file in ipairs(self.change.files) do
+    if file.status ~= "deleted" then
+      local hunks = patch.parse(file.patch).hunks
+      if kind == "file" then
+        -- The first change, as `<CR>` of the panel.
+        local line = hunks[1] and hunks[1].first_change or 1
+        table.insert(stops, { path = file.path, file_index = file_index, line = line })
+      else
+        for _, hunk in ipairs(hunks) do
+          table.insert(
+            stops,
+            { path = file.path, file_index = file_index, line = hunk.first_change }
+          )
+        end
+      end
+    end
+  end
+  return stops
+end
+
+--- The first stop after `position` in `direction`. With no position, the first or the last stop.
+---@param stops didymus.review.Stop[]
 ---@param position didymus.review.CursorPosition?
 ---@param direction 1|-1
----@return didymus.review.Thread? thread
----@return integer? file_index
-function Session:find_thread(position, direction)
-  -- The panel shows only the threads of the files of the change.
-  local file_indexes = get_file_indexes(self.change.files)
-  local first, last = 1, #self.threads
+---@param by_file boolean Compare only the files, so that a stop in the file of the cursor is not next.
+---@return didymus.review.Stop?
+local function find_stop(stops, position, direction, by_file)
+  local first, last = 1, #stops
   if direction < 0 then
     first, last = last, first
   end
   for index = first, last, direction do
-    local thread = self.threads[index]
-    local line = threads.get_line(thread)
-    local file_index = file_indexes[thread.path]
-    if line and file_index then
-      local order = direction
-      if position then
-        order = file_index - position.file_index
-        if order == 0 then
-          -- A line after the end of the buffer counts as the last line, where its mark is. Else
-          -- `next` goes to the last line again and again.
-          order = math.min(line, position.line_count) - position.line
-        end
+    local stop = stops[index]
+    local order = direction
+    if position then
+      order = stop.file_index - position.file_index
+      if order == 0 and not by_file then
+        -- A line after the end of the buffer counts as the last line, where the mark of a thread
+        -- is. Else `next` goes to the last line again and again.
+        order = math.min(stop.line, position.line_count) - position.line
       end
-      if order * direction > 0 then
-        return thread, file_index
-      end
+    end
+    if order * direction > 0 then
+      return stop
     end
   end
 end
 
---- Go to the next or the previous thread in the order of the panel, also in a different file. Skip
---- the threads with no line. Threads at the same line are one stop. Do not wrap. With no cursor in
---- a file of the change, go to the first or the last thread.
----@param direction 1|-1 1 for the next thread, -1 for the previous thread.
-function Session:go_to_thread(direction)
+--- Go to the next or the previous thread, file or hunk in the order of the panel, also in a
+--- different file. Stops at the same line are one stop. Do not wrap. With no cursor in a file of the
+--- change, go to the first or the last stop.
+---@param kind didymus.review.StopKind
+---@param direction 1|-1 1 for the next stop, -1 for the previous stop.
+function Session:go_to(kind, direction)
   if not self:is_open() then
     return
   end
   -- The jump shows only in the review tabpage.
   self:focus()
   local position = self:get_cursor_position()
-  local thread, file_index = self:find_thread(position, direction)
-  if not thread then
+  local stop = find_stop(self:get_stops(kind), position, direction, kind == "file")
+  if not stop then
     local name = direction > 0 and "next" or "previous"
-    vim.notify(("didymus: no %s thread"):format(name), vim.log.levels.WARN)
+    vim.notify(("didymus: no %s %s"):format(name, kind), vim.log.levels.WARN)
     return
   end
-  local line = assert(threads.get_line(thread))
   local current_win = vim.api.nvim_get_current_win()
-  if position and position.win == current_win and position.file_index == file_index then
+  if position and position.win == current_win and position.file_index == stop.file_index then
     -- A split of the review tabpage can show the file. Then the cursor moves in that split.
     vim.cmd("normal! m'")
-    set_cursor(current_win, line)
+    set_cursor(current_win, stop.line)
   else
-    self:open_file(thread.path, line)
+    self:open_file(stop.path, stop.line)
   end
 end
 

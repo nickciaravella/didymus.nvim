@@ -32,24 +32,57 @@ local function default_threads()
   }
 end
 
---- Make a repo where the change modifies a.txt (8 lines), b.txt (3 lines) and c.txt (5 lines).
---- Make it the directory of the child. Open the review, and wait for its threads.
----@param threads didymus.review.Thread[]?
+--- The text of a file with `count` lines, such as "a1\na2\n". `changes` replaces some lines.
+---@param prefix string
+---@param count integer
+---@param changes table<integer, string>?
+---@return string
+local function make_text(prefix, count, changes)
+  local lines = {}
+  for line = 1, count do
+    table.insert(lines, (changes or {})[line] or prefix .. line)
+  end
+  return table.concat(lines, "\n") .. "\n"
+end
+
+--- The change modifies a.txt (8 lines), b.txt (3 lines) and c.txt (5 lines).
+local thread_files = {
+  base = {
+    ["a.txt"] = make_text("a", 8),
+    ["b.txt"] = make_text("b", 3),
+    ["c.txt"] = make_text("c", 5),
+  },
+  head = {
+    ["a.txt"] = make_text("a", 8, { [2] = "A2", [6] = "A6" }),
+    ["b.txt"] = make_text("b", 3, { [2] = "B2" }),
+    ["c.txt"] = make_text("c", 5, { [3] = "C3", [5] = "C5" }),
+  },
+}
+
+--- The change modifies a.txt (12 lines) with hunks at lines 2 and 10, and deletes b.txt. It
+--- modifies c.txt (5 lines) with a hunk at line 3, and adds d.txt (2 lines).
+local hunk_files = {
+  base = {
+    ["a.txt"] = make_text("a", 12),
+    ["b.txt"] = make_text("b", 2),
+    ["c.txt"] = make_text("c", 5),
+  },
+  head = {
+    ["a.txt"] = make_text("a", 12, { [2] = "A2", [10] = "A10" }),
+    ["b.txt"] = false,
+    ["c.txt"] = make_text("c", 5, { [3] = "C3" }),
+    ["d.txt"] = make_text("d", 2),
+  },
+}
+
+--- Make a repo with the files of the change, and make it the directory of the child. Open the
+--- review, and wait for its threads.
+---@param threads didymus.review.Thread[]? Default `default_threads()`.
+---@param files { base: table<string, string>, head: table<string, string|false> }? Default `thread_files`.
 ---@return didymus.test.Review
-local function open_review(threads)
+local function open_review(threads, files)
   threads = threads or default_threads()
-  local repo = helpers.make_repo({
-    base = {
-      ["a.txt"] = "a1\na2\na3\na4\na5\na6\na7\na8\n",
-      ["b.txt"] = "b1\nb2\nb3\n",
-      ["c.txt"] = "c1\nc2\nc3\nc4\nc5\n",
-    },
-    head = {
-      ["a.txt"] = "a1\nA2\na3\na4\na5\nA6\na7\na8\n",
-      ["b.txt"] = "b1\nB2\nb3\n",
-      ["c.txt"] = "c1\nc2\nC3\nc4\nC5\n",
-    },
-  })
+  local repo = helpers.make_repo(files or thread_files)
   child.fn.chdir(repo.dir)
   helpers.set_changes(child, { repo.change })
   helpers.set_threads(child, "1", threads)
@@ -104,11 +137,11 @@ end
 T["prev goes back"] = function()
   open_review()
   open_file("c.txt", 5)
-  child.cmd("Didymus review prev")
+  child.cmd("Didymus review prev thread")
   eq(position(), { "c.txt", 3 })
-  child.cmd("Didymus review prev")
+  child.cmd("Didymus review prev thread")
   eq(position(), { "a.txt", 6 })
-  child.cmd("Didymus review prev")
+  child.cmd("Didymus review prev thread")
   eq(position(), { "a.txt", 2 })
 end
 
@@ -228,17 +261,114 @@ T["the threads after the end of the buffer are one stop on the last line"] = fun
   eq(position(), { "a.txt", 2 })
 end
 
-T["the mappings go to the next and the previous thread"] = function()
-  open_review()
+T["next file goes to the first change of the next file, and skips the deleted files"] = function()
+  open_review({}, hunk_files)
+  -- The first change of a.txt is after the cursor, but it is in the same file.
   open_file("a.txt", 1)
-  child.cmd("nmap <F3> <Plug>(didymus-review-next)")
-  child.cmd("nmap <F4> <Plug>(didymus-review-prev)")
-  child.type_keys("<F3>")
+  child.cmd("Didymus review next file")
+  eq(position(), { "c.txt", 3 })
+  child.cmd("Didymus review next file")
+  eq(position(), { "d.txt", 1 })
+  child.cmd("Didymus review next file")
+  expect_message("didymus: no next file")
+  eq(position(), { "d.txt", 1 })
+end
+
+T["prev file goes to the first change of the previous file"] = function()
+  open_review({}, hunk_files)
+  -- The first change of c.txt is before the cursor, but it is in the same file.
+  open_file("c.txt", 5)
+  child.cmd("Didymus review prev file")
   eq(position(), { "a.txt", 2 })
-  child.type_keys("<F3>")
-  eq(position(), { "a.txt", 6 })
+  child.cmd("Didymus review prev file")
+  expect_message("didymus: no previous file")
+  eq(position(), { "a.txt", 2 })
+end
+
+T["next hunk goes to the next hunk, also in the next file"] = function()
+  open_review({}, hunk_files)
+  open_file("a.txt", 1)
+  child.cmd("Didymus review next hunk")
+  eq(position(), { "a.txt", 2 })
+  child.cmd("Didymus review next hunk")
+  eq(position(), { "a.txt", 10 })
+  child.cmd("Didymus review next hunk")
+  eq(position(), { "c.txt", 3 })
+  child.cmd("Didymus review next hunk")
+  eq(position(), { "d.txt", 1 })
+  child.cmd("Didymus review next hunk")
+  expect_message("didymus: no next hunk")
+  eq(position(), { "d.txt", 1 })
+end
+
+T["prev hunk goes back"] = function()
+  open_review({}, hunk_files)
+  open_file("d.txt", 2)
+  child.cmd("Didymus review prev hunk")
+  eq(position(), { "d.txt", 1 })
+  child.cmd("Didymus review prev hunk")
+  eq(position(), { "c.txt", 3 })
+  child.cmd("Didymus review prev hunk")
+  eq(position(), { "a.txt", 10 })
+  child.cmd("Didymus review prev hunk")
+  eq(position(), { "a.txt", 2 })
+  child.cmd("Didymus review prev hunk")
+  expect_message("didymus: no previous hunk")
+  eq(position(), { "a.txt", 2 })
+end
+
+T["next file from a different tabpage goes to the review tabpage, and <C-o> goes back"] = function()
+  local review = open_review({}, hunk_files)
+  open_file("a.txt", 4)
+  child.cmd("tabfirst")
+  child.cmd("Didymus review next file")
+  eq(child.api.nvim_get_current_tabpage(), review.tabpage)
+  eq(position(), { "c.txt", 3 })
+  child.type_keys("<C-o>")
+  eq(position(), { "a.txt", 4 })
+end
+
+T["with no file of the change in the code window, next file goes to the first file and prev hunk to the last hunk"] = function()
+  open_review({}, hunk_files)
+  child.cmd("Didymus review next file")
+  eq(position(), { "a.txt", 2 })
+  child.cmd("enew")
+  child.cmd("Didymus review prev hunk")
+  eq(position(), { "d.txt", 1 })
+end
+
+T["the mappings go to the next and the previous thread, file and hunk"] = function()
+  open_review({ make_thread("a5", "a.txt", { range = { first = 5, last = 5 } }) }, hunk_files)
+  for index, name in ipairs({
+    "next-thread",
+    "next-file",
+    "next-hunk",
+    "prev-thread",
+    "prev-file",
+    "prev-hunk",
+  }) do
+    child.cmd(("nmap <F%d> <Plug>(didymus-review-%s)"):format(index, name))
+  end
+  open_file("a.txt", 12)
   child.type_keys("<F4>")
+  eq(position(), { "a.txt", 5 })
+  child.type_keys("<F6>")
   eq(position(), { "a.txt", 2 })
+  child.type_keys("<F3>")
+  eq(position(), { "a.txt", 10 })
+  child.type_keys("<F2>")
+  eq(position(), { "c.txt", 3 })
+  child.type_keys("<F5>")
+  eq(position(), { "a.txt", 2 })
+  child.type_keys("<F1>")
+  eq(position(), { "a.txt", 5 })
+end
+
+T["next with an unknown kind shows an error"] = function()
+  open_review()
+  -- An error message in a command is an error of `child.cmd()`.
+  child.lua("require('didymus.command').run('review next line')")
+  expect_message("didymus: cannot go to the next line. Use thread, file or hunk.")
 end
 
 T["next with no review shows a warning"] = function()

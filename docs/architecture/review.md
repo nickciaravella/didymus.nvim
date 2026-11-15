@@ -66,7 +66,7 @@ The MVP is a full review of a GitHub PR, from the pick to the submit, in the cur
 | 4 | **Files panel.** A header (title, author, base ← head), the changed files with status, `+`/`-` counts and thread count, and the threads under each file. `<CR>` opens the file or goes to the thread. `:Didymus review files` shows or hides the panel. | |
 | 5 | **Real file at the first change.** The file opens at the first hunk of its patch. | No hunk display. |
 | 6 | **Read threads.** A sign and a one-line summary at the line of each thread. `:Didymus review thread` opens the full thread in a float. | Outdated threads show only in the panel. |
-| 7 | **Thread navigation.** `:Didymus review next` and `prev` go to the next and the previous thread, also in other files. | |
+| 7 | **Navigation.** `:Didymus review next` and `prev` go to the next and the previous thread, changed file or hunk, also in other files. | |
 | 8 | **Comment.** Add a line or range comment from the input float. The comment goes into your pending review. didymus finds a pending review that you started on github.com. | Reuse `ui/input.lua`. |
 | 9 | **Reply, resolve and unresolve** a thread. | |
 | 10 | **Submit or discard** the review: approve, comment or request changes, with an optional body. | |
@@ -165,18 +165,26 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 12. If more than one thread is at the line, `thread` asks which one with the select role of the picker.
 13. The order of the threads is the order of the panel: the files in the order of the provider. In each file, the threads with a line come first, by line. The other threads stay in the order of the provider.
 
-### Thread navigation
+### Navigation
 
-`Session:go_to_thread()` in `lua/didymus/review/session.lua` does `next` and `prev`.
+`Session:go_to()` in `lua/didymus/review/session.lua` does `next` and `prev`. They take a kind: `thread` (the default), `file` or `hunk`.
 
-1. The stops are the threads with a line, in the order of the panel. The threads at the same line are one stop, because `thread` asks which one to open.
-2. The start is the cursor of the current window, if it shows a file of the change. Else, it is the cursor of the code window, for example from the panel. If neither shows a file of the change, `next` goes to the first thread, and `prev` to the last thread.
-3. In a different tabpage, `next` and `prev` go to the review tabpage first, so that the jump shows.
-4. The jump uses the line of the thread, as `<CR>` of the panel does, not the extmark. In the file of the cursor, a line after the end of the buffer counts as the last line. Else, `next` goes to the last line again and again.
-5. If the current window shows the file of the thread, the cursor moves in that window. Else, the file opens in the code window, as with `<CR>` of the panel.
-6. Each jump adds the old position to the jumplist, as `vim.diagnostic.jump()` does.
-7. At the last or the first thread, `didymus: no next thread` or `didymus: no previous thread` shows, and the cursor does not move. The navigation does not wrap.
-8. The cursor of the panel does not move, and the thread float does not open.
+| Kind | Stops, in the order of the panel |
+| --- | --- |
+| `thread` | The threads with a line. The threads at the same line are one stop, because `thread` asks which one to open. |
+| `file` | The changed files, at their first change, as `<CR>` of the panel. See [Patch parser](#patch-parser), rule 7. |
+| `hunk` | The `first_change` of each hunk of the patch. |
+
+1. A deleted file has no stops, because it is not in the checkout.
+2. The start is the cursor of the current window, if it shows a file of the change. Else, it is the cursor of the code window, for example from the panel. If neither shows a file of the change, `next` goes to the first stop, and `prev` to the last stop.
+3. `file` compares only the files. So `next file` goes to the next file, also if the first change of the current file is after the cursor. `thread` and `hunk` also compare the lines in the file of the cursor.
+4. In a different tabpage, `next` and `prev` go to the review tabpage first, so that the jump shows.
+5. The jump uses the line of the stop, not the extmark of a thread, as `<CR>` of the panel does. In the file of the cursor, a line after the end of the buffer counts as the last line. Else, `next` goes to the last line again and again.
+6. If the current window shows the file of the stop, the cursor moves in that window. Else, the file opens in the code window, as with `<CR>` of the panel.
+7. Each jump adds the old position to the jumplist, as `vim.diagnostic.jump()` does.
+8. At the last or the first stop, a message such as `didymus: no next hunk` shows, and the cursor does not move. The navigation does not wrap.
+9. The cursor of the panel does not move, and the thread float does not open.
+10. An unknown kind shows an error, such as `didymus: cannot go to the next line. Use thread, file or hunk.`
 
 ### Comments
 
@@ -430,7 +438,7 @@ flowchart LR
 | 5. [Files panel](https://github.com/nickciaravella/didymus.nvim/issues/40) | The header and the files in the panel. `<CR>` opens the real file. `:Didymus review files`. | Open files from the panel. |
 | 6. [Patch and first hunk](https://github.com/nickciaravella/didymus.nvim/issues/41) | Parse the `patch` of each file into hunks and commentable ranges. The file opens at its first hunk. | Open a file. The cursor is on the first change. |
 | 7. [Read threads](https://github.com/nickciaravella/didymus.nvim/issues/42) | `get_threads`. Threads under their files in the panel. Signs and summaries at the lines. The thread float. | Open a PR with comments. |
-| 8. [Thread navigation](https://github.com/nickciaravella/didymus.nvim/issues/43) | `:Didymus review next` and `prev`, across files, in the order of the panel. | Go through all threads of a PR. |
+| 8. [Thread navigation](https://github.com/nickciaravella/didymus.nvim/issues/43) | `:Didymus review next` and `prev` for threads, files and hunks, across files, in the order of the panel. | Go through all threads, files and hunks of a PR. |
 | 9. [Comment](https://github.com/nickciaravella/didymus.nvim/issues/44) | Find or start the pending review. A line or range comment from the input float. Check the commentable ranges. Refuse a file with local changes. | Add a comment. It shows as pending on github.com. |
 | 10. [Reply and resolve](https://github.com/nickciaravella/didymus.nvim/issues/45) | Reply, resolve and unresolve from the thread float. | Reply to a thread, resolve it, unresolve it. |
 | 11. [Submit and discard](https://github.com/nickciaravella/didymus.nvim/issues/46) | `:Didymus review submit [approve\|comment\|request_changes]` with a body. `:Didymus review discard`. | Submit a review on a test PR. |
@@ -448,7 +456,7 @@ Each manual test of a GitHub feature needs a real PR. Use a throwaway PR in a te
 | [Worktree workspace](https://github.com/nickciaravella/didymus.nvim/issues/48) | `review` | Review a PR in a git worktree, with no change to the current checkout. The agent of the review starts in the worktree. |
 | [Mark as viewed](https://github.com/nickciaravella/didymus.nvim/issues/49) | `review` | Show the viewed state in the panel, and a key to change it. |
 | [GitHub test plan](https://github.com/nickciaravella/didymus.nvim/issues/50) | `review` | Decide how to test the GitHub provider in the long term: recorded `gh` output, a real test repo, or both. |
-| [Hunk display](https://github.com/nickciaravella/didymus.nvim/issues/51) | `diff` | Show the hunks against the merge-base on the real file. Keys for the next and the previous hunk. |
+| [Hunk display](https://github.com/nickciaravella/didymus.nvim/issues/51) | `diff` | Show the hunks against the merge-base on the real file. `next hunk` and `prev hunk` from #43 use the hunks of the patch. |
 | [More pickers](https://github.com/nickciaravella/didymus.nvim/issues/52) | `review` | Adapters for other pickers, such as telescope or fzf-lua. A panel fallback for a picker with only the select role. |
 | [More comment kinds](https://github.com/nickciaravella/didymus.nvim/issues/53) | `review` | Suggestion blocks, file-level comments and comments on deleted lines. |
 | [Agent primer](https://github.com/nickciaravella/didymus.nvim/issues/54) | `agent` | A first prompt with the PR title, body and merge-base. |
