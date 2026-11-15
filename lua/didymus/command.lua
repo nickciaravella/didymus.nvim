@@ -9,7 +9,7 @@ local tree = {
     open = {},
     close = {},
     files = {},
-    thread = {},
+    fold = { all = {} },
     next = stop_kinds,
     prev = stop_kinds,
     comment = {},
@@ -78,8 +78,17 @@ local review_actions = {
   files = function()
     require("didymus.review").files()
   end,
-  thread = function()
-    require("didymus.review").thread()
+  fold = function(rest)
+    if rest ~= "" and rest ~= "all" then
+      vim.notify(
+        ("didymus: cannot fold %q. Use :Didymus review fold or :Didymus review fold all."):format(
+          rest
+        ),
+        vim.log.levels.ERROR
+      )
+      return
+    end
+    require("didymus.review").fold({ all = rest == "all" })
   end,
   next = function(rest)
     require("didymus.review").next({ kind = non_empty(rest) })
@@ -114,7 +123,7 @@ local groups = {
   },
   review = {
     actions = review_actions,
-    usage = "Use :Didymus review open, close, files, thread, next, prev, comment, reply, resolve, "
+    usage = "Use :Didymus review open, close, files, fold, next, prev, comment, reply, resolve, "
       .. "submit, discard or refresh.",
   },
 }

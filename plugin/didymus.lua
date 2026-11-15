@@ -37,7 +37,6 @@ for _, action in ipairs({
   "open",
   "close",
   "files",
-  "thread",
   "reply",
   "submit",
   "discard",
@@ -55,6 +54,14 @@ for _, action in ipairs({ "next", "prev" }) do
     end, { desc = ("didymus: review %s %s"):format(action, kind) })
   end
 end
+
+vim.keymap.set("n", "<Plug>(didymus-review-fold)", function()
+  require("didymus.review").fold()
+end, { desc = "didymus: review fold or unfold the thread" })
+
+vim.keymap.set("n", "<Plug>(didymus-review-fold-all)", function()
+  require("didymus.review").fold({ all = true })
+end, { desc = "didymus: review fold or unfold all threads" })
 
 vim.keymap.set("n", "<Plug>(didymus-review-resolve)", function()
   require("didymus.review").resolve()

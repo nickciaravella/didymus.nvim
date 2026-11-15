@@ -441,6 +441,7 @@ T["the command completes the review actions"] = function()
     "comment",
     "discard",
     "files",
+    "fold",
     "next",
     "open",
     "prev",
@@ -448,13 +449,13 @@ T["the command completes the review actions"] = function()
     "reply",
     "resolve",
     "submit",
-    "thread",
   })
   eq(
     child.fn.getcompletion("Didymus review submit ", "cmdline"),
     { "approve", "comment", "request_changes" }
   )
   eq(child.fn.getcompletion("Didymus review next ", "cmdline"), { "file", "hunk", "thread" })
+  eq(child.fn.getcompletion("Didymus review fold ", "cmdline"), { "all" })
   eq(child.fn.getcompletion("Didymus ", "cmdline"), { "agent", "review" })
 end
 
@@ -462,7 +463,7 @@ T["an unknown review action shows the usage"] = function()
   -- An error message in a command is an error of `child.cmd()`.
   child.lua("require('didymus.command').run('review foo')")
   expect_message(
-    "didymus: unknown command. Use :Didymus review open, close, files, thread, next, prev, comment, "
+    "didymus: unknown command. Use :Didymus review open, close, files, fold, next, prev, comment, "
       .. "reply, resolve, submit, discard or refresh."
   )
 end

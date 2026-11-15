@@ -30,6 +30,8 @@ local threads = require("didymus.review.threads")
 ---@field load_count integer The number of the last get of the threads. Only the result of the newest get applies.
 ---@field discarded_at integer? The time of the last discard, from `vim.uv.now()`. Nil after a new pending comment or reply.
 ---@field thread_filter "all"|"active" The threads that the panel shows. Active threads are not resolved.
+---@field private folds table<string, boolean> The fold state that the user set, by thread id. True is folded.
+---@field private draw_scheduled boolean A draw after a change of the text width waits.
 ---@field cwd string
 ---@field merge_base string?
 ---@field old_branch string?
@@ -63,6 +65,8 @@ function Session.new(opts)
     on_close = opts.on_close,
     thread_paths = {},
     thread_filter = "all",
+    folds = {},
+    draw_scheduled = false,
   }, Session)
   -- An unlisted scratch buffer, so that the close leaves no "[No Name]" buffer.
   local buf = vim.api.nvim_create_buf(false, true)
@@ -80,6 +84,7 @@ function Session.new(opts)
         return
       end
       vim.api.nvim_del_augroup_by_id(self.group)
+      vim.api.nvim_set_decoration_provider(threads.namespace, {})
       self:hide_files()
       threads.clear()
       self.on_close(self)
@@ -98,6 +103,13 @@ function Session.new(opts)
     group = self.group,
     callback = function(args)
       self:draw_threads(args.buf)
+    end,
+  })
+  -- The unfolded threads wrap at the text width. A resize, a new window or a new sign column
+  -- changes it. Only a redraw updates the sign column, so check at the end of each redraw.
+  vim.api.nvim_set_decoration_provider(threads.namespace, {
+    on_end = function()
+      self:check_text_widths()
     end,
   })
   self:scope_threads()
@@ -170,6 +182,66 @@ function Session:scope_threads()
   end
 end
 
+---@param win integer
+---@return integer
+local function get_win_text_width(win)
+  local info = vim.fn.getwininfo(win)[1]
+  return info.width - info.textoff
+end
+
+--- The text width of the narrowest window of the review tabpage that shows `buf`. With no such
+--- window, the text width of the code window, because the buffer shows there when it opens.
+---@param buf integer
+---@return integer
+function Session:get_text_width(buf)
+  local width
+  if self:is_open() then
+    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(self.tabpage)) do
+      -- A float, such as the preview of a picker, is not a window of the code.
+      if
+        vim.api.nvim_win_get_buf(win) == buf and vim.api.nvim_win_get_config(win).relative == ""
+      then
+        width = math.min(width or math.huge, get_win_text_width(win))
+      end
+    end
+  end
+  if width then
+    return width
+  end
+  if vim.api.nvim_win_is_valid(self.code_win) then
+    return get_win_text_width(self.code_win)
+  end
+  return vim.o.columns
+end
+
+--- Draw the threads in `buf` again if its text width changed. A decoration provider calls it at the
+--- end of each redraw, so it must be fast.
+function Session:check_text_widths()
+  if self.draw_scheduled or vim.api.nvim_get_current_tabpage() ~= self.tabpage then
+    return
+  end
+  local bufs = {}
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(self.tabpage)) do
+    local buf = vim.api.nvim_win_get_buf(win)
+    local width = threads.get_drawn_width(buf)
+    if width and width ~= self:get_text_width(buf) then
+      bufs[buf] = true
+    end
+  end
+  if next(bufs) then
+    -- A decoration provider must not change the extmarks.
+    self.draw_scheduled = true
+    vim.schedule(function()
+      self.draw_scheduled = false
+      for buf in pairs(bufs) do
+        if vim.api.nvim_buf_is_loaded(buf) then
+          self:draw_threads(buf)
+        end
+      end
+    end)
+  end
+end
+
 --- Draw the threads in `buf`, if it shows a file with threads.
 ---@param buf integer
 function Session:draw_threads(buf)
@@ -177,8 +249,62 @@ function Session:draw_threads(buf)
   local real_path = name ~= "" and vim.uv.fs_realpath(name)
   local path = real_path and self.thread_paths[real_path]
   if path then
-    threads.draw(buf, path, self.threads)
+    threads.draw(buf, path, self.threads, {
+      width = self:get_text_width(buf),
+      is_folded = function(thread)
+        return self:is_folded(thread)
+      end,
+    })
   end
+end
+
+--- Draw the threads in all loaded buffers of files with threads.
+function Session:draw_all_threads()
+  threads.clear()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(buf) then
+      self:draw_threads(buf)
+    end
+  end
+end
+
+--- As on github.com, a resolved thread starts folded, and an active thread starts unfolded.
+---@param thread didymus.review.Thread
+---@return boolean
+function Session:is_folded(thread)
+  local folded = self.folds[thread.id]
+  if folded == nil then
+    return thread.resolved
+  end
+  return folded
+end
+
+--- Fold or unfold the threads, and draw them again.
+---@param list didymus.review.Thread[]
+---@param folded boolean
+function Session:set_folded(list, folded)
+  for _, thread in ipairs(list) do
+    self.folds[thread.id] = folded
+  end
+  self:draw_all_threads()
+end
+
+--- Remove the fold state that the user set. The thread then gets the start state of its new
+--- resolved state at the next draw.
+---@param thread_id string
+function Session:reset_fold(thread_id)
+  self.folds[thread_id] = nil
+end
+
+---@param list didymus.review.Thread[]
+---@return boolean
+function Session:has_unfolded(list)
+  for _, thread in ipairs(list) do
+    if not self:is_folded(thread) then
+      return true
+    end
+  end
+  return false
 end
 
 --- The index of each file in the order of the provider, by its path.
@@ -228,12 +354,7 @@ function Session:set_threads(list)
       self.thread_paths[real_path] = thread.path
     end
   end
-  threads.clear()
-  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_loaded(buf) then
-      self:draw_threads(buf)
-    end
-  end
+  self:draw_all_threads()
   if self:is_panel_open() then
     self.panel:update()
   end
@@ -338,9 +459,67 @@ function Session:pick_thread_at_cursor(cb)
   end
 end
 
---- Open the thread at the cursor in a float. If more than one thread is at the line, ask which one.
-function Session:show_thread_at_cursor()
-  self:pick_thread_at_cursor(threads.open_float)
+--- Scroll `win` so that the threads under `line` show, if they fit. `line` stays in the window.
+---@param win integer
+---@param line integer
+local function show_threads_under(win, line)
+  local line_count = vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(win))
+  local height = vim.api.nvim_win_get_height(win)
+  ---@param top integer
+  ---@return integer rows The screen rows from `top` to the last line of the threads.
+  local function get_rows(top)
+    -- With `start_vcol`, the virtual lines above `top` do not count. They do not show.
+    local opts = { start_row = top - 1, start_vcol = 0 }
+    if line == line_count then
+      -- With no `end_row`, the virtual lines under the last line count.
+      return vim.api.nvim_win_text_height(win, opts).all
+    end
+    -- The virtual lines under `line` count as a part of the next line.
+    opts.end_row = line
+    local next_line =
+      vim.api.nvim_win_text_height(win, { start_row = line, start_vcol = 0, end_row = line })
+    return vim.api.nvim_win_text_height(win, opts).all - next_line.all
+  end
+  vim.api.nvim_win_call(win, function()
+    local top = vim.fn.line("w0")
+    -- A top line after this line moves the cursor, because of 'scrolloff'.
+    local last_top = math.max(top, line - vim.o.scrolloff)
+    local new_top = top
+    while new_top < last_top and get_rows(new_top) > height do
+      new_top = new_top + 1
+    end
+    if new_top ~= top then
+      vim.fn.winrestview({ topline = new_top, topfill = 0 })
+    end
+  end)
+end
+
+--- Fold or unfold the threads at the cursor line, with no question. If one of them is unfolded,
+--- fold all of them.
+function Session:toggle_fold()
+  local found = threads.at_cursor(self.threads)
+  local line = vim.api.nvim_win_get_cursor(0)[1]
+  if #found == 0 then
+    vim.notify(("didymus: no thread at line %d"):format(line), vim.log.levels.WARN)
+    return
+  end
+  local folded = self:has_unfolded(found)
+  self:set_folded(found, folded)
+  if not folded then
+    show_threads_under(vim.api.nvim_get_current_win(), line)
+  end
+end
+
+--- Fold all threads if one of the threads at a line is unfolded. Else, unfold all threads.
+function Session:toggle_all_folds()
+  local shown = vim.tbl_filter(function(thread)
+    return threads.get_line(thread) ~= nil
+  end, self.threads)
+  if #shown == 0 then
+    vim.notify(("didymus: %s has no threads at a line"):format(self.label), vim.log.levels.WARN)
+    return
+  end
+  self:set_folded(self.threads, self:has_unfolded(shown))
 end
 
 ---@param win integer
@@ -367,9 +546,10 @@ end
 --- closed the code window, open a new one on the right.
 ---@param path string Relative to `cwd`.
 ---@param line integer
+---@return boolean opened False if the file did not open. Then the error shows.
 function Session:open_file(path, line)
   if not self:is_open() then
-    return
+    return false
   end
   local previous_win = vim.api.nvim_get_current_win()
   self:focus()
@@ -401,11 +581,22 @@ function Session:open_file(path, line)
       end
       local message = tostring(err):gsub("^Vim:", "")
       vim.notify(("didymus: cannot open %s: %s"):format(path, message), vim.log.levels.ERROR)
-      return
+      return false
     end
   end
   self.code_win = vim.api.nvim_get_current_win()
   set_cursor(self.code_win, line)
+  return true
+end
+
+--- Open the file of `thread` at the line of the thread, unfold the thread, and show it.
+---@param thread didymus.review.Thread
+function Session:open_thread(thread)
+  local line = threads.get_line(thread)
+  if line and self:open_file(thread.path, line) then
+    self:set_folded({ thread }, false)
+    show_threads_under(self.code_win, vim.api.nvim_win_get_cursor(self.code_win)[1])
+  end
 end
 
 ---@class didymus.review.CursorPosition
@@ -527,7 +718,7 @@ end
 
 --- Go to the next or the previous thread, file or hunk in the order of the panel, also in a
 --- different file. Stops at the same line are one stop. Do not wrap. With no cursor in a file of the
---- change, go to the first or the last stop.
+--- change, go to the first or the last stop. Unfold the threads of a thread stop, and show them.
 ---@param kind didymus.review.StopKind
 ---@param direction 1|-1 1 for the next stop, -1 for the previous stop.
 function Session:go_to(kind, direction)
@@ -548,8 +739,16 @@ function Session:go_to(kind, direction)
     -- A split of the review tabpage can show the file. Then the cursor moves in that split.
     vim.cmd("normal! m'")
     set_cursor(current_win, stop.line)
-  else
-    self:open_file(stop.path, stop.line)
+  elseif not self:open_file(stop.path, stop.line) then
+    return
+  end
+  if kind == "thread" then
+    -- The threads at the line are one stop. With the active filter, a resolved thread is no stop.
+    local found = vim.tbl_filter(function(thread)
+      return self.thread_filter == "all" or not thread.resolved
+    end, threads.at_cursor(self.threads))
+    self:set_folded(found, false)
+    show_threads_under(vim.api.nvim_get_current_win(), vim.api.nvim_win_get_cursor(0)[1])
   end
 end
 

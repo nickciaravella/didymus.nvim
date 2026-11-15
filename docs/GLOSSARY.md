@@ -16,6 +16,7 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Context | A part of the code that goes with a prompt: the path, the lines, the text and the filetype. |
 | End-to-end test | A test that drives a child Neovim the way a user does: with commands, keys and the public API. |
 | Epic | A large stream of work. Each epic is a GitHub label. |
+| Fold | Show a thread in the file as one line. Unfold shows all its comments. |
 | Fake agent | A small CLI that acts like an agent in tests. |
 | Head | The commit with the new code. |
 | Hunk | One block of changed lines. |
@@ -41,7 +42,7 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Test picker | A picker adapter with no UI. End-to-end tests use it to choose items. |
 | Test provider | A provider that keeps changes in memory. End-to-end tests use it in place of GitHub. |
 | Thread | A list of comments on one line or range. |
-| Thread float | The float that shows all comments of one thread, as markdown. |
+| Thread float | The float that shows all comments of a thread that shows only in the panel, as markdown. |
 | Unit test | A test of a pure function, or of a function that uses only Neovim. It has no external dependencies. |
 | View | The window that shows an agent session: a float or a split. |
 | Workspace | The git checkout of a review. In the MVP, the current checkout. |

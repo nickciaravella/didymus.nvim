@@ -410,11 +410,18 @@ function M.files()
   end
 end
 
---- Open the thread at the cursor in a float, with all its comments.
-function M.thread()
+--- Fold or unfold the threads at the cursor line. With `all`, fold all threads of the review if
+--- one of them is unfolded. Else, unfold all threads.
+---@param opts { all: boolean? }?
+function M.fold(opts)
   local session = get_open_review()
-  if session then
-    session:show_thread_at_cursor()
+  if not session then
+    return
+  end
+  if opts and opts.all then
+    session:toggle_all_folds()
+  else
+    session:toggle_fold()
   end
 end
 
@@ -758,7 +765,7 @@ end
 
 --- Reply to the thread at the cursor, or to the thread of the open thread float. Post the reply at
 --- once, or add it to the pending review. The input float opens at the cursor line of the window
---- under the thread float.
+--- under the thread float, such as the panel.
 function M.reply()
   local session = get_open_review()
   if not session then
@@ -797,6 +804,8 @@ function M.resolve()
         return show_error(("cannot %s the thread at %s: %s"):format(action, location, err))
       end
       if session:is_open() then
+        -- As on github.com, a resolve folds the thread, and an unresolve unfolds it.
+        session:reset_fold(new_thread.id)
         session:update_thread(new_thread)
       end
       vim.notify(("didymus: %sd the thread at %s"):format(action, location))

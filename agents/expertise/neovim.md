@@ -87,6 +87,42 @@ Neovim 0.12 has no `nvim_win_add_ns()`. `nvim__ns_set(ns, { wins = { … } })` s
 
 - Checked: Neovim 0.12.5
 
+### `nvim_win_text_height()` counts the `virt_lines` under a line as a part of the next line
+
+The `virt_lines` under row `r` count as the filler lines of row `r + 1`. The filler lines above `start_row` count too, unless you give `start_vcol`. So to count the rows from the top line to the last `virt_lines` of row `r`, give `start_vcol = 0`, use `end_row = r + 1`, and subtract the height of row `r + 1` alone. For the last row of the buffer, do not give `end_row`. Then the filler lines under it count.
+
+- Proof: this command prints `row 0: 1/0, row 1: 3/2, row 1 with start_vcol: 1/0` (`all`/`fill`).
+
+  ```sh
+  nvim --clean --headless -n -c 'lua vim.api.nvim_buf_set_lines(0, 0, -1, true, { "a", "b" })
+  vim.api.nvim_buf_set_extmark(0, vim.api.nvim_create_namespace("x"), 0, 0, { virt_lines = { { { "v1" } }, { { "v2" } } } })
+  local function height(opts) local h = vim.api.nvim_win_text_height(0, opts) return h.all .. "/" .. h.fill end
+  io.write("row 0: ", height({ start_row = 0, end_row = 0 }), ", row 1: ", height({ start_row = 1, end_row = 1 }),
+  ", row 1 with start_vcol: ", height({ start_row = 1, start_vcol = 0, end_row = 1 }), "\n")' -c 'qa!'
+  ```
+
+- Checked: Neovim 0.12.5
+
+## Windows
+
+### The `textoff` of a window changes only at the next redraw after a new sign column
+
+With `signcolumn=auto`, the first sign of a buffer makes the sign column show. But `getwininfo().textoff` keeps the old value until the next redraw. A `vim.schedule()` callback can run before that redraw, and `on_win` of a decoration provider also gets the old value. `on_end` of a decoration provider gets the new value, and so do `:redraw` and `nvim__redraw()`. So to fit `virt_lines` to the text width, check the width in `on_end`, and draw again in `vim.schedule()`.
+
+- Proof: run this command in the repo root after `make deps`. It prints `now 0, on_win 0, on_end 2, …`. See also `Session:check_text_widths()` in `lua/didymus/review/session.lua`. The test "a long comment wraps at the text width, and again after a resize" in `tests/e2e/review/threads.test.lua` fails without it.
+
+  ```sh
+  nvim --clean --headless -n -c 'set rtp+=deps/mini.nvim' -c 'lua local c = require("mini.test").new_child_neovim() c.start({ "--clean", "-n" })
+  c.lua([[_G.seen = {} vim.api.nvim_set_decoration_provider(vim.api.nvim_create_namespace("p"), {
+  on_win = function(_, win) table.insert(_G.seen, "on_win " .. vim.fn.getwininfo(win)[1].textoff) return false end,
+  on_end = function() table.insert(_G.seen, "on_end " .. vim.fn.getwininfo(vim.api.nvim_get_current_win())[1].textoff) end })]])
+  c.get_screenshot() c.lua([[_G.seen = {} vim.api.nvim_buf_set_extmark(0, vim.api.nvim_create_namespace("s"), 0, 0, { sign_text = "S" })
+  table.insert(_G.seen, "now " .. vim.fn.getwininfo(vim.api.nvim_get_current_win())[1].textoff)]])
+  c.get_screenshot() io.write(table.concat(c.lua_get("_G.seen"), ", "), "\n") c.stop()' -c qa
+  ```
+
+- Checked: Neovim 0.12.5
+
 ## Floats
 
 ### The float of `open_floating_preview()` closes when you leave its source buffer, also for a picker

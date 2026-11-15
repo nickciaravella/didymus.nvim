@@ -112,23 +112,12 @@ local function panel_rows()
   end, vim.list_slice(items, 4))
 end
 
---- The row and the summary of each mark in the current buffer, 0-based.
----@return { [1]: integer, [2]: string }[]
+--- The row and the lines of each mark in the current buffer, 0-based.
+---@return [integer, string[]][]
 local function marks()
-  return child.lua_get([[
-    vim.tbl_map(function(mark)
-      local texts = vim.tbl_map(function(segment)
-        return segment[1]
-      end, mark[4].virt_lines[1])
-      return { mark[2], vim.trim(table.concat(texts)) }
-    end, vim.api.nvim_buf_get_extmarks(
-      0,
-      require("didymus.review.threads").namespace,
-      0,
-      -1,
-      { details = true }
-    ))
-  ]])
+  return vim.tbl_map(function(mark)
+    return { mark.row, mark.lines }
+  end, helpers.thread_marks(child))
 end
 
 T["add to review shows the comment as pending in the panel and at the line"] = function()
@@ -170,7 +159,11 @@ T["add to review shows the comment as pending in the panel and at the line"] = f
     { " Looks good." },
     { " [pending]", "DidymusThreadPending" },
   })
-  eq(marks(), { { 2, "💬 @reviewer Looks good. [pending]" }, { 18, "💬 @octocat A comment." } })
+  -- A new thread is active, so it is unfolded.
+  eq(marks(), {
+    { 2, { "┌ 💬 @reviewer [pending]", "└ Looks good." } },
+    { 18, { "┌ 💬 @octocat", "└ A comment." } },
+  })
   eq(has_message("didymus: added a pending comment at file.txt:3"), true)
 end
 
@@ -189,7 +182,7 @@ T["comment now posts the comment, with no pending tag"] = function()
   )
   eq(helpers.picker_calls(child, "panel")[1].items[3].text, "Active threads")
   eq(panel_rows()[2], "💬 @reviewer Looks good.")
-  eq(marks()[1], { 2, "💬 @reviewer Looks good." })
+  eq(marks()[1], { 2, { "┌ 💬 @reviewer", "└ Looks good." } })
   eq(has_message("didymus: posted a comment at file.txt:3"), true)
 end
 
@@ -210,7 +203,7 @@ T["a comment on the selection in visual mode is a range comment"] = function()
   helpers.wait_for_threads(child, 2)
   local thread = provider_threads()[2]
   eq({ thread.range, thread.comments[1].body }, { { first = 16, last = 17 }, "Two lines." })
-  eq(marks()[1], { 16, "💬 @reviewer Two lines. [pending]" })
+  eq(marks()[1], { 16, { "┌ 💬 @reviewer [pending]", "└ Two lines." } })
 end
 
 T["a comment on a command range, and a cancel, add no comment"] = function()
