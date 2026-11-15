@@ -20,6 +20,7 @@ M.defaults = {
     -- The options of each kind of list, for each adapter. For example:
     -- { changes = { snacks = { layout = { preset = "ivy" } } } }
     picker_config = {},
+    provider = "github", -- "github", "test" or a provider table. See lua/didymus/review/provider/.
   },
 }
 
