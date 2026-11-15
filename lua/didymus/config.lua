@@ -26,7 +26,7 @@ M.defaults = {
     input = {
       width = 60,
       max_height = 10,
-      keys = { post = "<C-s>", add = "<C-y>", cancel = "q" }, -- Also for a reply.
+      keys = { post = "<C-s>", add = "<C-y>", cancel = "q" }, -- Also for a reply. A submit has only `post`.
     },
     thread = {
       keys = { reply = "r", resolve = "x" }, -- In the thread float. False turns a key off.

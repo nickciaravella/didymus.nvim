@@ -202,6 +202,7 @@ The unit tests of the GitHub provider replace `vim.system` with a mock. The mock
 | `reply_graphql.json`, `resolve_graphql.json`, `unresolve_graphql.json` | `reply()` and `set_resolved()` on a submitted thread of #64, in the same pending review as the `comment_*` fixtures. | Formatted with `jq`. |
 | `reply_post_graphql.json` | A reply that is posted at once, on a submitted thread of #64, with no pending review. | Formatted with `jq`. |
 | `comment_post_get_thread_graphql.json` | The get of a thread after a post at once on #64. It is from a second post of the comment of `comment_post_*`, so its thread id is different. | Formatted with `jq`. |
+| `submit_graphql.json`, `submit_no_body_graphql.json`, `discard_graphql.json` | `submit_review()` and `discard_review()` on #64: a submit of a pending review, a comment with no body and no pending review, and a discard. | Formatted with `jq`. |
 
 The REST fixtures (`*_files.json`) do not have the URL fields. To record again, run the queries of `lua/didymus/review/provider/github/graphql.lua` and the REST call with `--paginate --slurp`. A smaller page size, such as `first: 2` and `per_page=2`, gives more than one page.
 

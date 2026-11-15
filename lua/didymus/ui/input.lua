@@ -20,6 +20,8 @@ local M = {}
 ---@field keys didymus.ui.input.Keys?
 ---@field range integer[]? The first and the last line of the code, 1-based. These lines have a highlight. Default: the cursor line.
 ---@field text string? The text at the start. Insert mode starts at its end.
+---@field allow_empty boolean? A submit with no text calls `on_submit` with "". Default false: the float stays open.
+---@field on_empty fun()? Called on a submit with no text, if `allow_empty` is false.
 
 local defaults = {
   width = 60,
@@ -144,6 +146,8 @@ function M.open(opts)
   vim.validate("opts.on_cancel", opts.on_cancel, "function", true)
   vim.validate("opts.range", opts.range, "table", true)
   vim.validate("opts.text", opts.text, "string", true)
+  vim.validate("opts.allow_empty", opts.allow_empty, "boolean", true)
+  vim.validate("opts.on_empty", opts.on_empty, "function", true)
   local actions = vim.tbl_filter(function(action)
     return action.key
   end, opts.actions)
@@ -231,7 +235,10 @@ function M.open(opts)
     while #lines > 0 and lines[#lines]:match("^%s*$") do
       table.remove(lines)
     end
-    if #lines == 0 then
+    if #lines == 0 and not opts.allow_empty then
+      if opts.on_empty then
+        opts.on_empty()
+      end
       return
     end
     -- Close after the mode change. Else insert mode stays on in the original window.

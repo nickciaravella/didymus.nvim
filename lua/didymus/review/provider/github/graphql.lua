@@ -130,6 +130,25 @@ mutation($reviewId: ID!, $event: PullRequestReviewEvent!, $body: String) {
 }
 ]]
 
+--- Add a review with a verdict and no comments. With an `event`, the review does not stay pending.
+M.add_review = [[
+mutation(
+  $pullRequestId: ID!
+  $commitOID: GitObjectID!
+  $event: PullRequestReviewEvent!
+  $body: String
+) {
+  addPullRequestReview(input: {
+    pullRequestId: $pullRequestId
+    commitOID: $commitOID
+    event: $event
+    body: $body
+  }) {
+    pullRequestReview { id }
+  }
+}
+]]
+
 --- Delete a pending review and its comments.
 M.delete_review = [[
 mutation($reviewId: ID!) {

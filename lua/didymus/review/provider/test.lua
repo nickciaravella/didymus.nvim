@@ -7,7 +7,8 @@
 ---@field threads table<string, didymus.review.Thread[]> The threads of each change id.
 ---@field viewer string The author of the new comments.
 ---@field errors table<string, string> The next call of a method, such as `add_comment`, fails with this error.
-local M = { changes = {}, threads = {}, viewer = "reviewer", errors = {} }
+---@field reviews { change_id: string, verdict: didymus.review.Verdict, body: string? }[] The reviews that `submit_review()` submitted.
+local M = { changes = {}, threads = {}, viewer = "reviewer", errors = {}, reviews = {} }
 
 --- The number of threads that `add_comment()` made, for their ids.
 local added_count = 0
@@ -156,6 +157,53 @@ function M:set_resolved(change, thread_id, resolved, cb)
   local copy = vim.deepcopy(thread)
   vim.schedule(function()
     cb(nil, copy)
+  end)
+end
+
+--- Record the review in `reviews`, and make the pending comments of the change submitted.
+---@param change didymus.review.Change
+---@param verdict didymus.review.Verdict
+---@param body string?
+---@param cb fun(err: string?)
+function M:submit_review(change, verdict, body, cb)
+  if fail("submit_review", cb) then
+    return
+  end
+  table.insert(self.reviews, { change_id = change.id, verdict = verdict, body = body })
+  for _, thread in ipairs(self.threads[change.id] or {}) do
+    for _, comment in ipairs(thread.comments) do
+      comment.pending = false
+    end
+  end
+  vim.schedule(function()
+    cb(nil)
+  end)
+end
+
+--- Remove the pending comments of the change, and the threads with no comments left. Give an error
+--- if there are no pending comments.
+---@param change didymus.review.Change
+---@param cb fun(err: string?)
+function M:discard_review(change, cb)
+  if fail("discard_review", cb) then
+    return
+  end
+  local kept, found = {}, false
+  for _, thread in ipairs(self.threads[change.id] or {}) do
+    local comments = vim.tbl_filter(function(comment)
+      return not comment.pending
+    end, thread.comments)
+    found = found or #comments < #thread.comments
+    if #comments > 0 then
+      thread.comments = comments
+      table.insert(kept, thread)
+    end
+  end
+  if found then
+    self.threads[change.id] = kept
+  end
+  vim.schedule(function()
+    cb(not found and "you have no pending review" or nil)
   end)
 end
 
