@@ -34,7 +34,14 @@ When the finder gives no items, the picker shows a "No results" warning and clos
 
 ### The `sidebar` layout shows the preview in the main window
 
-The `sidebar` preset has `preview = "main"`. Each move of the cursor in the list then shows the item in the code window. The explorer sets `layout = { preset = "sidebar", preview = false }` to stop it.
+The `sidebar` preset has `preview = "main"`. The preview is a float over the code window, and each move of the cursor in the list changes it. The explorer sets `layout = { preset = "sidebar", preview = false }` to stop it. To hide the preview for some items, call `picker:toggle("preview", { enable = false })` in `on_change`.
 
 - Proof: [`layouts.lua`](https://github.com/folke/snacks.nvim/blob/v2.31.0/lua/snacks/picker/config/layouts.lua#L22-L23) and [`sources.lua`](https://github.com/folke/snacks.nvim/blob/v2.31.0/lua/snacks/picker/config/sources.lua#L65) at v2.31.0.
+- Checked: snacks.nvim v2.31.0
+
+### The main preview does not come back when the focus goes back to the list of a sidebar
+
+With `auto_close = false`, snacks hides the main preview when the focus goes to a window outside the picker. Its `WinEnter` handler shows the preview again, but it returns early if the current window is a float. The list of a `sidebar` layout is a float in the root split. Add a handler on the list: `picker.list.win:on("WinEnter", cb, { buf = true })`.
+
+- Proof: the test `the preview hides while the focus is in the code window` in `tests/integration/picker/snacks.test.lua`. It fails without the `WinEnter` handler in `lua/didymus/ui/picker/snacks.lua`. See also [`picker.lua`](https://github.com/folke/snacks.nvim/blob/v2.31.0/lua/snacks/picker/core/picker.lua#L286-L298) at v2.31.0.
 - Checked: snacks.nvim v2.31.0
