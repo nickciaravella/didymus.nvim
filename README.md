@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel, the review threads (read only) and the navigation work now.
+> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation and new comments work now.
 
 ## Goals
 
@@ -121,6 +121,7 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review files` | Show the files panel, or hide it. |
 | `:Didymus review thread` | Open the thread at the cursor in a float, with all its comments. |
 | `:Didymus review next [thread\|file\|hunk]`, `:Didymus review prev [thread\|file\|hunk]` | Go to the next or the previous thread, changed file or hunk, also in a different file. The default is `thread`. |
+| `:[range]Didymus review comment` | Add a comment on the current line, the selection or the range. Post it at once, or add it to your pending review. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
 
@@ -149,7 +150,25 @@ Outdated threads, threads on deleted lines and threads on the file show only in 
 
 At the last or the first stop, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. In a different tabpage, `next` and `prev` go to the review tabpage first.
 
-The highlight groups are `DidymusThread` (default: `DiagnosticInfo`) and `DidymusThreadResolved` (default: `Comment`).
+`comment` opens a float above the lines, with the location as the title. Type the comment, then press a key:
+
+| Key | Action |
+| --- | --- |
+| `<C-s>` | Comment now: post the comment at once. GitHub does this only if you have no pending review. |
+| `<C-y>` | Add to review: add the comment to your pending review. If you have no pending review, didymus starts one. A pending review that you started on github.com also works. |
+| `q`, in normal mode | Cancel. |
+
+The new thread shows in the panel and at the line. A comment in your pending review has the `[pending]` tag. It stays pending until you submit the review on github.com.
+
+didymus refuses a comment, and shows the reason, in these cases:
+
+- The current window does not show a file of the pull request.
+- The buffer is modified, or the file is different from the head of the pull request. A comment needs the line numbers of the head.
+- The lines are not in a hunk of the pull request. A range must be in one hunk. If the hunks of a file are unknown, for example in a large file, GitHub decides.
+
+If GitHub does not add the comment, the error shows. The next `comment` on the same lines starts with your text.
+
+The highlight groups are `DidymusThread` (default: `DiagnosticInfo`), `DidymusThreadResolved` (default: `Comment`) and `DidymusThreadPending` (default: `DiagnosticHint`).
 
 `close` does not check out the branch from before the review. Its message names that branch. `:tabclose` of the review tabpage also closes the review.
 
@@ -166,12 +185,14 @@ vim.keymap.set("n", "<leader>rnf", "<Plug>(didymus-review-next-file)")
 vim.keymap.set("n", "<leader>rpf", "<Plug>(didymus-review-prev-file)")
 vim.keymap.set("n", "<leader>rnh", "<Plug>(didymus-review-next-hunk)")
 vim.keymap.set("n", "<leader>rph", "<Plug>(didymus-review-prev-hunk)")
+vim.keymap.set({ "n", "x" }, "<leader>rm", "<Plug>(didymus-review-comment)")
 ```
 
 | Mapping | Modes |
 | --- | --- |
 | `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-thread)` | Normal |
 | `<Plug>(didymus-review-next-thread)`, `<Plug>(didymus-review-next-file)`, `<Plug>(didymus-review-next-hunk)`, `<Plug>(didymus-review-prev-thread)`, `<Plug>(didymus-review-prev-file)`, `<Plug>(didymus-review-prev-hunk)` | Normal |
+| `<Plug>(didymus-review-comment)` | Normal, visual |
 
 To check snacks.nvim and `gh`, run `:checkhealth didymus`.
 
@@ -208,6 +229,12 @@ require("didymus").setup({
     provider = "github", -- "github", "test" for tests, or a provider table
     icons = { active = "💬", resolved = "✅" }, -- the state of a thread. "" shows no icon.
     panel = { keys = { toggle_active = "a" } }, -- false turns off a key
+    input = { -- the float of comment
+      width = 60, -- below 1 is a fraction of the window width
+      max_height = 10, -- the float grows to this height, then it scrolls
+      -- post: comment now. add: add to the pending review. cancel is in normal mode.
+      keys = { post = "<C-s>", add = "<C-y>", cancel = "q" },
+    },
   },
 })
 ```

@@ -120,4 +120,22 @@ function M.parse(text)
   return { hunks = hunks, commentable = commentable }
 end
 
+--- True if one commentable range of `side` has all lines of `range`. A range across two hunks is
+--- not commentable. True if the commentable lines are unknown, because then the code host decides.
+---@param parsed didymus.review.Patch
+---@param side didymus.review.Side
+---@param range didymus.review.Range
+---@return boolean
+function M.is_commentable(parsed, side, range)
+  if not parsed.commentable then
+    return true
+  end
+  for _, commentable in ipairs(parsed.commentable[side]) do
+    if range.first >= commentable.first and range.last <= commentable.last then
+      return true
+    end
+  end
+  return false
+end
+
 return M

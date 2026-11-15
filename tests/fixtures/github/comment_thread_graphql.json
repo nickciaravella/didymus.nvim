@@ -1,0 +1,31 @@
+{
+  "data": {
+    "addPullRequestReviewThread": {
+      "thread": {
+        "id": "PRRT_kwDOVmiVUM61MQcu",
+        "path": "lua/didymus/init.lua",
+        "line": 25,
+        "startLine": 25,
+        "diffSide": "RIGHT",
+        "startDiffSide": null,
+        "isResolved": false,
+        "isOutdated": false,
+        "subjectType": "LINE",
+        "comments": {
+          "pageInfo": {
+            "hasNextPage": false
+          },
+          "nodes": [
+            {
+              "author": {
+                "login": "nickciaravella"
+              },
+              "body": "Recorded for the unit tests of didymus: lines 25-25.",
+              "state": "PENDING"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

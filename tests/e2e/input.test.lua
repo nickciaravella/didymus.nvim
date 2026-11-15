@@ -185,6 +185,15 @@ T["<CR> adds a line"] = function()
   eq(result().submitted, {})
 end
 
+T["starts with the text, in insert mode at its end"] = function()
+  open({ title = "Prompt", text = "one\ntwo", max_height = 5 })
+  eq(child.api.nvim_buf_get_lines(0, 0, -1, false), { "one", "two" })
+  eq(input_height(), 2)
+  eq(child.api.nvim_get_mode().mode, "i")
+  child.type_keys(" three<C-y>")
+  eq(result().submitted, { "one\ntwo three" })
+end
+
 T["<C-y> in insert mode submits the full text and closes the float"] = function()
   local origin = child.api.nvim_get_current_win()
   open()

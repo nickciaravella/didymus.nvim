@@ -38,6 +38,50 @@ The `patch` field is `null`. The other fields, such as `status` and `changes`, a
   - The same for `src/unicode/EastAsianWidth.txt` in neovim/neovim#27317 gives `{"changes":5170,"patch":null,"status":"modified"}`.
 - Checked: gh 2.103.2
 
+## Review comments
+
+### `addPullRequestReviewThread` gives `thread: null` and no error for a line out of the diff
+
+The exit code is 0, and the reply has no `errors`. So check that `thread` is not null. A range that starts out of the diff gives the same reply.
+
+- Proof: on nickciaravella/didymus.nvim#64, `addPullRequestReviewThread` with `line: 12` (between the two hunks) gives `{"data":{"addPullRequestReviewThread":{"thread":null}}}` and exit code 0.
+- Checked: gh 2.103.2
+
+### `addPullRequestReviewThread` accepts a range across two hunks, but keeps only the hunk of `line`
+
+The thread has the `startLine` and the `line` of the input. But its `diff_hunk` has only the lines of the hunk of `line`, up to `line`. github.com does not let you select across two hunks. didymus refuses such a range.
+
+- Proof: on nickciaravella/didymus.nvim#64 (hunks at head lines 1-6 and 22-28), `startLine: 5, line: 23` gives a thread with `startLine: 5` and `line: 23`. `gh api repos/{owner}/{repo}/pulls/64/reviews/<id>/comments` gives a `diff_hunk` that starts at `@@ -21,7 +22,7 @@` and stops at line 23.
+- Checked: gh 2.103.2
+
+### A user can have only one pending review on a PR, and then cannot post a single comment
+
+A second `addPullRequestReview` fails with `User can only have one pending review per pull request`, also with `event: COMMENT`. REST `POST pulls/{n}/comments` fails with 422 and `user_id can only have one pending review per pull request`. `addPullRequestReviewThread` with only `pullRequestId` adds the thread to the pending review. After these calls, the pending review and its comments stay. github.com also does not let you add a single comment then. Find the pending review first, also one from github.com. Only its author can see it.
+
+- Proof: on nickciaravella/didymus.nvim#64, start a review with `addPullRequestReview` (`pullRequestId`, `commitOID`). Then each of the three calls above gives that result.
+- Checked: gh 2.103.2
+
+### To post a comment at once and get its thread id, start a review, add the thread, and submit
+
+With no pending review, REST `POST pulls/{n}/comments` posts the comment, but its reply has only the comment ids, and `PullRequestReviewComment` has no field for its thread. `addPullRequestReview` with `threads` also gives no thread id. So start a review with no `event`, add the thread with `addPullRequestReviewThread`, and submit the review with `submitPullRequestReview` and `event: COMMENT`. The thread of the second call has the id, and after the submit its comment is `SUBMITTED`.
+
+- Proof: `add_comment()` with `pending = false` in `lua/didymus/review/provider/github/init.lua` gave the fixtures `tests/fixtures/github/comment_post_*_graphql.json` on nickciaravella/didymus.nvim#64. A query of `reviews(states: [PENDING])` after the submit gave no review.
+- Checked: gh 2.103.2
+
+### `deletePullRequestReview` removes the threads of the review some seconds later
+
+The reply comes at once, but `reviewThreads` of the PR still has the threads for a short time. So a get of the threads just after a discard can give the deleted threads.
+
+- Proof: on nickciaravella/didymus.nvim#64, after `deletePullRequestReview` of a review with 4 threads, `reviewThreads { totalCount }` gave 4, then 1, then 0 in the next seconds.
+- Checked: gh 2.103.2
+
+### A delete of the only comment of a submitted review also deletes the review
+
+`deletePullRequestReviewComment` gives the review in its reply, but after the delete, `reviews` of the PR does not have it. So you can clean up a test comment on a throwaway PR with no empty review.
+
+- Proof: on nickciaravella/didymus.nvim#64, post a comment with REST `POST pulls/64/comments`, then delete it with `deletePullRequestReviewComment`. `reviews(first: 20)` of the PR does not have its review.
+- Checked: gh 2.103.2
+
 ## `gh pr checkout`
 
 ### The fetch lines of git can come before the error on stderr

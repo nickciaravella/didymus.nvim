@@ -28,6 +28,7 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Pending review | A review that is started but not submitted. |
 | Picker | A plugin that shows a list of items and lets the user choose one, such as snacks.picker. |
 | Picker adapter | The integration that connects didymus to a picker. |
+| Post | Put a comment on the code host at once, not in the pending review. |
 | Prompt | The text for the agent, and its context. |
 | Provider | An integration for a code host, such as GitHub. |
 | Reference file | `docs/reference/design-prompt.md`. A first pass at the design. Not a spec. |

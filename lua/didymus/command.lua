@@ -5,7 +5,15 @@ local stop_kinds = { thread = {}, file = {}, hunk = {} }
 
 local tree = {
   agent = { start = {}, toggle = views, focus = views, stop = {}, append = {}, send = {} },
-  review = { open = {}, close = {}, files = {}, thread = {}, next = stop_kinds, prev = stop_kinds },
+  review = {
+    open = {},
+    close = {},
+    files = {},
+    thread = {},
+    next = stop_kinds,
+    prev = stop_kinds,
+    comment = {},
+  },
 }
 
 ---@param text string
@@ -74,6 +82,9 @@ local review_actions = {
   prev = function(rest)
     require("didymus.review").prev({ kind = non_empty(rest) })
   end,
+  comment = function(_, range)
+    require("didymus.review").comment({ range = range })
+  end,
 }
 
 local groups = {
@@ -83,7 +94,7 @@ local groups = {
   },
   review = {
     actions = review_actions,
-    usage = "Use :Didymus review open, close, files, thread, next or prev.",
+    usage = "Use :Didymus review open, close, files, thread, next, prev or comment.",
   },
 }
 

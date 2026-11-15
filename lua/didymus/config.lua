@@ -23,6 +23,11 @@ M.defaults = {
     provider = "github", -- "github", "test" or a provider table. See lua/didymus/review/provider/.
     icons = { active = "💬", resolved = "✅" }, -- The state of a thread. "" shows no icon.
     panel = { keys = { toggle_active = "a" } }, -- false turns off a key.
+    input = {
+      width = 60,
+      max_height = 10,
+      keys = { post = "<C-s>", add = "<C-y>", cancel = "q" },
+    },
   },
 }
 

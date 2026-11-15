@@ -46,3 +46,7 @@ for _, action in ipairs({ "next", "prev" }) do
     end, { desc = ("didymus: review %s %s"):format(action, kind) })
   end
 end
+
+vim.keymap.set({ "n", "x" }, "<Plug>(didymus-review-comment)", function()
+  require("didymus.review").comment()
+end, { desc = "didymus: review comment" })
