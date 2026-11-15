@@ -93,7 +93,7 @@ These rules apply to `open` and `close`:
 2. With no argument, `open` shows the picker first. Then rule 1 applies to the choice.
 3. Each question uses the select role of the picker, because `vim.fn.confirm()` blocks the UI. The items are the action and "Cancel". A close of the picker with no choice is a cancel.
 4. The uncommitted changes are the tracked files with changes, staged or not. Untracked files stay after a checkout, and git refuses the checkout if one of them conflicts.
-5. The question about uncommitted changes shows the files in its preview. A warning message also lists them, so that they show after the picker closes.
+5. The question about uncommitted changes shows the files in its preview. The snacks `select` layout of the `choice` kind hides the preview. So a warning message also lists the files, and they show also after the picker closes.
 6. If git cannot find the merge-base, the review opens with a warning. No MVP feature uses the merge-base yet.
 7. A progress message shows while the provider works.
 8. A newer `open` wins. The callbacks of an older `open` do nothing.
@@ -103,7 +103,7 @@ Comments need the line numbers of the PR head. So didymus refuses a new comment 
 
 ### Files panel
 
-The files panel opens with the review tabpage, in the panel role of the picker. Its title is `Review #12`. `lua/didymus/review/panel.lua` makes the items.
+The files panel opens with the review tabpage, in the panel role of the picker, with the `files` kind. Its title is `Review #12`. `lua/didymus/review/panel.lua` makes the items.
 
 | Row | Text | Highlights |
 | --- | --- | --- |
@@ -116,17 +116,18 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 1. The status letters are `A`, `M`, `D` and `R`. The full path comes before the counts. A long path can hide the counts in a narrow panel.
 2. The thread count shows only if it is above 0. A count of 0 on each row makes the rows long.
 3. `<CR>` on a header row does nothing. On a deleted file, it shows a message and opens nothing, because the file is not in the checkout.
-4. `<CR>` on a file opens the real file in the code window at its first change, and focuses the code window. The code window is the first window of the tabpage. If the user closed it, the file opens in a new window on the right, and that window becomes the code window. See [Patch parser](#patch-parser).
-5. In the review tabpage, `:Didymus review files` shows or hides the panel. In a different tabpage, it goes to the review tabpage and shows the panel. A hidden panel is closed, so a new panel starts with the cursor on the first row.
-6. `close` and `:tabclose` also close the panel.
-7. If the panel cannot open, for example with no snacks.nvim, the review opens without it, and the error shows.
-8. If the code window already shows the file, `<CR>` only moves the cursor. `:edit` of a modified buffer gives E37. The move goes into the jumplist, as the `:edit` of a different file does.
-9. If Neovim cannot open the file, the error shows, and the focus goes back to the panel. For example, with 'nohidden', a modified buffer in the code window gives E37.
-10. The thread count counts the threads of the file that show, also the outdated threads.
-11. `<CR>` on a thread with a line opens its file at that line, as rule 4. `<CR>` on a thread that shows only in the panel opens the thread float next to the panel. See [Inline threads](#inline-threads).
-12. The icons of the state come from `review.icons`: `active` (default 💬) and `resolved` (default ✅). An active thread is not resolved. An empty icon shows no icon. [#69](https://github.com/nickciaravella/didymus.nvim/issues/69) uses the same icons.
-13. The key `review.panel.keys.toggle_active` (default `a`, false turns it off) shows only the active threads, or all threads again. The default is all threads. The session keeps the filter, also when the panel opens again. The filter does not change the marks in the files.
-14. A thread row with a line has `location = { path, line }`, with the full path and the line of the thread, for the preview of the picker. A thread with no line has no `location`. The full path stays correct if the user changes the current directory.
+4. Each file row has a `location` for the preview. Its path is the full path: the path from the provider, joined to the directory of the review. `<CR>` uses the same path, so both stay correct if the current directory changes. Its line is the first change of the file, as for `<CR>`. With no hunks, the `location` has no line. A deleted file and the header rows have no `location`.
+5. `<CR>` on a file opens the real file in the code window at its first change, and focuses the code window. The code window is the first window of the tabpage. If the user closed it, the file opens in a new window on the right, and that window becomes the code window. See [Patch parser](#patch-parser).
+6. In the review tabpage, `:Didymus review files` shows or hides the panel. In a different tabpage, it goes to the review tabpage and shows the panel. A hidden panel is closed, so a new panel starts with the cursor on the first row.
+7. `close` and `:tabclose` also close the panel.
+8. If the panel cannot open, for example with no snacks.nvim, the review opens without it, and the error shows.
+9. If the code window already shows the file, `<CR>` only moves the cursor. `:edit` of a modified buffer gives E37. The move goes into the jumplist, as the `:edit` of a different file does.
+10. If Neovim cannot open the file, the error shows, and the focus goes back to the panel. For example, with 'nohidden', a modified buffer in the code window gives E37.
+11. The thread count counts the threads of the file that show, also the outdated threads.
+12. `<CR>` on a thread with a line opens its file at that line, as rule 5. `<CR>` on a thread that shows only in the panel opens the thread float next to the panel. See [Inline threads](#inline-threads).
+13. The icons of the state come from `review.icons`: `active` (default 💬) and `resolved` (default ✅). An active thread is not resolved. An empty icon shows no icon. [#69](https://github.com/nickciaravella/didymus.nvim/issues/69) uses the same icons.
+14. The key `review.panel.keys.toggle_active` (default `a`, false turns it off) shows only the active threads, or all threads again. The default is all threads. The session keeps the filter, also when the panel opens again. The filter does not change the marks in the files.
+15. A thread row with a line has a `location` with the full path, as rule 4, and the line of the thread. A thread with no line has no `location`.
 
 ### Patch parser
 
@@ -148,7 +149,7 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 3. A file with no `patch` has no hunks, and its commentable lines are unknown. An empty `patch` has no hunks and no commentable lines.
 4. `first_change` is the first added line. If deleted lines have no added lines after them, it is the head line before the deletion, as in a unified diff. At the start of the file, it is line 1.
 5. The parser skips `\ No newline at end of file` and the lines before the first hunk. An empty line in a hunk is a context line.
-6. The panel parses the patch when it opens a file. There is no cache, because a refresh replaces the change.
+6. The panel parses the patch when it makes the file rows and when it opens a file. There is no cache, because a refresh replaces the change.
 7. The cursor goes to the first non-blank character of `first_change` of the first hunk, or to line 1 with no hunks. If the buffer is shorter, the cursor goes to the last line. The file in the checkout can be different from the change head.
 
 ### Inline threads
@@ -166,7 +167,7 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 9. With `signcolumn=auto`, a window outside the review tabpage that shows a review buffer has an empty sign column. The sign column counts the signs of the buffer, not of the window.
 10. `thread` opens the float with `vim.lsp.util.open_floating_preview()`, as a hover: next to the cursor, closed by a move of the cursor, focused by a second call, closed by `q`. The float is markdown. Each comment is `**@author**`, with `*pending*` for a pending comment, then the body. A line separates the comments. The title is the path, the line, and the tags `base`, `resolved` and `outdated`.
 11. A float that opens from the panel is not wider than the panel, because the float of Neovim is not wider than the current window.
-12. If more than one thread is at the line, `thread` asks which one with the select role of the picker.
+12. If more than one thread is at the line, `thread` asks which one with the select role of the picker and the `choice` kind.
 13. The order of the threads is the order of the panel: the files in the order of the provider. In each file, the threads with a line come first, by line. The other threads stay in the order of the provider.
 
 ### Navigation
@@ -234,14 +235,21 @@ The MVP needs no diff provider. The patch from the code host gives the first hun
 ---@field name string
 ---@field fn fun(item: didymus.picker.Item?) The item under the cursor. Nil if the panel is empty.
 
+---@alias didymus.picker.Kind "changes"|"choice"|"files"
+
+--- `config[kind][adapter_name]` has the options of one adapter for one kind.
+---@alias didymus.picker.Config table<didymus.picker.Kind, table<string, table>>
+
 ---@class didymus.picker.SelectOpts
 ---@field title string
+---@field kind? didymus.picker.Kind The adapter uses the options of this kind.
 ---@field items didymus.picker.Item[]
 ---@field on_choose fun(item: didymus.picker.Item) The picker closes first.
 ---@field on_cancel? fun()
 
 ---@class didymus.picker.PanelOpts
 ---@field title string
+---@field kind? didymus.picker.Kind The adapter uses the options of this kind.
 ---@field items fun(): didymus.picker.Item[] The panel calls it on open and on `update()`.
 ---@field on_choose fun(item: didymus.picker.Item) The panel stays open, and its window stays current.
 ---@field actions? didymus.picker.Action[] Keys in the panel, such as `R` for refresh.
@@ -255,19 +263,44 @@ The MVP needs no diff provider. The patch from the code host gives the first hun
 ---@field is_open fun(self): boolean
 
 ---@class didymus.picker.Adapter
----@field select fun(opts: didymus.picker.SelectOpts)
----@field panel fun(opts: didymus.picker.PanelOpts): didymus.picker.Panel
+---@field select fun(opts: didymus.picker.SelectOpts, config: didymus.picker.Config?)
+---@field panel fun(opts: didymus.picker.PanelOpts, config: didymus.picker.Config?): didymus.picker.Panel
 ---@field health fun() Report the dependencies with `vim.health`.
 ```
 
 1. `review.picker` in the config is `"snacks"` (the default), `"test"` or an adapter table. A table lets users add a picker with no change to didymus.
-2. The health check calls `health()` of the configured adapter. The snacks adapter reports an error if `Snacks.picker` is not available.
-3. The `test` adapter records the calls, and lets end-to-end tests choose an item or press the key of an action. It is the same idea as the test backend of the agent. See [`TESTING.md`](../TESTING.md#the-test-picker).
-4. `on_choose` of the panel does not move the focus. The caller opens the file in its code window, because the review session owns the tabpage.
-5. The panel has no preview. A preview in the sidebar shows in the code window, and changes it at each move of the cursor.
-6. The keys of the actions work only in the list of the panel, not in its search input.
-7. The snacks panel is a split, so it shows only in the tabpage where it opened.
-8. `picker.confirm()` in `ui/picker/init.lua` asks a question with the select role. The workspace flow uses it in place of `vim.fn.confirm()`.
+2. Get the adapter with `require("didymus.ui.picker").get(review.picker, review.picker_config)`. Its `select()` and `panel()` give `review.picker_config` to the adapter.
+3. The health check calls `health()` of the configured adapter. The snacks adapter reports an error if `Snacks.picker` is not available.
+4. The `test` adapter records the calls, and lets end-to-end tests choose an item or press the key of an action. It is the same idea as the test backend of the agent. See [`TESTING.md`](../TESTING.md#the-test-picker).
+5. `on_choose` of the panel does not move the focus. The caller opens the file in its code window, because the review session owns the tabpage.
+6. When the cursor moves in the panel, the code window shows the item: `preview` first, else `location` at its line. A row with neither, such as a header, shows no preview. The preview shows only while the panel has the focus. `<CR>` opens the real file.
+7. The keys of the actions work only in the list of the panel, not in its search input.
+8. The snacks panel is a split, so it shows only in the tabpage where it opened.
+9. `picker.confirm()` in `ui/picker/init.lua` asks a question with the select role and the `choice` kind. The workspace flow uses it in place of `vim.fn.confirm()`.
+
+### Picker config
+
+The layout of a list depends on the picker. So `review.picker_config` has options for each kind of list, and in each kind, options for each adapter:
+
+| Kind | List | snacks default |
+| --- | --- | --- |
+| `changes` | The PR list. | `layout = { preset = "default" }`: a float with the list on the left and the preview on the right. |
+| `choice` | A confirm prompt, the verdict, the choice of a thread. | `layout = { preset = "select" }`. |
+| `files` | The files panel. | The `sidebar` preset with the preview in the code window, and the options of the snacks explorer. |
+
+```lua
+review = {
+  picker_config = {
+    changes = { snacks = { layout = { preset = "ivy" } } },
+    files = { snacks = { layout = { layout = { width = 50, min_width = 50 } } } },
+  },
+}
+```
+
+- The snacks adapter reads `picker_config[kind].snacks`. It merges the options with `vim.tbl_deep_extend()`, in this order: the default of the kind, then the user options, then the options that didymus needs.
+- The user cannot change the options that didymus needs: `items`, `finder`, `format`, `confirm`, `on_close`, `show_empty`, `actions` and the keys of the actions.
+- With no kind, a select uses the snacks default layout, and a panel uses the `files` default.
+- The defaults of each adapter are in the adapter, so that `config.lua` does not know about snacks.
 
 ## Provider interface
 

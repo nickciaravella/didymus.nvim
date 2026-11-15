@@ -202,7 +202,9 @@ function M.wait_for_review(child, id)
 end
 
 ---@class didymus.test.PickerCall
----@field kind "select"|"panel"
+---@field role "select"|"panel"
+---@field kind string? The kind of list, such as "changes".
+---@field config table?
 ---@field title string
 ---@field items didymus.picker.Item[]
 ---@field cursor integer
@@ -211,13 +213,15 @@ end
 
 --- The calls of the test picker in the child, with no functions, so that they go through RPC.
 ---@param child MiniTest.child
----@param kind ("select"|"panel")? Nil is all calls.
+---@param role ("select"|"panel")? Nil is all calls.
 ---@return didymus.test.PickerCall[]
-function M.picker_calls(child, kind)
+function M.picker_calls(child, role)
   local calls = child.lua_get([[
     vim.tbl_map(function(call)
       return {
-        kind = call.kind,
+        role = call.kind,
+        kind = call.opts.kind,
+        config = call.config,
         title = call.opts.title,
         items = call.items,
         cursor = call.cursor,
@@ -227,7 +231,7 @@ function M.picker_calls(child, kind)
     end, require("didymus.ui.picker.test").calls)
   ]])
   return vim.tbl_filter(function(call)
-    return kind == nil or call.kind == kind
+    return role == nil or call.role == role
   end, calls)
 end
 

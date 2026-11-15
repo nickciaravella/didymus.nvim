@@ -145,6 +145,13 @@ function Session:toggle_files()
   end
 end
 
+--- The full path of a file of the change. It stays correct if the current directory changes.
+---@param path string Relative to `cwd`, as the provider gives it.
+---@return string
+function Session:get_full_path(path)
+  return vim.fs.joinpath(self.cwd, path)
+end
+
 function Session:scope_threads()
   if self:is_open() then
     threads.scope(vim.api.nvim_tabpage_list_wins(self.tabpage))
@@ -204,7 +211,7 @@ function Session:set_threads(list)
   self.threads = sort_threads(list, self.change.files)
   self.thread_paths = {}
   for _, thread in ipairs(self.threads) do
-    local real_path = vim.uv.fs_realpath(vim.fs.joinpath(self.cwd, thread.path))
+    local real_path = vim.uv.fs_realpath(self:get_full_path(thread.path))
     if real_path then
       self.thread_paths[real_path] = thread.path
     end
@@ -239,6 +246,7 @@ function Session:show_thread_at_cursor()
   else
     local ok, err = pcall(self.adapter.select, {
       title = ("Threads at line %d"):format(line),
+      kind = "choice",
       items = vim.tbl_map(function(thread)
         local segments = threads.get_summary(thread)
         return { text = picker.join_segments(segments), segments = segments, value = thread }
@@ -284,7 +292,7 @@ function Session:open_file(path, line)
   end
   local previous_win = vim.api.nvim_get_current_win()
   self:focus()
-  local full_path = vim.fs.joinpath(self.cwd, path)
+  local full_path = self:get_full_path(path)
   ---@type vim.api.keyset.cmd?
   local command = { cmd = "edit", args = { full_path }, magic = { file = false } }
   if
@@ -335,7 +343,7 @@ function Session:find_file_index(buf)
     return
   end
   for index, file in ipairs(self.change.files) do
-    if vim.uv.fs_realpath(vim.fs.joinpath(self.cwd, file.path)) == real_path then
+    if vim.uv.fs_realpath(self:get_full_path(file.path)) == real_path then
       return index
     end
   end
