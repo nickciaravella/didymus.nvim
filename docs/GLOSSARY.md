@@ -12,6 +12,7 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Change | The thing under review. On GitHub, a pull request (PR). |
 | Code host | The system that keeps the change, such as GitHub. |
 | Code window | The window of the review tabpage that shows the real files. |
+| Commentable range | The lines of a file that accept comments on the code host. Each hunk of the patch gives one range on each side. |
 | Context | A part of the code that goes with a prompt: the path, the lines, the text and the filetype. |
 | End-to-end test | A test that drives a child Neovim the way a user does: with commands, keys and the public API. |
 | Epic | A large stream of work. Each epic is a GitHub label. |
@@ -22,6 +23,7 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Integration test | A test that checks one provider or external dependency against the real thing. It can use more than one module. |
 | Merge-base | The common ancestor of base and head. |
 | Notebook | A file of tricky facts about one technology, for agents, such as `agents/expertise/neovim.md`. |
+| Patch | The hunks of the unified diff of one file, as the code host gives them, with no file header. |
 | Panel | A picker list that stays open next to the code, such as the files panel. |
 | Pending review | A review that is started but not submitted. |
 | Picker | A plugin that shows a list of items and lets the user choose one, such as snacks.picker. |
