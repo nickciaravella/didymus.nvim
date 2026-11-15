@@ -17,6 +17,9 @@ M.defaults = {
   },
   review = {
     picker = "snacks", -- "snacks", "test" or an adapter table. See lua/didymus/ui/picker/.
+    -- The options of each kind of list, for each adapter. For example:
+    -- { changes = { snacks = { layout = { preset = "ivy" } } } }
+    picker_config = {},
   },
 }
 

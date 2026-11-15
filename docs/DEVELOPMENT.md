@@ -46,6 +46,8 @@ flowchart TB
 | First integrations | The GitHub provider, through `gh`, and the snacks.nvim picker. |
 | Review workspace | The current checkout in the MVP. didymus asks before it checks out the PR over uncommitted changes. A worktree comes later. See [#48](https://github.com/nickciaravella/didymus.nvim/issues/48). |
 | Pickers | Only snacks.nvim in the MVP. The picker interface keeps the select role and the panel role apart, so that other pickers can come later. The health check reports a missing picker. See [`architecture/review.md`](architecture/review.md#picker-interface). |
+| Picker config | `review.picker_config[kind][adapter_name]`, for the kinds `changes`, `choice` and `files`. The defaults of each adapter are in the adapter. See [`architecture/review.md`](architecture/review.md#picker-config). |
+| Preview in the files panel | The code window shows the item under the cursor, only while the panel has the focus. |
 | Hunk display | Not in the MVP. The patch from the code host gives the first hunk and the commentable lines. See [#51](https://github.com/nickciaravella/didymus.nvim/issues/51). |
 | Agent scope | The agent works in all buffers, also outside a review. Only one agent session runs at a time. |
 | Agent backends | `terminal` and `test` in v1. The interface must also fit ACP. |
