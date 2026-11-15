@@ -165,7 +165,7 @@ T["a reply adds a pending comment to the thread"] = function()
   eq(provider_threads()[1].comments, comments)
   eq(session_thread("old").comments, comments)
   eq(sign(), { "2", "DidymusThread" })
-  eq(panel_item("old").text, "@octocat A comment.")
+  eq(panel_item("old").text, "💬 @octocat A comment.")
   eq(has_message("didymus: added a pending reply at file.txt:19"), true)
 end
 
@@ -218,9 +218,9 @@ T["resolve resolves the thread, and the panel shows it dim. resolve again unreso
   end, "the resolved thread")
   eq(provider_threads()[1].resolved, true)
   eq(panel_item("old").segments, {
+    { "✅ ", "DidymusThreadResolved" },
     { "@octocat", "DidymusThreadResolved" },
     { " A comment.", "DidymusThreadResolved" },
-    { " [resolved]", "DidymusThreadResolved" },
   })
   eq(sign(), { "1", "DidymusThreadResolved" })
   eq(has_message("didymus: resolved the thread at file.txt:19"), true)
@@ -230,7 +230,10 @@ T["resolve resolves the thread, and the panel shows it dim. resolve again unreso
     return not session_thread("old").resolved
   end, "the unresolved thread")
   eq(provider_threads()[1].resolved, false)
-  eq(panel_item("old").segments, { { "@octocat", "DidymusThread" }, { " A comment." } })
+  eq(
+    panel_item("old").segments,
+    { { "💬 " }, { "@octocat", "DidymusThread" }, { " A comment." } }
+  )
   eq(sign(), { "1", "DidymusThread" })
   eq(has_message("didymus: unresolved the thread at file.txt:19"), true)
 end
@@ -321,8 +324,8 @@ T["a thread with no line gets a reply from its float"] = function()
     }),
   })
   -- The test picker has no window. A second choice focuses the float, as in a real panel.
-  choose("@octocat Old note. [outdated]")
-  choose("@octocat Old note. [outdated]")
+  choose("💬 @octocat Old note. [outdated]")
+  choose("💬 @octocat Old note. [outdated]")
   eq(child.api.nvim_get_current_win(), float_win())
   child.type_keys("r")
   eq(wait_for_input().title, " Reply to file.txt ")
@@ -342,14 +345,14 @@ T["with two threads at the line, the picker asks which one"] = function()
   child.cmd("Didymus review resolve")
   local select = helpers.picker_calls(child, "select")[1]
   eq(select.title, "Threads at line 19")
-  choose("@hubot Second.")
+  choose("💬 @hubot Second.")
   wait_for(function()
     return session_thread("second").resolved
   end, "the resolved thread")
   eq(session_thread("first").resolved, false)
 
   child.cmd("Didymus review reply")
-  choose("@octocat A comment.")
+  choose("💬 @octocat A comment.")
   eq(wait_for_input().title, " Reply to file.txt:19 ")
   child.type_keys("To the first.", "<C-y>")
   wait_for(function()
@@ -371,7 +374,7 @@ T["with the thread float open, the commands use its thread, also with two thread
     }),
   })
   child.cmd("Didymus review thread")
-  choose("@octocat Please rename this variable. [resolved]")
+  choose("✅ @octocat Please rename this variable.")
   -- A real picker closes the float when it opens. So a second `thread` must not ask again.
   child.cmd("Didymus review thread")
   eq(#helpers.picker_calls(child, "select"), 1)
@@ -386,7 +389,7 @@ T["with the thread float open, the commands use its thread, also with two thread
 
   -- In the code window under the float, `resolve` also uses the thread of the float.
   child.cmd("Didymus review thread")
-  choose("@octocat Please rename this variable.")
+  choose("💬 @octocat Please rename this variable.")
   child.cmd("Didymus review resolve")
   eq(#helpers.picker_calls(child, "select"), 2)
   wait_for(function()

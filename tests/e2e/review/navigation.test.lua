@@ -160,6 +160,27 @@ T["next and prev skip the outdated threads and the other threads with no line"] 
   eq(position(), { "a.txt", 2 })
 end
 
+T["with the active filter of the panel, next and prev skip the resolved threads"] = function()
+  open_review({
+    make_thread("a2", "a.txt", { range = { first = 2, last = 2 } }),
+    make_thread("a6", "a.txt", { range = { first = 6, last = 6 }, resolved = true }),
+    make_thread("c3", "c.txt", { range = { first = 3, last = 3 } }),
+  })
+  open_file("a.txt", 1)
+  child.lua("require('didymus.ui.picker.test').press('a')")
+  child.cmd("Didymus review next")
+  eq(position(), { "a.txt", 2 })
+  child.cmd("Didymus review next")
+  eq(position(), { "c.txt", 3 })
+  child.cmd("Didymus review prev")
+  eq(position(), { "a.txt", 2 })
+
+  -- All threads again.
+  child.lua("require('didymus.ui.picker.test').press('a')")
+  child.cmd("Didymus review next")
+  eq(position(), { "a.txt", 6 })
+end
+
 T["at the last thread, next shows a message and does not move"] = function()
   open_review()
   open_file("c.txt", 5)

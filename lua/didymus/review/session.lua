@@ -24,6 +24,7 @@ local threads = require("didymus.review.threads")
 ---@field provider didymus.review.Provider
 ---@field failed_draft didymus.review.CommentDraft? The last comment that the provider did not add. The next comment at its lines starts with its text.
 ---@field failed_reply didymus.review.ReplyDraft? The last reply that the provider did not add. The next reply to its thread starts with its text.
+---@field thread_filter "all"|"active" The threads that the panel shows. Active threads are not resolved.
 ---@field cwd string
 ---@field merge_base string?
 ---@field old_branch string?
@@ -54,6 +55,7 @@ function Session.new(opts)
     old_head = opts.old_head,
     on_close = opts.on_close,
     thread_paths = {},
+    thread_filter = "all",
   }, Session)
   -- An unlisted scratch buffer, so that the close leaves no "[No Name]" buffer.
   local buf = vim.api.nvim_create_buf(false, true)
@@ -148,6 +150,13 @@ function Session:toggle_files()
   end
 end
 
+--- The full path of a file of the change. It stays correct if the current directory changes.
+---@param path string Relative to `cwd`, as the provider gives it.
+---@return string
+function Session:get_full_path(path)
+  return vim.fs.joinpath(self.cwd, path)
+end
+
 function Session:scope_threads()
   if self:is_open() then
     threads.scope(vim.api.nvim_tabpage_list_wins(self.tabpage))
@@ -207,7 +216,7 @@ function Session:set_threads(list)
   self.threads = sort_threads(list, self.change.files)
   self.thread_paths = {}
   for _, thread in ipairs(self.threads) do
-    local real_path = vim.uv.fs_realpath(vim.fs.joinpath(self.cwd, thread.path))
+    local real_path = vim.uv.fs_realpath(self:get_full_path(thread.path))
     if real_path then
       self.thread_paths[real_path] = thread.path
     end
@@ -227,6 +236,14 @@ end
 ---@param thread didymus.review.Thread
 function Session:add_thread(thread)
   self:set_threads(vim.list_extend(vim.list_slice(self.threads), { thread }))
+end
+
+--- Show all threads in the panel, or only the active threads.
+function Session:toggle_thread_filter()
+  self.thread_filter = self.thread_filter == "all" and "active" or "all"
+  if self:is_panel_open() then
+    self.panel:update()
+  end
 end
 
 ---@param id string
@@ -275,6 +292,7 @@ function Session:pick_thread_at_cursor(cb)
   else
     local ok, err = pcall(self.adapter.select, {
       title = ("Threads at line %d"):format(line),
+      kind = "choice",
       items = vim.tbl_map(function(thread)
         local segments = threads.get_summary(thread)
         return { text = picker.join_segments(segments), segments = segments, value = thread }
@@ -325,7 +343,7 @@ function Session:open_file(path, line)
   end
   local previous_win = vim.api.nvim_get_current_win()
   self:focus()
-  local full_path = vim.fs.joinpath(self.cwd, path)
+  local full_path = self:get_full_path(path)
   ---@type vim.api.keyset.cmd?
   local command = { cmd = "edit", args = { full_path }, magic = { file = false } }
   if
@@ -376,7 +394,7 @@ function Session:find_file_index(buf)
     return
   end
   for index, file in ipairs(self.change.files) do
-    if vim.uv.fs_realpath(vim.fs.joinpath(self.cwd, file.path)) == real_path then
+    if vim.uv.fs_realpath(self:get_full_path(file.path)) == real_path then
       return index
     end
   end
@@ -416,12 +434,14 @@ end
 function Session:get_stops(kind)
   local stops = {}
   if kind == "thread" then
-    -- The panel shows only the threads of the files of the change.
+    -- The panel shows only the threads of the files of the change, and with the active filter, only
+    -- the threads that are not resolved.
     local file_indexes = get_file_indexes(self.change.files)
     for _, thread in ipairs(self.threads) do
       local line = threads.get_line(thread)
       local file_index = file_indexes[thread.path]
-      if line and file_index then
+      local shown = self.thread_filter == "all" or not thread.resolved
+      if line and file_index and shown then
         table.insert(stops, { path = thread.path, file_index = file_index, line = line })
       end
     end
