@@ -137,7 +137,7 @@ Then drive it in the child with `require("didymus.ui.picker.test")`:
 
 | Function | Behavior |
 | --- | --- |
-| `calls` | One record for each `select()` and `panel()`: `kind`, `opts`, `items`, `cursor`, `open` and `focus_count`. |
+| `calls` | One record for each `select()` and `panel()`: `kind`, `opts`, `config`, `items`, `cursor`, `open` and `focus_count`. The `kind` of a record is `"select"` or `"panel"`. `opts.kind` is the kind of list, such as `"files"`. |
 | `choose(target)` | Choose an item in the last open picker. A select closes first. A panel stays open. |
 | `cancel()` | Close the last open picker with no choice. |
 | `press(key, target)` | Call the action of `key` in the last open panel, with the item under the cursor. |
