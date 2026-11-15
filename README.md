@@ -122,7 +122,7 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review thread` | Open the thread at the cursor in a float, with all its comments. |
 | `:Didymus review next [thread\|file\|hunk]`, `:Didymus review prev [thread\|file\|hunk]` | Go to the next or the previous thread, changed file or hunk, also in a different file. The default is `thread`. |
 | `:[range]Didymus review comment` | Add a comment on the current line, the selection or the range. Post it at once, or add it to your pending review. |
-| `:Didymus review reply` | Reply to the thread at the cursor. The reply goes into your pending review. |
+| `:Didymus review reply` | Reply to the thread at the cursor. Post the reply at once, or add it to your pending review. |
 | `:Didymus review resolve` | Resolve the thread at the cursor. On a resolved thread, unresolve it. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
@@ -170,7 +170,7 @@ If GitHub does not add the comment, the error shows. The next `comment` on the s
 
 If the thread float is open, `reply` and `resolve` use the thread of the float, also from the window under the float. Else, they use the thread at the cursor line. If more than one thread is at the line, the picker asks which one. In the thread float, `r` replies and `x` resolves or unresolves. The footer of the float shows these keys if it is wide enough. For a thread that shows only in the panel, press `<CR>` two times on its row, then use the keys.
 
-`reply` opens a float at the cursor line. Type the reply, then press `<C-y>` to add it, or `q` in normal mode to cancel. The reply goes into your pending review, as a comment does. It stays pending until you submit the review on github.com. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
+`reply` opens a float at the cursor line. It has the keys of `comment`: `<C-s>` (reply now) posts the reply at once, and `<C-y>` (add to review) adds it to your pending review. `q` in normal mode cancels. GitHub posts a reply at once only if you have no pending review. A reply in your pending review has `*pending*` in the thread float, until you submit the review on github.com. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
 
 After a resolve, the thread is dim in the panel and at its line. If GitHub does not let you do the action, a message shows. For example, GitHub does not let you resolve a thread of your pending review.
 
@@ -214,7 +214,7 @@ require("didymus").setup({
     input = { -- the float of comment and reply
       width = 60, -- below 1 is a fraction of the window width
       max_height = 10, -- the float grows to this height, then it scrolls
-      -- post: comment now. add: add to the pending review. cancel is in normal mode.
+      -- post: comment or reply now. add: add to the pending review. cancel is in normal mode.
       keys = { post = "<C-s>", add = "<C-y>", cancel = "q" },
     },
     thread = { -- the thread float

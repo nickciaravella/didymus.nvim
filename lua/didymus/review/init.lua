@@ -574,20 +574,21 @@ function M.comment(opts)
   end)
 end
 
---- Add the reply with the provider. Then show it in the thread. If the provider fails, keep the
---- text for the next reply to the thread.
+--- Add the reply with the provider: post it at once, or add it to the pending review. Then show it
+--- in the thread. If the provider fails, keep the text for the next reply to the thread.
 ---@param session didymus.review.Session
 ---@param thread didymus.review.Thread
----@param body string
-local function add_reply(session, thread, body)
+---@param draft didymus.review.ReplyDraft
+local function add_reply(session, thread, draft)
   local location = threads.get_location(thread)
-  track(("add a reply at %s"):format(location), function(done)
-    session.provider:reply(session.change, thread.id, body, done)
+  local verb = draft.pending and "add" or "post"
+  track(("%s a reply at %s"):format(verb, location), function(done)
+    session.provider:reply(session.change, draft, done)
   end, function(err, comment)
     if err then
-      local message = ("cannot add the reply at %s: %s"):format(location, err)
+      local message = ("cannot %s the reply at %s: %s"):format(verb, location, err)
       if session:is_open() then
-        session.failed_reply = { thread_id = thread.id, body = body }
+        session.failed_reply = draft
         -- One line, because a message with more lines makes the user press Enter.
         message = ("%s. The next reply to this thread starts with its text."):format(
           (message:gsub("%.$", ""))
@@ -599,7 +600,8 @@ local function add_reply(session, thread, body)
     if session:is_open() then
       session:add_reply(thread.id, comment)
     end
-    vim.notify(("didymus: added a pending reply at %s"):format(location))
+    local done = draft.pending and "added a pending reply" or "posted a reply"
+    vim.notify(("didymus: %s at %s"):format(done, location))
   end)
 end
 
@@ -620,21 +622,29 @@ local function open_reply_input(session, thread)
     width = options.width,
     max_height = options.max_height,
     keys = { cancel = options.keys.cancel },
+    -- A reply is a comment, so it has the actions and the keys of a comment.
     actions = {
       {
-        -- A reply is a comment, so it uses the key of a comment.
-        key = options.keys.add,
-        name = "reply",
+        key = options.keys.post,
+        name = "reply now",
         on_submit = function(body)
-          add_reply(session, thread, body)
+          add_reply(session, thread, { thread_id = thread.id, body = body, pending = false })
+        end,
+      },
+      {
+        key = options.keys.add,
+        name = "add to review",
+        on_submit = function(body)
+          add_reply(session, thread, { thread_id = thread.id, body = body, pending = true })
         end,
       },
     },
   })
 end
 
---- Reply to the thread at the cursor, in the pending review. In the thread float, reply to its
---- thread. The input float opens at the cursor line of the window under the thread float.
+--- Reply to the thread at the cursor, or to the thread of the open thread float. Post the reply at
+--- once, or add it to the pending review. The input float opens at the cursor line of the window
+--- under the thread float.
 function M.reply()
   local session = get_open_review()
   if not session then

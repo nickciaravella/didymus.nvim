@@ -620,13 +620,14 @@ T["add_comment()"]["posts at once: starts a review, adds the thread and submits 
     start_review = fixture_reply("comment_post_start_review_graphql"),
     add_thread = fixture_reply("comment_post_thread_graphql"),
     submit_review = fixture_reply("comment_post_submit_graphql"),
+    thread = fixture_reply("comment_post_get_thread_graphql"),
   })
   local change = make_comment_change()
   change.pending_review_id = "PRR_old"
   local reply = call("add_comment", change, make_post_draft(23, 25))
 
   local review_id = "PRR_kwDOVmiVUM8AAAABYCz3oA"
-  eq(#commands, 4)
+  eq(#commands, 5)
   eq(vim.list_slice(commands[3], 6, 8), { "-f", "reviewId=" .. review_id, "-f" })
   eq(commands[4], {
     "gh",
@@ -639,7 +640,15 @@ T["add_comment()"]["posts at once: starts a review, adds the thread and submits 
     "-f",
     "event=COMMENT",
   })
-  eq(reply.result.id, "PRRT_kwDOVmiVUM63lWVU")
+  -- After the submit, the provider gets the thread again, because the viewer can then resolve it.
+  eq(vim.list_slice(commands[5], 5), {
+    "query=" .. graphql.thread,
+    "-f",
+    "id=PRRT_kwDOVmiVUM63lWVU",
+  })
+  -- The fixture of the get comes from a second post of the same comment.
+  eq(reply.result.id, "PRRT_kwDOVmiVUM63la0k")
+  eq({ reply.result.can_resolve, reply.result.can_unresolve }, { true, false })
   eq(reply.result.range, { first = 23, last = 25 })
   eq(reply.result.comments, {
     {
@@ -650,6 +659,20 @@ T["add_comment()"]["posts at once: starts a review, adds the thread and submits 
   })
   -- The submit leaves no pending review.
   eq(change.pending_review_id, nil)
+end
+
+T["add_comment()"]["gives the posted thread also if the get of the thread fails"] = function()
+  mock_comment({
+    pending_reviews = fixture_reply("comment_no_review_graphql"),
+    start_review = fixture_reply("comment_post_start_review_graphql"),
+    add_thread = fixture_reply("comment_post_thread_graphql"),
+    submit_review = fixture_reply("comment_post_submit_graphql"),
+    thread = { code = 1, stderr = "gh: HTTP 502\n" },
+  })
+  local reply = call("add_comment", make_comment_change(), make_post_draft(23, 25))
+  -- An error makes the user post the comment again.
+  eq(reply.err, nil)
+  eq({ reply.result.id, reply.result.comments[1].pending }, { "PRRT_kwDOVmiVUM63lWVU", false })
 end
 
 T["add_comment()"]["does not post at once if the viewer has a pending review"] = function()
@@ -711,6 +734,13 @@ T["reply()"] = MiniTest.new_set()
 -- The thread of nickciaravella/didymus.nvim#64 in the fixtures of `reply()` and `set_resolved()`.
 local reply_thread_id = "PRRT_kwDOVmiVUM61Mj43"
 
+---@param body string
+---@param pending boolean
+---@return didymus.review.ReplyDraft
+local function make_reply_draft(body, pending)
+  return { thread_id = reply_thread_id, body = body, pending = pending }
+end
+
 T["reply()"]["starts a pending review if there is none, and adds the reply to it"] = function()
   mock_comment({
     pending_reviews = fixture_reply("comment_no_review_graphql"),
@@ -719,7 +749,7 @@ T["reply()"]["starts a pending review if there is none, and adds the reply to it
   })
   local change = make_comment_change()
   local body = "Recorded for the unit tests of didymus: a reply."
-  local reply = call("reply", change, reply_thread_id, body)
+  local reply = call("reply", change, make_reply_draft(body, true))
 
   local review_id = "PRR_kwDOVmiVUM8AAAABWyIVtw"
   eq(#commands, 3)
@@ -752,7 +782,7 @@ T["reply()"]["adds the reply to the pending review of the viewer, on the host of
     repo = "didymus.nvim",
     node_id = comment_node_id,
   })
-  eq(call("reply", change, reply_thread_id, "A reply.").err, nil)
+  eq(call("reply", change, make_reply_draft("A reply.", true)).err, nil)
   eq(#commands, 2)
   eq(vim.list_slice(commands[2], 6, 7), { "-f", "reviewId=PRR_kwDOVmiVUM8AAAABWyIVtw" })
   eq(vim.list_slice(commands[2], 12), { "--hostname", "github.com" })
@@ -763,7 +793,8 @@ T["reply()"]["gives the error of gh, or an error if GitHub adds no reply"] = fun
     pending_reviews = fixture_reply("comment_pending_review_graphql"),
     reply = { code = 1, stderr = "gh: Could not resolve to a node with the global id of 'x'.\n" },
   })
-  eq(call("reply", make_comment_change(), "x", "A reply."), {
+  local draft = vim.tbl_extend("force", make_reply_draft("A reply.", true), { thread_id = "x" })
+  eq(call("reply", make_comment_change(), draft), {
     err = "gh api graphql: Could not resolve to a node with the global id of 'x'.",
   })
 
@@ -771,9 +802,54 @@ T["reply()"]["gives the error of gh, or an error if GitHub adds no reply"] = fun
     pending_reviews = fixture_reply("comment_pending_review_graphql"),
     reply = { stdout = '{"data":{"addPullRequestReviewThreadReply":{"comment":null}}}' },
   })
-  eq(call("reply", make_comment_change(), reply_thread_id, "A reply."), {
+  eq(call("reply", make_comment_change(), make_reply_draft("A reply.", true)), {
     err = "gh api graphql: GitHub did not add the reply",
   })
+end
+
+T["reply()"]["posts at once with no review id, if the viewer has no pending review"] = function()
+  mock_comment({
+    pending_reviews = fixture_reply("comment_no_review_graphql"),
+    reply = fixture_reply("reply_post_graphql"),
+  })
+  local change = make_comment_change()
+  local body = "Recorded for the unit tests of didymus: a reply now."
+  local reply = call("reply", change, make_reply_draft(body, false))
+
+  eq(commands, {
+    {
+      "gh",
+      "api",
+      "graphql",
+      "-f",
+      "query=" .. graphql.pending_reviews,
+      "-f",
+      "id=" .. comment_node_id,
+    },
+    {
+      "gh",
+      "api",
+      "graphql",
+      "-f",
+      "query=" .. graphql.reply,
+      "-f",
+      "threadId=" .. reply_thread_id,
+      "-f",
+      "body=" .. body,
+    },
+  })
+  eq(reply, { result = { author = "nickciaravella", body = body, pending = false } })
+  eq(change.pending_review_id, nil)
+end
+
+T["reply()"]["does not post at once if the viewer has a pending review"] = function()
+  -- With no review id, GitHub puts the reply into the pending review, with no error.
+  mock_comment({ pending_reviews = fixture_reply("comment_pending_review_graphql") })
+  eq(call("reply", make_comment_change(), make_reply_draft("A reply.", false)), {
+    err = "you have a pending review, and GitHub posts a reply at once only with no pending "
+      .. "review. Add the reply to the review, or submit the review first",
+  })
+  eq(#commands, 1)
 end
 
 T["set_resolved()"] = MiniTest.new_set()

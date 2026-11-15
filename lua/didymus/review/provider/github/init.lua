@@ -428,6 +428,26 @@ local function add_thread(change, review_id, draft, cb)
   end)
 end
 
+--- Get one thread with all its comments.
+---@param target didymus.review.provider.github.Target
+---@param thread_id string
+---@param cb fun(err: string?, thread: didymus.review.Thread?)
+local function get_thread(target, thread_id, cb)
+  local label = "gh api graphql"
+  local args = get_graphql_args(target, graphql.thread, { "-f", "id=" .. thread_id })
+  run_json(label, args, function(err, result)
+    if err then
+      return cb(err)
+    end
+    if not result.data.node then
+      return cb(("%s: GitHub did not give the thread"):format(label))
+    end
+    complete_threads(target, { result.data.node }, function(threads_err, threads)
+      cb(threads_err, threads and threads[1])
+    end)
+  end)
+end
+
 --- Post a thread at once: start a review, add the thread, and submit the review as a comment. Only
 --- this order gives the id of the thread. GitHub posts a comment at once only with no pending
 --- review, so give an error if the viewer has one.
@@ -473,8 +493,16 @@ local function post_thread(change, draft, cb)
             return cb(("%s. The comment stays in your pending review"):format(submit_err))
           end
           change.pending_review_id = nil
-          thread.comments[1].pending = false
-          cb(nil, thread)
+          -- After the submit, the viewer can resolve the thread. So get its `viewerCan…` fields
+          -- again.
+          get_thread(target, thread.id, function(get_err, posted)
+            if get_err then
+              -- The comment is posted, so do not give an error. Else the user posts it again.
+              thread.comments[1].pending = false
+              return cb(nil, thread)
+            end
+            cb(nil, posted)
+          end)
         end)
       end)
     end)
@@ -499,29 +527,22 @@ function M:add_comment(change, draft, cb)
   end)
 end
 
---- Add a reply to the pending review of the viewer. Start the review if there is none.
+--- Add a reply to the pending review of the viewer, and start the review if there is none. Or
+--- post the reply at once. GitHub posts it at once only with no pending review, so give an error
+--- if the viewer has one.
 ---@param change didymus.review.provider.github.Change
----@param thread_id string
----@param body string
+---@param draft didymus.review.ReplyDraft
 ---@param cb fun(err: string?, comment: didymus.review.Comment?)
-function M:reply(change, thread_id, body, cb)
+function M:reply(change, draft, cb)
   local label = "gh api graphql"
-  get_pending_review(change, function(err, review_id)
-    if err then
-      return cb(err)
-    end
-    change.pending_review_id = review_id
-    local args = get_graphql_args(change.github, graphql.reply, {
-      "-f",
-      "reviewId=" .. review_id,
-      "-f",
-      "threadId=" .. thread_id,
-      "-f",
-      "body=" .. body,
-    })
-    run_json(label, args, function(reply_err, result)
-      if reply_err then
-        return cb(reply_err)
+  ---@param review_id string? Nil posts the reply at once.
+  local function send(review_id)
+    local fields = review_id and { "-f", "reviewId=" .. review_id } or {}
+    vim.list_extend(fields, { "-f", "threadId=" .. draft.thread_id, "-f", "body=" .. draft.body })
+    local args = get_graphql_args(change.github, graphql.reply, fields)
+    run_json(label, args, function(err, result)
+      if err then
+        return cb(err)
       end
       local comment = result.data.addPullRequestReviewThreadReply.comment
       if not comment then
@@ -529,6 +550,29 @@ function M:reply(change, thread_id, body, cb)
       end
       cb(nil, to_comment(comment))
     end)
+  end
+
+  if draft.pending then
+    return get_pending_review(change, function(err, review_id)
+      if err then
+        return cb(err)
+      end
+      change.pending_review_id = review_id
+      send(review_id)
+    end)
+  end
+  find_pending_review(change, function(err, pending_id)
+    if err then
+      return cb(err)
+    end
+    if pending_id then
+      -- With no `reviewId`, GitHub puts the reply into the pending review, with no error.
+      return cb(
+        "you have a pending review, and GitHub posts a reply at once only with no pending review. "
+          .. "Add the reply to the review, or submit the review first"
+      )
+    end
+    send(nil)
   end)
 end
 

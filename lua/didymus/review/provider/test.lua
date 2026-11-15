@@ -119,20 +119,19 @@ local function find_thread(change, thread_id, cb)
   end)
 end
 
---- Add a pending comment of `viewer` to the thread.
+--- Add a comment of `viewer` to the thread. The comment is pending, or posted at once.
 ---@param change didymus.review.Change
----@param thread_id string
----@param body string
+---@param draft didymus.review.ReplyDraft
 ---@param cb fun(err: string?, comment: didymus.review.Comment?)
-function M:reply(change, thread_id, body, cb)
+function M:reply(change, draft, cb)
   if fail("reply", cb) then
     return
   end
-  local thread = find_thread(change, thread_id, cb)
+  local thread = find_thread(change, draft.thread_id, cb)
   if not thread then
     return
   end
-  local comment = { author = self.viewer, body = body, pending = true }
+  local comment = { author = self.viewer, body = draft.body, pending = draft.pending }
   table.insert(thread.comments, comment)
   local copy = vim.deepcopy(comment)
   vim.schedule(function()

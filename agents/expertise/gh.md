@@ -75,6 +75,20 @@ On a submitted thread, `viewerCanResolve` is true only if the thread is not reso
 - Proof: on nickciaravella/didymus.nvim#64, submit a review with `event: COMMENT` and one thread. `resolveReviewThread` gives `viewerCanResolve: false, viewerCanUnresolve: true`, and `unresolveReviewThread` gives the opposite. In a pending review, `addPullRequestReviewThread`, then `resolveReviewThread`, give `isResolved: true` with both fields false.
 - Checked: gh 2.103.2
 
+### `addPullRequestReviewThreadReply` with no `pullRequestReviewId` posts at once, but only with no pending review
+
+With no pending review, the reply is posted at once: its `state` is `SUBMITTED`, in a new review with the state `COMMENTED`. With a pending review, the same call puts the reply into the pending review as `PENDING`, with no error. REST `POST pulls/{n}/comments/{id}/replies` then fails with 422 and `user_id can only have one pending review per pull request`. So find the pending review first, as for a single comment.
+
+- Proof: on nickciaravella/didymus.nvim#64, call `addPullRequestReviewThreadReply` with only `pullRequestReviewThreadId` and `body`: the comment is `SUBMITTED`. Start a review with `addPullRequestReview`, and call it again: the comment is `PENDING` in that review. Then the REST call gives 422.
+- Checked: gh 2.103.2
+
+### After a post at once, the thread of the add still has the `viewerCan…` fields of a pending thread
+
+The thread in the payload of `addPullRequestReviewThread` has `viewerCanResolve: false`, because the review is still pending. After `submitPullRequestReview`, a query of the thread gives `viewerCanResolve: true`. So get the thread again after the submit.
+
+- Proof: on nickciaravella/didymus.nvim#64, start a review, add a thread, submit with `event: COMMENT`, then query `node(id:)` of the thread. See `tests/fixtures/github/comment_post_get_thread_graphql.json`.
+- Checked: gh 2.103.2
+
 ### `addPullRequestReviewThreadReply` gives only the comment, with no link to its thread
 
 `PullRequestReviewComment` has no field for its thread. To get the thread after a reply, query `node(id:)` of the thread again, or add the comment to the thread yourself.

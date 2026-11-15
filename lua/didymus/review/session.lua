@@ -23,7 +23,7 @@ local threads = require("didymus.review.threads")
 ---@field threads didymus.review.Thread[] In the order of the panel.
 ---@field provider didymus.review.Provider
 ---@field failed_draft didymus.review.CommentDraft? The last comment that the provider did not add. The next comment at its lines starts with its text.
----@field failed_reply { thread_id: string, body: string }? The last reply that the provider did not add. The next reply to its thread starts with its text.
+---@field failed_reply didymus.review.ReplyDraft? The last reply that the provider did not add. The next reply to its thread starts with its text.
 ---@field cwd string
 ---@field merge_base string?
 ---@field old_branch string?

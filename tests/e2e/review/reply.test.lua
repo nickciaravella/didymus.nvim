@@ -148,7 +148,7 @@ T["a reply adds a pending comment to the thread"] = function()
   child.cmd("Didymus review reply")
   eq(wait_for_input(), {
     title = " Reply to file.txt:19 ",
-    footer = " <C-y> reply  q cancel ",
+    footer = " <C-s> reply now  <C-y> add to review  q cancel ",
     lines = { "" },
   })
 
@@ -167,6 +167,47 @@ T["a reply adds a pending comment to the thread"] = function()
   eq(sign(), { "2", "DidymusThread" })
   eq(panel_item("old").text, "@octocat A comment.")
   eq(has_message("didymus: added a pending reply at file.txt:19"), true)
+end
+
+T["reply now posts the reply at once, with no pending tag"] = function()
+  open_review()
+  child.cmd("Didymus review reply")
+  wait_for_input()
+  child.type_keys("Posted.", "<C-s>")
+  wait_for(function()
+    return #session_thread("old").comments == 2
+  end, "the reply in the session")
+  local comment = { author = "reviewer", body = "Posted.", pending = false }
+  eq(provider_threads()[1].comments[2], comment)
+  eq(session_thread("old").comments[2], comment)
+  eq(has_message("didymus: posted a reply at file.txt:19"), true)
+
+  child.cmd("Didymus review thread")
+  eq(float_content().lines[#float_content().lines - 2], "**@reviewer**")
+end
+
+T["if the code host refuses a reply now, the message shows, and the text stays"] = function()
+  open_review()
+  -- The GitHub provider gives this error if the viewer has a pending review.
+  child.lua("require('didymus.review.provider.test').errors.reply = 'you have a pending review'")
+  child.cmd("Didymus review reply")
+  wait_for_input()
+  child.type_keys("Not yet.")
+  -- `type_keys()` gives the error message as an error of the test.
+  child.api.nvim_input("<C-s>")
+  wait_for_message(
+    "didymus: cannot post the reply at file.txt:19: you have a pending review. "
+      .. "The next reply to this thread starts with its text."
+  )
+  eq(#session_thread("old").comments, 1)
+
+  child.cmd("Didymus review reply")
+  eq(wait_for_input().lines, { "Not yet." })
+  child.type_keys("<C-y>")
+  wait_for(function()
+    return #session_thread("old").comments == 2
+  end, "the reply in the session")
+  eq(session_thread("old").comments[2].pending, true)
 end
 
 T["resolve resolves the thread, and the panel shows it dim. resolve again unresolves it"] = function()

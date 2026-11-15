@@ -87,6 +87,17 @@ query($id: ID!, $endCursor: String) {
 }
 ]]
 
+--- One review thread, with its first comments.
+M.thread = [[
+query($id: ID!) {
+  node(id: $id) {
+    ... on PullRequestReviewThread {
+]] .. thread_fields .. [[
+    }
+  }
+}
+]]
+
 --- The pending reviews of a PR. Only the viewer can see a pending review, but `viewerDidAuthor`
 --- makes sure.
 M.pending_reviews = [[
@@ -156,9 +167,11 @@ mutation(
 }
 ]]
 
---- Add a reply to a thread, in a pending review.
+--- Add a reply to a thread. With `reviewId`, the reply goes into that pending review. With no
+--- `reviewId`, GitHub posts the reply at once, but only if the viewer has no pending review. Else
+--- the reply goes into the pending review.
 M.reply = [[
-mutation($reviewId: ID!, $threadId: ID!, $body: String!) {
+mutation($reviewId: ID, $threadId: ID!, $body: String!) {
   addPullRequestReviewThreadReply(input: {
     pullRequestReviewId: $reviewId
     pullRequestReviewThreadId: $threadId

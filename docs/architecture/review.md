@@ -212,9 +212,9 @@ The files panel opens with the review tabpage, in the panel role of the picker. 
 4. The thread float has the keys of `review.thread.keys`: `r` replies, and `x` resolves or unresolves. They call the same functions as the commands. `false` turns a key off. The footer shows the keys only if it fits, because Neovim cuts a long footer from the start.
 5. Before an action, didymus checks `can_reply`, `can_resolve` or `can_unresolve` of the thread. If the viewer cannot do the action, a warning shows, and the provider gets no call. On a resolved thread, `resolve` unresolves it. The description of `<Plug>(didymus-review-resolve)` is "resolve or unresolve".
 6. Each action closes the thread float first. If the float is the current window, the focus goes back to the window where the float opened.
-7. `reply` opens the input float at the cursor line of that window: the code window or the panel. The title is `Reply to path:19`, or `Reply to path` for a thread with no line. It uses `review.input`. The submit key is `keys.add`, because a reply is a comment.
+7. `reply` opens the input float at the cursor line of that window: the code window or the panel. The title is `Reply to path:19`, or `Reply to path` for a thread with no line. It uses `review.input`. A reply is a comment, so the float has the two actions of the comment float: "reply now" (`keys.post`, `<C-s>`) posts the reply at once, and "add to review" (`keys.add`, `<C-y>`) adds it to the pending review.
 8. A reply has no line numbers, so didymus does not check the file on disk. Replies also work on outdated threads and on threads on the base side.
-9. On submit, `provider:reply()` runs with a progress message. The session adds the comment to the thread, and updates the panel and the marks. If the provider fails, the session keeps the text. The next reply to the same thread starts with it.
+9. On submit, `provider:reply()` runs with a progress message. The session adds the comment to the thread, and updates the panel and the marks. A reply that is posted at once is not pending, so the float shows no `*pending*`. If the provider fails, the session keeps the draft. The next reply to the same thread starts with its text, as for a comment that GitHub refuses.
 10. `provider:set_resolved()` gives the thread with its new state, because the `can_…` fields change. The session replaces the thread, and updates the panel and the marks. A resolved thread is dim.
 11. If the review closed before the provider replies, only the message shows.
 
@@ -308,7 +308,7 @@ All methods are async. Each one takes a final `cb(err, result)` and does not blo
 ---@field checkout fun(self, change: didymus.review.Change, cb: fun(err: string?)) Make the change head the current checkout.
 ---@field get_threads fun(self, change: didymus.review.Change, cb: fun(err: string?, threads: didymus.review.Thread[]?))
 ---@field add_comment fun(self, change: didymus.review.Change, draft: didymus.review.CommentDraft, cb: fun(err: string?, thread: didymus.review.Thread?)) Add to the pending review, and start one if there is none. Or post at once.
----@field reply fun(self, change: didymus.review.Change, thread_id: string, body: string, cb: fun(err: string?, comment: didymus.review.Comment?)) Start a pending review if there is none.
+---@field reply fun(self, change: didymus.review.Change, draft: didymus.review.ReplyDraft, cb: fun(err: string?, comment: didymus.review.Comment?)) Add to the pending review, and start one if there is none. Or post at once.
 ---@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?, thread: didymus.review.Thread?)) Give the thread with its new state.
 ---@field submit_review fun(self, change: didymus.review.Change, verdict: "approve"|"comment"|"request_changes", body: string?, cb: fun(err: string?))
 ---@field discard_review fun(self, change: didymus.review.Change, cb: fun(err: string?))
@@ -318,7 +318,7 @@ All methods are async. Each one takes a final `cb(err, result)` and does not blo
 - `review.provider` is `"github"` (the default), `"test"` or a provider table.
 - The GitHub provider keeps all GraphQL documents as string constants in one module.
 - The `test` provider keeps its changes and threads in memory. Tests give it the data. Its `checkout` runs `git checkout` in a temporary repo of the test. It calls each `cb` in `vim.schedule()`, as a real provider does.
-- The `add_comment` of the `test` provider adds a thread with one comment of `viewer`. The comment is pending if `draft.pending` is true. Its `reply` adds a pending comment of `viewer`. Its `set_resolved` changes `resolved`, and then lets the viewer do only the other action, as GitHub does. `errors.<method>` makes the next call of that method fail.
+- The `add_comment` of the `test` provider adds a thread with one comment of `viewer`. The comment is pending if `draft.pending` is true. Its `reply` adds a comment of `viewer`, pending if `draft.pending` is true. Its `set_resolved` changes `resolved`, and then lets the viewer do only the other action, as GitHub does. `errors.<method>` makes the next call of that method fail.
 
 ### Review types
 
@@ -375,6 +375,11 @@ The types come from the [reference file](../reference/design-prompt.md#data-mode
 ---@field range didymus.review.Range
 ---@field body string
 ---@field pending boolean            True adds the comment to the pending review. False posts it at once.
+
+---@class didymus.review.ReplyDraft A reply to a thread.
+---@field thread_id string
+---@field body string
+---@field pending boolean            True adds the reply to the pending review. False posts it at once.
 ```
 
 1. A provider can add its own fields to a `Change`, such as the GraphQL node id of the PR. The review session gives the same table back to the provider.
@@ -413,9 +418,9 @@ The `github` provider is in `lua/didymus/review/provider/github/`. It runs the [
 12. `add_comment` gets the pending review of the viewer before each comment. It does not use `change.pending_review_id`, because the user can start, submit or discard a review on github.com after the open. If there is no pending review, `addPullRequestReview` with `commitOID` of `head_sha` and no `event` starts one. Then `change.pending_review_id` is its id.
 13. `addPullRequestReviewThread` gets `side: RIGHT` and `line`. A range also gets `startLine` and `startSide: RIGHT`. The reply has the new thread with the fields of `get_threads`.
 14. For a line out of the diff, GitHub gives `thread: null` and no error. Then `add_comment` gives an error.
-15. GitHub posts a comment at once only if the viewer has no pending review. So for a draft that is not pending, `add_comment` first gets the pending review. If there is one, it gives an error and writes nothing. Else it starts a review, adds the thread, and submits the review with `event: COMMENT`. Only this order gives the id of the thread, which a reply and a resolve need. REST and `addPullRequestReview` with `threads` do not give it.
+15. GitHub posts a comment at once only if the viewer has no pending review. So for a draft that is not pending, `add_comment` first gets the pending review. If there is one, it gives an error and writes nothing. Else it starts a review, adds the thread, and submits the review with `event: COMMENT`. Only this order gives the id of the thread, which a reply and a resolve need. REST and `addPullRequestReview` with `threads` do not give it. After the submit, `add_comment` gets the thread again, because the viewer can then resolve it. If this get fails, it gives the thread of the add, because the comment is posted.
 16. If GitHub does not add the thread to post, `add_comment` deletes the new review, because an empty pending review blocks the next post. If the submit fails, the comment stays in the pending review, and the error says so.
-17. `reply` finds or starts the pending review, as `add_comment` does. Then `addPullRequestReviewThreadReply` gets `pullRequestReviewId`. The reply of GitHub has only the new comment, because a comment has no link to its thread.
+17. `reply` of a pending draft finds or starts the pending review, as `add_comment` does. Then `addPullRequestReviewThreadReply` gets `pullRequestReviewId`. A reply that is not pending gets no `pullRequestReviewId`, and GitHub posts it at once. But with a pending review, GitHub puts it into that review with no error. So `reply` first gets the pending review, and gives an error if there is one, as `add_comment` does. The reply of GitHub has only the new comment, because a comment has no link to its thread.
 18. `set_resolved` runs `resolveReviewThread` or `unresolveReviewThread`. The reply has the thread with the fields of `get_threads`. A thread with more than 100 comments gets its other comments from a second query, as in `get_threads`.
 19. `viewerCanReply`, `viewerCanResolve` and `viewerCanUnresolve` give the `can_…` fields. On a thread of a pending review, `viewerCanResolve` and `viewerCanUnresolve` are false, but the mutations work. didymus obeys the fields, as github.com does.
 
