@@ -101,6 +101,25 @@ These rules apply to `open` and `close`:
 
 Comments need the line numbers of the PR head. So didymus refuses a new comment on a file with local changes: a modified buffer, or a file that is different from `HEAD`.
 
+### Files panel
+
+The files panel opens with the review tabpage, in the panel role of the picker, with the `files` kind. Its title is `Review #12`. `lua/didymus/review/panel.lua` makes the items.
+
+| Row | Text | Highlights |
+| --- | --- | --- |
+| Header 1 | `#12 <title>` | `Number`, `Title` |
+| Header 2 | `@author main ← feature` | `Comment` |
+| File | `M path +12 -3 2 threads`, in the order of the provider | `Added`, `Changed`, `Removed`, `Comment` |
+
+1. The status letters are `A`, `M`, `D` and `R`. The full path comes before the counts. A long path can hide the counts in a narrow panel.
+2. The thread count shows only if it is above 0. A count of 0 on each row makes the rows long.
+3. `<CR>` on a header row does nothing. On a deleted file, it shows a message and opens nothing, because the file is not in the checkout.
+4. Each file row has a `location` for the preview. Its path is the full path: the path from the provider, joined to the directory of the review. `<CR>` uses the same path, so both stay correct if the current directory changes. A deleted file and the header rows have no `location`.
+5. `<CR>` on a file opens the real file in the code window, and focuses the code window. The code window is the first window of the tabpage. If the user closed it, the file opens in a new window on the right, and that window becomes the code window.
+6. In the review tabpage, `:Didymus review files` shows or hides the panel. In a different tabpage, it goes to the review tabpage and shows the panel. A hidden panel is closed, so a new panel starts with the cursor on the first row.
+7. `close` and `:tabclose` also close the panel.
+8. If the panel cannot open, for example with no snacks.nvim, the review opens without it, and the error shows.
+
 ## Parts
 
 ```mermaid

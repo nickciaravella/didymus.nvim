@@ -33,7 +33,7 @@ for _, action in ipairs({ "append", "send" }) do
   end, { desc = "didymus: agent " .. action })
 end
 
-for _, action in ipairs({ "open", "close" }) do
+for _, action in ipairs({ "open", "close", "files" }) do
   vim.keymap.set("n", ("<Plug>(didymus-review-%s)"):format(action), function()
     require("didymus.review")[action]()
   end, { desc = "didymus: review " .. action })

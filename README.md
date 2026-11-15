@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent and the start of a review work now.
+> **Early development.** Only the agent, the start of a review and the files panel work now.
 
 ## Goals
 
@@ -117,11 +117,16 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | Command | Behavior |
 | --- | --- |
 | `:Didymus review open [n\|url]` | Open a pull request in the review tabpage. With no argument, choose a pull request in the picker. The preview shows its description. |
-| `:Didymus review close` | Close the review tabpage. |
+| `:Didymus review close` | Close the files panel and the review tabpage. |
+| `:Didymus review files` | Show the files panel, or hide it. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
 
 Only one review is open at a time. `open` of the same pull request goes to its tabpage. `open` of a different pull request asks to close the open review first.
+
+The files panel opens on the left of the review tabpage. It shows the title, the author and `base ← head` of the pull request. Then it shows a row for each changed file: the status (`A`, `M`, `D` or `R`), the path, and the `+` and `-` counts. `<CR>` on a file opens the real file in the code window, and moves the focus there. The panel stays open. A deleted file does not open.
+
+`files` in a different tabpage goes to the review tabpage and shows the panel.
 
 `close` does not check out the branch from before the review. Its message names that branch. `:tabclose` of the review tabpage also closes the review.
 
@@ -130,11 +135,12 @@ There are no default keymaps. For example:
 ```lua
 vim.keymap.set("n", "<leader>ro", "<Plug>(didymus-review-open)")
 vim.keymap.set("n", "<leader>rc", "<Plug>(didymus-review-close)")
+vim.keymap.set("n", "<leader>rf", "<Plug>(didymus-review-files)")
 ```
 
 | Mapping | Modes |
 | --- | --- |
-| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)` | Normal |
+| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)` | Normal |
 
 To check snacks.nvim and `gh`, run `:checkhealth didymus`.
 

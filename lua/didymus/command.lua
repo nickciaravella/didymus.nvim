@@ -4,7 +4,7 @@ local views = { float = {}, split = {} }
 
 local tree = {
   agent = { start = {}, toggle = views, focus = views, stop = {}, append = {}, send = {} },
-  review = { open = {}, close = {} },
+  review = { open = {}, close = {}, files = {} },
 }
 
 ---@param text string
@@ -61,6 +61,9 @@ local review_actions = {
   close = function()
     require("didymus.review").close()
   end,
+  files = function()
+    require("didymus.review").files()
+  end,
 }
 
 local groups = {
@@ -68,7 +71,7 @@ local groups = {
     actions = agent_actions,
     usage = "Use :Didymus agent start, toggle, focus, stop, append or send.",
   },
-  review = { actions = review_actions, usage = "Use :Didymus review open or close." },
+  review = { actions = review_actions, usage = "Use :Didymus review open, close or files." },
 }
 
 ---@param args string
