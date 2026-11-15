@@ -2,6 +2,8 @@
 --- float. The marks show only in the windows of the review tabpage. It does not call the provider.
 --- See docs/architecture/review.md#inline-threads.
 
+local config = require("didymus.config")
+
 local M = {}
 
 --- The one namespace of the review.
@@ -39,7 +41,8 @@ function M.get_line(thread)
   end
 end
 
---- The author, the first line of the first comment, and the tags of the state.
+--- The icon of the state, the author, the first line of the first comment, and the pending and
+--- outdated tags.
 ---@param thread didymus.review.Thread
 ---@param text_hl string? The highlight of the text. A resolved thread is dim.
 ---@return [string, string?][]
@@ -48,16 +51,19 @@ function M.get_summary(thread, text_hl)
   local author = comment and comment.author or "ghost"
   local first_line = comment and vim.trim(vim.trim(comment.body):match("^[^\n]*")) or ""
   local dim = thread.resolved and "DidymusThreadResolved" or nil
-  local segments = {
+  local icons = config.options.review.icons
+  local icon = thread.resolved and icons.resolved or icons.active
+  local segments = {}
+  if icon ~= "" then
+    table.insert(segments, { icon .. " ", dim })
+  end
+  vim.list_extend(segments, {
     { "@" .. author, dim or "DidymusThread" },
     { " " .. first_line, dim or text_hl },
-  }
+  })
   -- The first comment is pending until the user submits the review that started the thread.
   if comment and comment.pending then
     table.insert(segments, { " [pending]", dim or "DidymusThreadPending" })
-  end
-  if thread.resolved then
-    table.insert(segments, { " [resolved]", dim })
   end
   if thread.outdated then
     table.insert(segments, { " [outdated]", dim or "DiagnosticWarn" })

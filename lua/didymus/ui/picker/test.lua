@@ -4,8 +4,9 @@
 local picker = require("didymus.ui.picker")
 
 ---@class didymus.picker.test.Call
----@field kind "select"|"panel"
+---@field kind "select"|"panel" The role. `opts.kind` is the kind of list, such as "files".
 ---@field opts didymus.picker.SelectOpts|didymus.picker.PanelOpts
+---@field config didymus.picker.Config?
 ---@field items didymus.picker.Item[] The items that show now.
 ---@field cursor integer The index of the item under the cursor.
 ---@field open boolean
@@ -18,17 +19,27 @@ M.calls = {}
 
 ---@param kind "select"|"panel"
 ---@param opts didymus.picker.SelectOpts|didymus.picker.PanelOpts
+---@param config didymus.picker.Config?
 ---@param items didymus.picker.Item[]
 ---@return didymus.picker.test.Call
-local function record(kind, opts, items)
-  local call = { kind = kind, opts = opts, items = items, cursor = 1, open = true, focus_count = 0 }
+local function record(kind, opts, config, items)
+  local call = {
+    kind = kind,
+    opts = opts,
+    config = config,
+    items = items,
+    cursor = 1,
+    open = true,
+    focus_count = 0,
+  }
   table.insert(M.calls, call)
   return call
 end
 
 ---@param opts didymus.picker.SelectOpts
-function M.select(opts)
-  record("select", opts, opts.items)
+---@param config didymus.picker.Config?
+function M.select(opts, config)
+  record("select", opts, config, opts.items)
 end
 
 ---@class didymus.picker.test.Panel: didymus.picker.Panel
@@ -37,9 +48,10 @@ local Panel = {}
 Panel.__index = Panel
 
 ---@param opts didymus.picker.PanelOpts
+---@param config didymus.picker.Config?
 ---@return didymus.picker.Panel
-function M.panel(opts)
-  return setmetatable({ call = record("panel", opts, opts.items()) }, Panel)
+function M.panel(opts, config)
+  return setmetatable({ call = record("panel", opts, config, opts.items()) }, Panel)
 end
 
 function Panel:update()

@@ -131,7 +131,9 @@ The files panel opens on the left of the review tabpage. It shows the title, the
 
 `files` in a different tabpage goes to the review tabpage and shows the panel.
 
-Under each file, the panel shows its review threads: the author, the first line of the first comment, and the state. A resolved thread is dim. An outdated thread has the `[outdated]` tag. `<CR>` on a thread goes to its line in the code window. The file row shows the thread count.
+Under each file, the panel shows its review threads: an icon for the state (💬 active, ✅ resolved), the author and the first line of the first comment. A resolved thread is dim. An outdated thread has the `[outdated]` tag. `<CR>` on a thread goes to its line in the code window. The file row shows the thread count.
+
+`a` in the panel shows only the active threads, or all threads again. The default is all threads. The third row of the header shows the filter: `All threads` or `Active threads`. The thread count of a file counts only the threads that show.
 
 In the file, each thread has a sign with its comment count, and a summary under its line. A thread on a range shows at the last line of the range. The signs and the summaries show only in the windows of the review tabpage. In a window outside the review tabpage, the file can have an empty sign column.
 
@@ -141,7 +143,7 @@ Outdated threads, threads on deleted lines and threads on the file show only in 
 
 `next` and `prev` go in the order of the panel, from the cursor. If the current window does not show a file of the pull request, they start at the cursor of the code window.
 
-- `thread` skips the threads that show only in the panel. The threads at the same line are one stop.
+- `thread` skips the threads that show only in the panel. If the panel shows only the active threads, it also skips the resolved threads. The threads at the same line are one stop.
 - `file` goes to the first change of the file.
 - `hunk` goes to the first change of the hunk.
 - `file` and `hunk` skip the deleted files.
@@ -194,13 +196,39 @@ vim.keymap.set({ "n", "x" }, "<leader>rm", "<Plug>(didymus-review-comment)")
 
 To check snacks.nvim and `gh`, run `:checkhealth didymus`.
 
+`review.picker_config` sets the picker options of each kind of list. In each kind, the options of an adapter go under its name, such as `snacks`:
+
+| Kind | List | snacks default |
+| --- | --- | --- |
+| `changes` | The pull request list. | The `default` preset: a float with the list on the left and the description on the right. |
+| `choice` | A question, such as "Uncommitted changes. Check out #12?". | The `select` preset: a small float. It hides the preview. Press `<a-p>` to show it. |
+| `files` | The files panel. | The `sidebar` preset, with the preview in the code window. |
+
+For example, show the pull request list at the bottom, and make the files panel wider:
+
+```lua
+require("didymus").setup({
+  review = {
+    picker_config = {
+      changes = { snacks = { layout = { preset = "ivy" } } },
+      files = { snacks = { layout = { layout = { width = 50, min_width = 50 } } } },
+    },
+  },
+})
+```
+
+didymus merges your options over the default of the kind. You cannot change the options that didymus needs, such as `items`, `format` and `confirm`.
+
 The defaults:
 
 ```lua
 require("didymus").setup({
   review = {
     picker = "snacks", -- "snacks", "test" for tests, or an adapter table
+    picker_config = {}, -- the options of each kind of list, for each adapter
     provider = "github", -- "github", "test" for tests, or a provider table
+    icons = { active = "💬", resolved = "✅" }, -- the state of a thread. "" shows no icon.
+    panel = { keys = { toggle_active = "a" } }, -- false turns off a key
     input = { -- the float of comment
       width = 60, -- below 1 is a fraction of the window width
       max_height = 10, -- the float grows to this height, then it scrolls

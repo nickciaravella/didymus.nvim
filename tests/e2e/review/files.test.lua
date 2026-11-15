@@ -82,7 +82,7 @@ local function expect_message(text)
   end
 end
 
-local header = { "#1 Change the second line", "@octocat main ← feature" }
+local header = { "#1 Change the second line", "@octocat main ← feature", "All threads" }
 
 T["the panel shows the header and one row for each file, in the order of the provider"] = function()
   open_review({
@@ -95,6 +95,7 @@ T["the panel shows the header and one row for each file, in the order of the pro
   local calls = panels()
   eq(#calls, 1)
   eq(calls[1].open, true)
+  eq(calls[1].kind, "files")
   eq(calls[1].title, "Review #1")
   eq(
     texts(calls[1]),
@@ -105,12 +106,57 @@ T["the panel shows the header and one row for each file, in the order of the pro
   )
   eq(calls[1].items[1].segments, { { "#1", "Number" }, { " Change the second line", "Title" } })
   eq(calls[1].items[2].segments, { { "@octocat", "Comment" }, { " main ← feature" } })
+  eq(calls[1].items[3].segments, { { "All threads", "Comment" } })
   eq(
-    calls[1].items[4].segments,
+    calls[1].items[5].segments,
     { { "M", "Changed" }, { " file.txt" }, { " +1", "Added" }, { " -1", "Removed" } }
   )
-  eq(calls[1].items[3].segments[1], { "D", "Removed" })
-  eq(calls[1].items[5].segments[1], { "A", "Added" })
+  eq(calls[1].items[4].segments[1], { "D", "Removed" })
+  eq(calls[1].items[6].segments[1], { "A", "Added" })
+end
+
+--- The location of each item of the last panel. False if the item has no location.
+---@return ({ path: string, line: integer? }|false)[]
+local function locations()
+  local calls = panels()
+  return vim.tbl_map(function(item)
+    return item.location or false
+  end, calls[#calls].items)
+end
+
+T["each file row has the full path and the first change, except a deleted file and the header"] = function()
+  open_review()
+  local dir = child.fn.getcwd()
+  local expected = {
+    false,
+    false,
+    false,
+    { path = vim.fs.joinpath(dir, "file.txt"), line = 2 },
+    { path = vim.fs.joinpath(dir, "new.txt"), line = 1 },
+    false,
+  }
+  eq(locations(), expected)
+
+  -- A new panel after a change of the current directory has the same paths.
+  child.cmd("cd /")
+  child.cmd("Didymus review files")
+  child.cmd("Didymus review files")
+  eq(#panels(), 2)
+  eq(locations(), expected)
+  eq(child.fn.filereadable(expected[4].path), 1)
+  -- `<CR>` opens the same path.
+  choose("M file.txt +1 -1")
+  eq(child.api.nvim_buf_get_name(0), expected[4].path)
+end
+
+T["the panel gets review.picker_config"] = function()
+  local picker_config = { files = { test = { width = 10 } } }
+  child.lua(
+    "require('didymus').setup({ review = { picker = 'test', provider = 'test', picker_config = ... } })",
+    { picker_config }
+  )
+  open_review()
+  eq(panels()[1].config, picker_config)
 end
 
 T["to choose a file opens the real file in the code window. The panel stays open"] = function()
@@ -137,6 +183,7 @@ T["to choose a header row does nothing"] = function()
   local buf = child.api.nvim_get_current_buf()
   choose(1)
   choose(2)
+  choose(3)
   eq(child.api.nvim_get_current_buf(), buf)
 end
 
@@ -190,6 +237,7 @@ T["to choose a file puts the cursor on the first change of its first hunk"] = fu
   choose("M long.txt +2 -2")
   eq(current_path(), "long.txt")
   eq(child.api.nvim_win_get_cursor(0), { 6, 2 })
+  eq(locations()[4], { path = vim.fs.joinpath(child.fn.getcwd(), "long.txt"), line = 6 })
 end
 
 T["to choose the file of the code window again moves the cursor, also in a modified buffer"] = function()
@@ -208,12 +256,13 @@ T["to choose the file of the code window again moves the cursor, also in a modif
   eq(child.cmd_capture("messages"):find("cannot open"), nil)
 end
 
-T["a file with no patch opens at line 1"] = function()
+T["a file with no patch opens at line 1, and its location has no line"] = function()
   open_review({
     edit = function(change)
       change.files[1].patch = nil
     end,
   })
+  eq(locations()[4], { path = vim.fs.joinpath(child.fn.getcwd(), "file.txt") })
   choose("M file.txt +1 -1")
   child.api.nvim_win_set_cursor(0, { 3, 0 })
   choose("M file.txt +1 -1")
@@ -278,7 +327,7 @@ T["a file row shows the thread count only if it is above 0"] = function()
       "D old.txt +0 -1",
     })
   )
-  eq(files[3].segments[5], { " 2 threads", "Comment" })
+  eq(files[4].segments[5], { " 2 threads", "Comment" })
 end
 
 T[":Didymus review files hides the panel, and shows it again"] = function()

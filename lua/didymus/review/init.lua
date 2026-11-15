@@ -303,6 +303,7 @@ local function pick(flow)
       end
       call_picker(flow.adapter.select, {
         title = "Pull requests",
+        kind = "changes",
         items = vim.tbl_map(to_item, changes),
         on_choose = guard(flow, function(item)
           open_id(flow, item.value.id)
@@ -317,7 +318,7 @@ end
 function M.open(opts)
   opts = opts or {}
   local options = config.options.review
-  local adapter, picker_err = picker.get(options.picker)
+  local adapter, picker_err = picker.get(options.picker, options.picker_config)
   if not adapter then
     return show_error(("%s (review.picker)"):format(picker_err))
   end
