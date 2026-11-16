@@ -44,6 +44,12 @@ flowchart TB
 | Infrastructure | Build it only when an epic needs it. |
 | Agent design | See [`architecture/agent.md`](architecture/agent.md). |
 | Review design | See [`architecture/review.md`](architecture/review.md). |
+| Diff design | See [`architecture/diff.md`](architecture/diff.md). |
+| Diff providers | A diff provider decorates the windows and buffers that the diff view gives it. It does not open windows. gitsigns and `test` in the MVP. Tools with their own tabpage, such as codediff and diffview, are a later `external` kind. See [`architecture/diff.md`](architecture/diff.md#interfaces). |
+| Diff target | The review gives the base, the head and the files. In the MVP, the merge-base and the working tree. A later `local` review provider gives local diffs. The diff part does not know about code hosts. See [`architecture/diff.md`](architecture/diff.md#the-diff-target-of-a-review). |
+| Diff scope | Only in the review tabpage, in the code window. gitsigns signs show in all windows of a buffer, so didymus puts the base back when the diff hides. See [`architecture/diff.md`](architecture/diff.md#decisions). |
+| Diff commands | `toggle`, `layout [inline\|split]`, `side [both\|base\|head]`, `next` and `prev`. `diff next` uses the hunks of the diff provider. `review next hunk` keeps the hunks of the patch. See [`architecture/diff.md`](architecture/diff.md#api-and-commands). |
+| Diff dependency | gitsigns is optional. With no gitsigns, the review works with no diff, and the health check reports a warning. An unknown `diff.provider` is an error. |
 | First integrations | The GitHub provider, through `gh`, and the snacks.nvim picker. |
 | Review workspace | The current checkout in the MVP. didymus asks before it checks out the PR over uncommitted changes. A worktree comes later. See [#48](https://github.com/nickciaravella/didymus.nvim/issues/48). |
 | Review questions | The select role of the picker, because `vim.fn.confirm()` blocks the UI. See [`architecture/review.md`](architecture/review.md#workspace-flow). |
@@ -61,7 +67,7 @@ flowchart TB
 | Submit and discard | `submit` takes a verdict, or asks for one in the picker. Then the body comes from the input float. A comment or a request for changes needs a body if the review has no pending comment. `discard` asks to confirm. After each action, didymus gets the threads again. See [`architecture/review.md`](architecture/review.md#submit-and-discard). |
 | Refresh | `refresh` and `R` in the files panel get the change and the threads again. A new head gives a warning, and didymus does not check it out. A new comment needs `HEAD` at the change head. See [`architecture/review.md`](architecture/review.md#refresh). |
 | Thread marks scope | The marks show only in the windows of the review tabpage, with `nvim__ns_set()`. Risk: Neovim 0.12 marks this API as experimental. The call is in one function. Without the API, the marks show in all windows, with no error. Outside the review tabpage, a buffer can have an empty sign column. |
-| Hunk display | Not in the MVP. The patch from the code host gives the first hunk and the commentable lines. See [#51](https://github.com/nickciaravella/didymus.nvim/issues/51). |
+| Hunk display | The review MVP has none. The patch from the code host gives the first hunk and the commentable lines. The `diff` epic shows the hunks. See [`architecture/diff.md`](architecture/diff.md). |
 | Agent scope | The agent works in all buffers, also outside a review. Only one agent session runs at a time. |
 | Agent backends | `terminal` and `test` in v1. The interface must also fit ACP. |
 | Agent views | A float, or a split on the right. |
@@ -82,7 +88,6 @@ flowchart TB
 
 ## Open questions
 
-- What is the diff interface? See [#51](https://github.com/nickciaravella/didymus.nvim/issues/51).
 - How do we test the GitHub provider automatically? See [#50](https://github.com/nickciaravella/didymus.nvim/issues/50).
 
 ## Work in a worktree

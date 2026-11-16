@@ -9,38 +9,46 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Append | Put context in the agent input, and focus the agent. Do not submit. |
 | Backend | The integration that runs an agent and gives prompts to it, such as `terminal`. |
 | Base | The branch or commit that the change goes into. |
+| Base window | The window of the split diff layout that shows the base revision buffer, on the left of the code window. |
 | Change | The thing under review. On GitHub, a pull request (PR). |
 | Code host | The system that keeps the change, such as GitHub. |
 | Code window | The window of the review tabpage that shows the real files. |
 | Commentable range | The lines of a file that accept comments on the code host. Each hunk of the patch gives one range on each side. |
 | Context | A part of the code that goes with a prompt: the path, the lines, the text and the filetype. |
+| Diff layout | `inline`: the diff in the code window. `split`: the base window on the left, and the code window on the right. |
+| Diff provider | The integration that shows a diff, such as gitsigns. |
+| Diff target | The base, the head and the files of a diff. The review gives it. |
+| Diff view | The diff in the review tabpage: its state, its windows and its diff provider. |
 | End-to-end test | A test that drives a child Neovim the way a user does: with commands, keys and the public API. |
 | Epic | A large stream of work. Each epic is a GitHub label. |
-| Fold | Show a thread in the file as one line. Unfold shows all its comments. |
 | Fake agent | A small CLI that acts like an agent in tests. |
+| Fold | Show a thread in the file as one line. Unfold shows all its comments. |
 | Head | The commit with the new code. |
 | Hunk | One block of changed lines. |
 | Integration | A replaceable part that connects core to a code host, an agent, a diff tool or a picker. |
 | Integration test | A test that checks one provider or external dependency against the real thing. It can use more than one module. |
 | Merge-base | The common ancestor of base and head. |
 | Notebook | A file of tricky facts about one technology, for agents, such as `agents/expertise/neovim.md`. |
-| Patch | The hunks of the unified diff of one file, as the code host gives them, with no file header. |
 | Panel | A picker list that stays open next to the code, such as the files panel. |
+| Patch | The hunks of the unified diff of one file, as the code host gives them, with no file header. |
 | Pending review | A review that is started but not submitted. |
 | Picker | A plugin that shows a list of items and lets the user choose one, such as snacks.picker. |
 | Picker adapter | The integration that connects didymus to a picker. |
 | Post | Put a comment on the code host at once, not in the pending review. |
 | Prompt | The text for the agent, and its context. |
 | Provider | An integration for a code host, such as GitHub. |
-| Reply | A new comment in a thread. |
 | Reference file | `docs/reference/design-prompt.md`. A first pass at the design. Not a spec. |
+| Reply | A new comment in a thread. |
 | Resolve | Mark a thread as done. A resolved thread is dim. Unresolve makes it open again. |
 | Review session | One open review: the change, its tabpage, its files panel, and the branch from before the review. |
 | Review tabpage | The tabpage of one review, with the files panel and the code. |
+| Revision | A version of a file: a commit, the index or the working tree. |
+| Revision buffer | A read-only buffer with a file at a revision, such as the base of a file. |
 | Send | Submit a prompt with its context. Do not show the agent. |
+| Sides | The sides of the diff that show: `both`, `base` or `head`. |
 | Test backend | A backend without a process. End-to-end tests use it for the agent flows. |
 | Test picker | A picker adapter with no UI. End-to-end tests use it to choose items. |
-| Test provider | A provider that keeps changes in memory. End-to-end tests use it in place of GitHub. |
+| Test provider | A provider with no external system. The review test provider keeps changes in memory, in place of GitHub. The diff test provider keeps hunks in memory, in place of gitsigns. |
 | Thread | A list of comments on one line or range. |
 | Thread float | The float that shows all comments of a thread that shows only in the panel, as markdown. |
 | Unit test | A test of a pure function, or of a function that uses only Neovim. It has no external dependencies. |

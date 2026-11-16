@@ -13,6 +13,7 @@ Rules and references for AI agents that work on didymus.nvim.
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Key terms. |
 | [`docs/architecture/agent.md`](docs/architecture/agent.md) | The design and work plan of the `agent` epic. |
 | [`docs/architecture/review.md`](docs/architecture/review.md) | The design and work plan of the `review` epic. |
+| [`docs/architecture/diff.md`](docs/architecture/diff.md) | The design and work plan of the `diff` epic. |
 | [`docs/reference/design-prompt.md`](docs/reference/design-prompt.md) | The reference file. See below. |
 | [`agents/expertise/`](agents/expertise/README.md) | The notebooks: facts about the technologies of the project. See "Notebooks" below. |
 
