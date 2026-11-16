@@ -49,6 +49,7 @@ flowchart TB
 | Diff target | The review gives the base, the head and the files. In the MVP, the merge-base and the working tree. A later `local` review provider gives local diffs. The diff part does not know about code hosts. See [`architecture/diff.md`](architecture/diff.md#the-diff-target-of-a-review). |
 | Diff scope | Only in the review tabpage, in the code window. gitsigns signs show in all windows of a buffer, so didymus puts the base back when the diff hides. See [`architecture/diff.md`](architecture/diff.md#decisions). |
 | Diff commands | `toggle`, `layout [inline\|split]`, `side [both\|base\|head]`, `next` and `prev`. `diff next` uses the hunks of the diff provider. `review next hunk` keeps the hunks of the patch. See [`architecture/diff.md`](architecture/diff.md#api-and-commands). |
+| Diff layout | `inline` shows the base lines in the code window. `split` shows a read-only base buffer in a base window on the left, in native diff mode with gitsigns. The diff view owns the base window. See [`architecture/diff.md`](architecture/diff.md#layout). |
 | Diff warnings | At the first show of the diff in a review, a warning tells if `HEAD` is not the change head, or if a file of the change has uncommitted changes. Each different error of the diff provider shows once in a review. See [`architecture/diff.md`](architecture/diff.md#show). |
 | Diff dependency | gitsigns is optional. With no gitsigns, the review works with no diff, and the health check reports a warning. An unknown `diff.provider` is an error. The gitsigns provider calls internal gitsigns modules. See [`architecture/diff.md`](architecture/diff.md#internal-gitsigns-calls). |
 | First integrations | The GitHub provider, through `gh`, and the snacks.nvim picker. |
@@ -122,7 +123,7 @@ lua/didymus/ui/              UI parts for all epics, such as the input float and
 lua/didymus/ui/picker/       the picker interface and its adapters: snacks, test
 lua/didymus/review/          the review API, the review session, the files panel, the inline threads, the patch parser, the workspace and the diff target. See architecture/review.md.
 lua/didymus/review/provider/ the review types, the provider interface and its providers: github, test
-lua/didymus/diff/            the diff API, the diff view, the diff types, the hunk navigation, the diff provider interface and its providers: gitsigns, test. See architecture/diff.md.
+lua/didymus/diff/            the diff API, the diff view, the revision buffers, the diff types, the hunk navigation, the diff provider interface and its providers: gitsigns, test. See architecture/diff.md.
 tests/helpers.lua            helpers for all kinds of tests
 tests/unit/didymus/          unit tests, mirror lua/didymus/
 tests/e2e/                   end-to-end tests, by feature

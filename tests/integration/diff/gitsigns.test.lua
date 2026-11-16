@@ -99,6 +99,22 @@ local function start(gitsigns_config)
       end)
     end
 
+    function _G.render_split(head_win, base_win)
+      results.render = nil
+      provider:render({
+        layout = "split",
+        sides = "both",
+        file = { path = "a.txt", status = "modified" },
+        target = target(),
+        head_win = head_win,
+        head_buf = vim.api.nvim_win_get_buf(head_win),
+        base_win = base_win,
+        base_buf = base_win and vim.api.nvim_win_get_buf(base_win),
+      }, function(err)
+        results.render = { err = err or vim.NIL }
+      end)
+    end
+
     -- The number of extmarks of the unified view of `win` in `buf`.
     function _G.view_marks(win, buf)
       local ns = vim.api.nvim_get_namespaces()["gitsigns_unified_" .. win]
@@ -413,6 +429,125 @@ T["render"]["gives an error for the base sides"] = function()
   local _, head_win = attach_in_two_windows()
   child.lua("render(...)", { head_win, "base" })
   eq(wait_for_render(), 'the gitsigns provider does not have the "base" sides yet')
+end
+
+T["split"] = MiniTest.new_set()
+
+--- The window options that `:diffthis` changes.
+local diff_options = {
+  "diff",
+  "scrollbind",
+  "cursorbind",
+  "wrap",
+  "foldmethod",
+  "foldcolumn",
+  "foldenable",
+  "foldlevel",
+}
+
+---@param win integer
+---@return table<string, any>
+local function get_options(win)
+  local options = {}
+  for _, name in ipairs(diff_options) do
+    options[name] = child.api.nvim_get_option_value(name, { win = win, scope = "local" })
+  end
+  return options
+end
+
+--- Values that differ from the defaults and from the values of diff mode.
+---@param win integer
+local function set_options(win)
+  child.lua(
+    [[
+    local win = ...
+    vim.wo[win][0].foldmethod = "indent"
+    vim.wo[win][0].foldcolumn = "1"
+    vim.wo[win][0].foldenable = true
+    vim.wo[win][0].foldlevel = 3
+    vim.wo[win][0].wrap = false
+  ]],
+    { win }
+  )
+end
+
+--- Attach a.txt in the head window, and show its base text in a base window on the left.
+---@return integer buf
+---@return integer head_win
+---@return integer base_win
+local function open_split()
+  start({})
+  local buf = edit("a.txt")
+  local head_win = child.api.nvim_get_current_win()
+  child.lua("attach(...)", { buf, "a.txt" })
+  eq(wait_for_attach(buf)[1].err, vim.NIL)
+  local base_win = child.lua(
+    [[
+    local base_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(base_buf, 0, -1, false, { "one", "two", "three", "four", "five" })
+    return vim.api.nvim_open_win(base_buf, false, { split = "left", win = ... })
+  ]],
+    { head_win }
+  )
+  return buf, head_win, base_win
+end
+
+T["split"]["sets 'diff' in both windows, and clear puts back the options"] = function()
+  local _, head_win, base_win = open_split()
+  set_options(head_win)
+  local head_options, base_options = get_options(head_win), get_options(base_win)
+  local scrollopt = child.o.scrollopt
+
+  child.lua("render_split(...)", { head_win, base_win })
+  eq(wait_for_render(), vim.NIL)
+  for _, win in ipairs({ head_win, base_win }) do
+    eq(get_options(win).diff, true)
+    eq(get_options(win).scrollbind, true)
+    eq(get_options(win).cursorbind, true)
+    eq(get_options(win).foldmethod, "diff")
+  end
+
+  child.lua("provider:clear(...)", { head_win })
+  child.lua("provider:clear(...)", { base_win })
+  eq(get_options(head_win), head_options)
+  eq(get_options(base_win), base_options)
+  eq(child.o.scrollopt, scrollopt)
+end
+
+T["split"]["closes the unified view of the inline layout first"] = function()
+  local buf, head_win, base_win = open_split()
+  child.lua("render(...)", { head_win })
+  eq(wait_for_render(), vim.NIL)
+  wait_for(function()
+    return child.lua_get("view_marks(...)", { head_win, buf }) > 0
+  end, "the unified view")
+
+  child.lua("render_split(...)", { head_win, base_win })
+  eq(wait_for_render(), vim.NIL)
+  eq(child.lua_get("view_marks(...)", { head_win, buf }), 0)
+  eq(get_options(head_win).diff, true)
+end
+
+T["split"]["turns off diff mode when the buffer comes back to the window"] = function()
+  -- Neovim keeps the window options of each buffer. So diff mode comes back with the buffer.
+  local buf, head_win, base_win = open_split()
+  set_options(head_win)
+  local head_options = get_options(head_win)
+  child.lua("render_split(...)", { head_win, base_win })
+  eq(wait_for_render(), vim.NIL)
+
+  child.api.nvim_set_current_win(head_win)
+  child.cmd("edit b.txt")
+  child.lua("provider:clear(...)", { head_win })
+  child.lua("provider:clear(...)", { base_win })
+  child.cmd("buffer " .. buf)
+  eq(get_options(head_win), head_options)
+end
+
+T["split"]["gives an error with no base window"] = function()
+  local _, head_win = open_split()
+  child.lua("render_split(...)", { head_win, nil })
+  eq(wait_for_render(), "the display has no base window")
 end
 
 T["detach"]["closes the unified view of the buffer"] = function()

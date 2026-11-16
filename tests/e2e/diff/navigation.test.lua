@@ -301,8 +301,8 @@ T["next from a different tabpage goes to the review tabpage"] = function()
   wait_for_position({ "a.txt", 2 })
 end
 
-T[":Didymus diff completes next and prev"] = function()
-  eq(child.fn.getcompletion("Didymus diff ", "cmdline"), { "next", "prev", "toggle" })
+T[":Didymus diff completes its actions"] = function()
+  eq(child.fn.getcompletion("Didymus diff ", "cmdline"), { "layout", "next", "prev", "toggle" })
 end
 
 T["next with no review shows a message"] = function()

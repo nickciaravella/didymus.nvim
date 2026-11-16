@@ -1,5 +1,6 @@
 --- The gitsigns diff provider. gitsigns computes the hunks against the base commit and shows the
---- signs. Its unified view shows the deleted lines in the code window.
+--- signs. Its unified view shows the deleted lines in the code window. The split layout uses native
+--- diff mode in the base window and the code window.
 --- See docs/architecture/diff.md#gitsigns-provider and agents/expertise/gitsigns.md.
 
 --- The calls to internal gitsigns modules. gitsigns has no public API for them. If gitsigns
@@ -103,7 +104,7 @@ end
 ---@field timeout integer The time in milliseconds before `attach()` stops to wait for gitsigns.
 local M = {
   capabilities = {
-    layouts = { inline = true },
+    layouts = { inline = true, split = true },
     sides = { both = true, head = true },
     bases = { commit = true },
     heads = { worktree = true },
@@ -123,6 +124,105 @@ local attached = {}
 --- these views, so that it does not close a view of the user (D3). gitsigns tells if a view is open.
 ---@type table<integer, integer>
 local opened_views = {}
+
+--- The window options that `:diffthis` changes. `:diffoff` does not put back all of them, for example
+--- 'foldenable'. See agents/expertise/neovim.md#windows.
+local diff_options = {
+  "diff",
+  "scrollbind",
+  "cursorbind",
+  "wrap",
+  "foldmethod",
+  "foldcolumn",
+  "foldenable",
+  "foldlevel",
+}
+
+--- The window options from before `:diffthis`, for each window and buffer where the provider turned
+--- on diff mode. Neovim keeps the window options of each buffer, so diff mode comes back when the
+--- buffer comes back to the window. Then the provider turns it off.
+---@type table<integer, table<integer, table<string, any>>>
+local diff_wins = {}
+
+--- 'scrollopt' from before the first `:diffthis`. `:diffthis` adds "hor", and `:diffoff` removes it.
+---@type string?
+local saved_scrollopt
+
+---@param win integer
+---@param buf integer
+local function forget_diff(win, buf)
+  local bufs = diff_wins[win]
+  if bufs then
+    bufs[buf] = nil
+    if next(bufs) == nil then
+      diff_wins[win] = nil
+    end
+  end
+  if next(diff_wins) == nil and saved_scrollopt then
+    vim.o.scrollopt = saved_scrollopt
+    saved_scrollopt = nil
+  end
+end
+
+--- Turn off diff mode in `win`, and put back its options, if the provider turned it on for the
+--- buffer that `win` shows.
+---@param win integer
+local function turn_off_diff(win)
+  local buf = vim.api.nvim_win_get_buf(win)
+  local saved = diff_wins[win] and diff_wins[win][buf]
+  if not saved then
+    return
+  end
+  vim.api.nvim_win_call(win, function()
+    vim.cmd("diffoff")
+  end)
+  for _, name in ipairs(diff_options) do
+    vim.api.nvim_set_option_value(name, saved[name], { win = win, scope = "local" })
+  end
+  forget_diff(win, buf)
+end
+
+local diff_group = vim.api.nvim_create_augroup("didymus.diff.gitsigns", {})
+vim.api.nvim_create_autocmd("BufWinEnter", {
+  group = diff_group,
+  callback = function()
+    turn_off_diff(vim.api.nvim_get_current_win())
+  end,
+})
+vim.api.nvim_create_autocmd("WinClosed", {
+  group = diff_group,
+  callback = function(args)
+    for buf in pairs(diff_wins[tonumber(args.match)] or {}) do
+      forget_diff(tonumber(args.match) --[[@as integer]], buf)
+    end
+  end,
+})
+vim.api.nvim_create_autocmd("BufWipeout", {
+  group = diff_group,
+  callback = function(args)
+    for win in pairs(diff_wins) do
+      forget_diff(win, args.buf)
+    end
+  end,
+})
+
+--- Turn on diff mode in `win`. Save the options first, so that `turn_off_diff()` puts them back.
+---@param win integer
+local function turn_on_diff(win)
+  local buf = vim.api.nvim_win_get_buf(win)
+  diff_wins[win] = diff_wins[win] or {}
+  if not diff_wins[win][buf] then
+    local saved = {}
+    for _, name in ipairs(diff_options) do
+      saved[name] = vim.api.nvim_get_option_value(name, { win = win, scope = "local" })
+    end
+    diff_wins[win][buf] = saved
+  end
+  saved_scrollopt = saved_scrollopt or vim.o.scrollopt
+  vim.api.nvim_win_call(win, function()
+    vim.cmd("diffthis")
+  end)
+end
 
 ---@return boolean
 local function is_set_up()
@@ -343,6 +443,11 @@ function M:detach(buf)
       M:clear(win)
     end
   end
+  for win in pairs(diff_wins) do
+    if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == buf then
+      turn_off_diff(win)
+    end
+  end
   local state = attached[buf]
   attached[buf] = nil
   if state and state.base_changed then
@@ -387,6 +492,15 @@ local function check_render(display)
   local state = attached[buf]
   if not (state and state.ready) then
     return ("%s is not attached"):format(display.file.path)
+  end
+  if display.layout == "split" and display.sides == "both" then
+    local base_win, base_buf = display.base_win, display.base_buf
+    if not (base_win and base_buf and vim.api.nvim_win_is_valid(base_win)) then
+      return "the display has no base window"
+    end
+    if vim.api.nvim_win_get_buf(base_win) ~= base_buf then
+      return "the base window does not show the base buffer"
+    end
   end
 end
 
@@ -448,6 +562,21 @@ function M:render(display, cb)
     done(internal.close_view(win))
     return
   end
+  if display.layout == "split" then
+    -- gitsigns does not show the unified view in a window with 'diff'.
+    if opened_views[win] then
+      opened_views[win] = nil
+      err = internal.close_view(win)
+      if err then
+        done(err)
+        return
+      end
+    end
+    turn_on_diff(display.base_win --[[@as integer]])
+    turn_on_diff(win)
+    done(nil)
+    return
+  end
   open_view(win, attached[buf].sha, done)
 end
 
@@ -455,6 +584,9 @@ end
 function M:clear(win)
   opened_views[win] = nil
   internal.close_view(win)
+  if vim.api.nvim_win_is_valid(win) then
+    turn_off_diff(win)
+  end
 end
 
 ---@param message string

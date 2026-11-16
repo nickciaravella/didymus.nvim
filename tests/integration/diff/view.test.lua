@@ -20,18 +20,24 @@ local T = MiniTest.new_set({
   },
 })
 
+---@param threads didymus.review.Thread[]?
 ---@return didymus.test.Repo
-local function open_review()
+local function open_review(threads)
   local repo = review_helpers.make_repo({
-    base = { ["file.txt"] = "one\ntwo\nthree\n" },
+    base = { ["file.txt"] = "one\ntwo\nthree\n", ["other.txt"] = "other\n" },
     head = { ["file.txt"] = "one\n2\nthree\n" },
   })
   child.fn.chdir(repo.dir)
   review_helpers.set_changes(child, { repo.change })
-  review_helpers.set_threads(child, "1", {})
+  review_helpers.set_threads(child, "1", threads or {})
   child.cmd("Didymus review open 1")
   review_helpers.wait_for_review(child, "1")
-  child.lua("require('didymus.ui.picker.test').choose('M file.txt +1 -1')")
+  for index, item in ipairs(review_helpers.picker_calls(child, "panel")[1].items) do
+    if item.value.kind == "file" then
+      child.lua("require('didymus.ui.picker.test').choose(...)", { index })
+      break
+    end
+  end
   return repo
 end
 
@@ -81,6 +87,113 @@ T["the close of the review puts back the base of the gitsigns config"] = functio
     return base() == nil
   end, "the base of the gitsigns config")
   eq(has_view(), false)
+end
+
+--- The window options that `:diffthis` changes.
+local diff_options = {
+  "diff",
+  "scrollbind",
+  "cursorbind",
+  "wrap",
+  "foldmethod",
+  "foldcolumn",
+  "foldenable",
+  "foldlevel",
+}
+
+---@param win integer
+---@return table<string, any>
+local function get_options(win)
+  local options = {}
+  for _, name in ipairs(diff_options) do
+    options[name] = child.api.nvim_get_option_value(name, { win = win, scope = "local" })
+  end
+  return options
+end
+
+--- Change to the split layout, and wait for native diff mode in the code window.
+---@return integer code_win
+---@return integer base_win
+local function show_split()
+  local code_win = child.api.nvim_get_current_win()
+  child.cmd("Didymus diff layout split")
+  wait_for(function()
+    return get_options(code_win).diff
+  end, "'diff' in the code window")
+  return code_win, child.fn.win_getid(child.fn.winnr("h"))
+end
+
+T["the split layout uses native diff mode, and inline puts back the options"] = function()
+  open_review()
+  wait_for(has_view, "the unified view")
+  local code_win = child.api.nvim_get_current_win()
+  child.cmd("setlocal foldmethod=indent foldcolumn=1 nowrap")
+  local options = get_options(code_win)
+
+  local _, base_win = show_split()
+  MiniTest.expect.no_equality(base_win, code_win)
+  eq(has_view(), false)
+  eq(child.api.nvim_buf_get_lines(child.api.nvim_win_get_buf(base_win), 0, -1, true), {
+    "one",
+    "two",
+    "three",
+  })
+  for _, win in ipairs({ code_win, base_win }) do
+    local win_options = get_options(win)
+    eq({ win_options.diff, win_options.scrollbind, win_options.cursorbind }, { true, true, true })
+  end
+  -- The gitsigns signs stay.
+  eq(child.lua_get("#require('gitsigns').get_hunks(0)"), 1)
+
+  child.cmd("Didymus diff layout inline")
+  wait_for(has_view, "the unified view after inline")
+  eq(child.api.nvim_win_is_valid(base_win), false)
+  eq(get_options(code_win), options)
+end
+
+T["the threads show in the code window in the split layout"] = function()
+  open_review({
+    review_helpers.make_thread("open", "file.txt", {
+      range = { first = 2, last = 2 },
+      comments = { { author = "octocat", body = "Why 2?", pending = false } },
+    }),
+  })
+  review_helpers.wait_for_threads(child, 1)
+  local code_win = show_split()
+  child.cmd("redraw")
+  eq(child.api.nvim_get_current_win(), code_win)
+  eq(#review_helpers.thread_marks(child), 1)
+  local screen = table.concat(
+    vim.tbl_map(function(line)
+      return table.concat(line)
+    end, child.get_screenshot().text),
+    "\n"
+  )
+  eq(screen:find("Why 2?", 1, true) ~= nil, true)
+end
+
+T["a different buffer in the base window has no diff state"] = function()
+  open_review()
+  local code_win, base_win = show_split()
+  child.api.nvim_set_current_win(base_win)
+  child.cmd("edit other.txt")
+  wait_for(function()
+    return child.lua_get("require('gitsigns.unified').get_view(...) ~= nil", { code_win })
+  end, "the unified view in the code window")
+  local base_options = get_options(base_win)
+  eq(
+    { base_options.diff, base_options.scrollbind, base_options.cursorbind },
+    { false, false, false }
+  )
+  eq(get_options(code_win).diff, false)
+end
+
+T["the cursor of the base window follows the cursor of the code window"] = function()
+  open_review()
+  local code_win, base_win = show_split()
+  child.api.nvim_win_set_cursor(code_win, { 3, 0 })
+  child.cmd("redraw")
+  eq(child.api.nvim_win_get_cursor(base_win)[1], 3)
 end
 
 T["with no gitsigns, a warning shows and the review works"] = function()

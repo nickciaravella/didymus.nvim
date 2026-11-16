@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation, new comments, replies, resolve, the submit or the discard of the review, the refresh, the inline diff, and the diff navigation work now.
+> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation, new comments, replies, resolve, the submit or the discard of the review, the refresh, the inline and split diff, and the diff navigation work now.
 
 ## Goals
 
@@ -295,13 +295,18 @@ The review tabpage shows the diff of the pull request on the real file, in the c
 | Command | Behavior |
 | --- | --- |
 | `:Didymus diff toggle` | Show or hide the diff in the review tabpage. |
+| `:Didymus diff layout [inline\|split]` | Set the layout of the diff. With no argument, change to the other layout. |
 | `:Didymus diff next`, `:Didymus diff prev` | Go to the next or the previous hunk of the diff, also in a different file. |
 
 The diff shows when the review opens, and follows the code window: after `<CR>` in the files panel, `gd`, `gf` or `:e` to a file of the pull request, the diff shows for that file. Other windows show only the gitsigns signs. A deleted file has no diff.
 
-In a different tabpage, `toggle`, `next` and `prev` go to the review tabpage first. With no review, a warning shows.
+In a different tabpage, `toggle`, `layout`, `next` and `prev` go to the review tabpage first. With no review, a warning shows.
 
-`next` and `prev` move the cursor in the code window. At the last hunk of a file, `next` goes to the first hunk of the next file with hunks, in the order of the files panel. `prev` goes to the last hunk of the previous file. They skip a file with no hunks, such as a binary file. The stop of a deletion is the line after the deleted lines. At the last or the first hunk, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. A hidden diff has no hunks, so a message shows.
+The `inline` layout shows the deleted lines in the code window. The `split` layout shows the base of the file in the base window, on the left of the code window, in the diff mode of Neovim. The base window is read-only. It follows the code window, and closes when the code window shows a file that is not in the pull request. If you close the base window, or open a different buffer in it, the layout changes to `inline`. `layout` of a hidden diff shows the diff.
+
+In the `split` layout, Neovim computes the diff of the two windows with your `'diffopt'`. So the diff mode can show a hunk a little differently from the gitsigns signs. When the diff hides or the layout changes, didymus puts back the window options that the diff mode changed, such as `'foldmethod'` and `'wrap'`.
+
+`next` and `prev` move the cursor in the code window. In the base window, they move the cursor of the base window, to the base lines of the hunks. At the last hunk of a file, `next` goes to the first hunk of the next file with hunks, in the order of the files panel. `prev` goes to the last hunk of the previous file. They skip a file with no hunks, such as a binary file. The stop of a deletion is the line after the deleted lines. At the last or the first hunk, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. A hidden diff has no hunks, so a message shows.
 
 `:Didymus review next hunk` uses the hunks of GitHub, where you can comment. `:Didymus diff next` uses the hunks of the diff provider, one for each change.
 
@@ -315,11 +320,12 @@ There are no default keymaps. For example:
 
 ```lua
 vim.keymap.set("n", "<leader>dt", "<Plug>(didymus-diff-toggle)")
+vim.keymap.set("n", "<leader>dl", "<Plug>(didymus-diff-layout)")
 vim.keymap.set("n", "<leader>dn", "<Plug>(didymus-diff-next)")
 vim.keymap.set("n", "<leader>dp", "<Plug>(didymus-diff-prev)")
 ```
 
-`<Plug>(didymus-diff-toggle)`, `<Plug>(didymus-diff-next)` and `<Plug>(didymus-diff-prev)` are normal mode mappings. To check gitsigns.nvim, run `:checkhealth didymus`.
+`<Plug>(didymus-diff-toggle)`, `<Plug>(didymus-diff-layout)`, `<Plug>(didymus-diff-layout-inline)`, `<Plug>(didymus-diff-layout-split)`, `<Plug>(didymus-diff-next)` and `<Plug>(didymus-diff-prev)` are normal mode mappings. `<Plug>(didymus-diff-layout)` changes to the other layout. To check gitsigns.nvim, run `:checkhealth didymus`.
 
 The defaults:
 
@@ -328,6 +334,8 @@ require("didymus").setup({
   diff = {
     provider = "gitsigns", -- "gitsigns", "test" for tests, or a provider table
     enabled = true, -- the diff shows when a review opens
+    layout = "inline", -- "inline" or "split"
+    split = { width = 0.5 }, -- the width of the base window: below 1, a fraction of the code window, else columns
   },
 })
 ```
