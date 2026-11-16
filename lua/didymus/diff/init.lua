@@ -45,9 +45,32 @@ function M.layout(opts)
   end
 end
 
---- Go to the next hunk of the diff in the code window, or in the base window with the base lines.
---- At the last hunk of a file, go to the first hunk of the next file with hunks, in the order of the
---- panel. Do not wrap.
+local sides = { both = true, base = true, head = true }
+
+---@class didymus.diff.SideOpts
+---@field side didymus.diff.Sides? Nil goes to the next sides: both, head, base.
+
+--- Set the sides of the diff, and show a hidden diff. "base" shows the base buffer in the code
+--- window, until the code window shows a different buffer. With no side, go to the next sides.
+---@param opts didymus.diff.SideOpts?
+function M.side(opts)
+  local side = opts and opts.side
+  if side and not sides[side] then
+    vim.notify(
+      ("didymus: unknown side %q. Use both, base or head."):format(side),
+      vim.log.levels.ERROR
+    )
+    return
+  end
+  local view = focus_view()
+  if view then
+    view:set_sides(side)
+  end
+end
+
+--- Go to the next hunk of the diff in the code window. In the base window, or with the "base" sides,
+--- use the base lines. At the last hunk of a file, go to the first hunk of the next file with hunks,
+--- in the order of the panel. Do not wrap.
 function M.next()
   local view = focus_view()
   if view then

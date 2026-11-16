@@ -116,4 +116,63 @@ T["prev()"]["uses the base lines on the base side"] = function()
   eq(prev_from(3, "base"), {})
 end
 
+T["map_line()"] = MiniTest.new_set()
+
+-- Base line 3 changed, head lines 6 and 7 added after base line 5, and base lines 8 and 9 deleted
+-- after head line 9. Each side has 10 lines.
+local map_hunks = {
+  hunk("change", { 3, 1 }, { 3, 1 }),
+  hunk("add", { 5, 0 }, { 6, 2 }),
+  hunk("delete", { 8, 2 }, { 9, 0 }),
+}
+
+---@param line integer
+---@param side didymus.diff.Side
+---@return integer
+local function map(line, side)
+  return hunks.map_line(map_hunks, { line = line, side = side, line_count = 10 })
+end
+
+T["map_line()"]["moves a line by the hunks before it"] = function()
+  eq({ map(1, "head"), map(4, "head"), map(8, "head"), map(9, "head"), map(10, "head") }, {
+    1,
+    4,
+    6,
+    7,
+    10,
+  })
+  eq({ map(1, "base"), map(6, "base"), map(7, "base"), map(10, "base") }, { 1, 8, 9, 10 })
+end
+
+T["map_line()"]["keeps the line of a hunk"] = function()
+  eq(map(3, "head"), 3)
+  eq(map(3, "base"), 3)
+end
+
+T["map_line()"]["goes to the last line of a shorter hunk on the other side"] = function()
+  local change = { hunk("change", { 3, 1 }, { 3, 3 }) }
+  eq(hunks.map_line(change, { line = 5, side = "head", line_count = 10 }), 3)
+  eq(hunks.map_line(change, { line = 6, side = "head", line_count = 10 }), 4)
+end
+
+T["map_line()"]["goes to the stop of a hunk with no lines on the other side"] = function()
+  eq(map(6, "head"), 6)
+  eq(map(7, "head"), 6)
+  eq(map(8, "base"), 10)
+  eq(map(9, "base"), 10)
+end
+
+T["map_line()"]["stays in the buffer on the other side"] = function()
+  local deletion = { hunk("delete", { 10, 2 }, { 9, 0 }) }
+  eq(hunks.map_line(deletion, { line = 11, side = "base", line_count = 9 }), 9)
+  eq(hunks.map_line({}, { line = 12, side = "base", line_count = 9 }), 9)
+  eq(hunks.map_line({}, { line = 1, side = "base", line_count = 0 }), 1)
+end
+
+T["map_line()"]["does not need sorted hunks"] = function()
+  local reversed = { map_hunks[3], map_hunks[2], map_hunks[1] }
+  eq(hunks.map_line(reversed, { line = 10, side = "base", line_count = 10 }), 10)
+  eq(hunks.map_line(reversed, { line = 7, side = "base", line_count = 10 }), 9)
+end
+
 return T

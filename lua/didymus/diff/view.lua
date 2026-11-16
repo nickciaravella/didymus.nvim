@@ -32,11 +32,16 @@ local progress_delay = 500
 ---@field win integer
 ---@field buf integer
 ---@field layout didymus.diff.Layout
+---@field sides didymus.diff.Sides
+---@field head_buf integer The head buffer. With the "base" sides, the code window shows the base buffer.
 ---@field base_win integer? The base window that has the diff of the split layout.
 ---@field number integer Only the callbacks of the newest display apply.
 
 ---@class didymus.diff.view.Jump The newest `next` or `prev`. Only its callbacks apply.
 ---@field buf integer? The buffer whose `attach()` the jump waits for. The jump shows its error.
+
+---@class didymus.diff.view.BaseRequest The newest change to the "base" sides. Only its callbacks apply.
+---@field buf integer The head buffer whose `attach()` the request waits for. The request shows its error.
 
 ---@class didymus.diff.view.Start The code window before a jump to a different file.
 ---@field win integer
@@ -46,6 +51,8 @@ local progress_delay = 500
 ---@class didymus.diff.View
 ---@field shown boolean
 ---@field layout didymus.diff.Layout
+---@field sides didymus.diff.Sides
+---@field private sides_before_base didymus.diff.Sides? The sides to go back to when the "base" sides end.
 ---@field private opts didymus.diff.ViewOpts
 ---@field private provider didymus.diff.Provider?
 ---@field private provider_err string?
@@ -57,10 +64,54 @@ local progress_delay = 500
 ---@field private display_count integer
 ---@field private warned table<string, boolean> The provider errors that showed. Each one shows once.
 ---@field private jump didymus.diff.view.Jump?
+---@field private base_request didymus.diff.view.BaseRequest?
 ---@field private update_scheduled boolean
 ---@field private group integer
 local View = {}
 View.__index = View
+
+---@param message string
+local function warn(message)
+  vim.notify("didymus: " .. message, vim.log.levels.WARN)
+end
+
+--- Put the cursor of `win` on the first non-blank character of `line`, or of the last line.
+---@param win integer
+---@param line integer
+local function set_cursor(win, line)
+  local buf = vim.api.nvim_win_get_buf(win)
+  line = math.max(1, math.min(line, vim.api.nvim_buf_line_count(buf)))
+  local text = vim.api.nvim_buf_get_lines(buf, line - 1, line, true)[1]
+  vim.api.nvim_win_set_cursor(win, { line, (text:find("%S") or 1) - 1 })
+end
+
+--- Show `buf` in `win`. Do not change the jumplist and the alternate file. With `hide`, keep the old
+--- buffer loaded, also with 'nohidden', because a head buffer must keep its hunks.
+---@param win integer
+---@param buf integer
+---@param hide boolean?
+local function show_buf(win, buf, hide)
+  vim.api.nvim_win_call(win, function()
+    vim.api.nvim_cmd({
+      cmd = "buffer",
+      count = buf,
+      mods = { keepjumps = true, keepalt = true, hide = hide or false },
+    }, {})
+  end)
+end
+
+--- The sides of `diff.sides`. The "base" sides are temporary, so the config does not accept them.
+---@return didymus.diff.Sides
+local function get_config_sides()
+  local sides = config.options.diff.sides
+  if sides == "both" or sides == "head" then
+    return sides
+  end
+  warn(
+    ('diff.sides is %q. Use "both" or "head". The diff shows both sides.'):format(tostring(sides))
+  )
+  return "both"
+end
 
 ---@param opts didymus.diff.ViewOpts
 ---@return didymus.diff.View
@@ -69,6 +120,7 @@ function View.new(opts)
   local self = setmetatable({
     shown = false,
     layout = config.options.diff.layout,
+    sides = get_config_sides(),
     opts = opts,
     provider = provider,
     provider_err = provider_err and ("%s (diff.provider)"):format(provider_err),
@@ -112,11 +164,6 @@ function View.new(opts)
     end,
   })
   return self
-end
-
----@param message string
-local function warn(message)
-  vim.notify("didymus: " .. message, vim.log.levels.WARN)
 end
 
 --- Change to the inline layout after the user closed the base window, or put a different buffer in
@@ -169,6 +216,33 @@ function View:find_file(buf)
       return file
     end
   end
+end
+
+--- The file of the target whose base buffer is `buf`, or nil.
+---@param buf integer
+---@return didymus.diff.File?
+function View:find_base_file(buf)
+  for file, state in pairs(self.revisions) do
+    if state.buf == buf then
+      return file
+    end
+  end
+end
+
+--- An attached buffer of `file`: a buffer that has its hunks, else one that waits for them.
+---@param file didymus.diff.File
+---@return integer?
+function View:find_attached_buf(file)
+  local waiting_buf
+  for buf, state in pairs(self.attached) do
+    if state.file == file and vim.api.nvim_buf_is_valid(buf) then
+      if state.ready then
+        return buf
+      end
+      waiting_buf = waiting_buf or buf
+    end
+  end
+  return waiting_buf
 end
 
 ---@param text string
@@ -292,13 +366,7 @@ function View:show_base_buf(code_win, buf)
   local win = self.base_win
   if win and vim.api.nvim_win_is_valid(win) then
     if vim.api.nvim_win_get_buf(win) ~= buf then
-      vim.api.nvim_win_call(win, function()
-        vim.api.nvim_cmd({
-          cmd = "buffer",
-          count = buf,
-          mods = { keepjumps = true, keepalt = true },
-        }, {})
-      end)
+      show_buf(win, buf)
     end
     return
   end
@@ -352,8 +420,82 @@ function View:clear_display()
   end
 end
 
+--- End the "base" sides. Show the head buffer in the code window, at the line that matches the
+--- cursor. Do not change the jumplist.
+---@param sides didymus.diff.Sides? The new sides. Default: the sides before "base".
+function View:leave_base(sides)
+  self.sides, self.sides_before_base = sides or self.sides_before_base or "both", nil
+  local win = self.opts.get_code_win()
+  local file = win and self:find_base_file(vim.api.nvim_win_get_buf(win))
+  if not (win and file) then
+    return
+  end
+  local line = vim.api.nvim_win_get_cursor(win)[1]
+  local head_buf = self:find_attached_buf(file)
+  local file_hunks = head_buf and self.provider:hunks(head_buf)
+  local target = self.opts.target --[[@as didymus.diff.Target]]
+  show_buf(win, head_buf or vim.fn.bufadd(vim.fs.joinpath(target.cwd, file.path)))
+  if file_hunks then
+    line = hunks.map_line(file_hunks, {
+      line = line,
+      side = "base",
+      line_count = vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(win)),
+    })
+  end
+  set_cursor(win, line)
+end
+
+--- Start the "base" sides: show the base buffer of the file of the code window in the code window,
+--- at the line that matches the cursor. Wait for the hunks and the base buffer first.
+function View:enter_base()
+  local win = self.opts.get_code_win()
+  local buf = win and vim.api.nvim_win_get_buf(win)
+  local file = buf and self:find_file(buf)
+  if not (win and buf and file) then
+    return warn("the code window does not show a file of the diff")
+  end
+  ---@type didymus.diff.view.BaseRequest
+  local request = { buf = buf }
+  self.base_request = request
+  local function is_current()
+    return self.shown
+      and self.base_request == request
+      and self.opts.get_code_win() == win
+      and vim.api.nvim_win_get_buf(win) == buf
+  end
+  self:attach(buf, file, function(err)
+    if not is_current() then
+      return
+    end
+    if err then
+      self.base_request = nil
+      return self:warn_error(file.path, err)
+    end
+    self:get_base_buf(file, function(base_buf, base_err)
+      if not is_current() then
+        return
+      end
+      self.base_request = nil
+      if base_err then
+        return self:warn_error(file.path, base_err)
+      end
+      ---@cast base_buf integer
+      local line = hunks.map_line(self.provider:hunks(buf) or {}, {
+        line = vim.api.nvim_win_get_cursor(win)[1],
+        side = "head",
+        line_count = vim.api.nvim_buf_line_count(base_buf),
+      })
+      self.sides_before_base, self.sides = self.sides, "base"
+      show_buf(win, base_buf, true)
+      set_cursor(win, line)
+      self:update()
+    end)
+  end)
+end
+
 --- Show the diff of the buffer of the code window, if it is a file of the target. Clear the old
---- display first. The split layout also shows the base buffer in the base window.
+--- display first. The split layout with both sides also shows the base buffer in the base window.
+--- With the "base" sides, the code window shows the base buffer.
 function View:update()
   if not self.shown or vim.api.nvim_get_current_tabpage() ~= self.opts.tabpage then
     return
@@ -361,52 +503,85 @@ function View:update()
   self:check_base_win()
   local win = self.opts.get_code_win()
   local buf = win and vim.api.nvim_win_get_buf(win)
-  local layout = self.layout
+  local base_file = self.sides == "base" and buf and self:find_base_file(buf) or nil
+  if self.sides == "base" and not base_file then
+    -- A jump with the "base" sides opens head files on the way.
+    if self.jump then
+      return
+    end
+    self.sides, self.sides_before_base = self.sides_before_base or "both", nil
+  end
+  local layout, sides = self.layout, self.sides
   local display = self.display
-  if display and display.win == win and display.buf == buf and display.layout == layout then
+  if
+    display
+    and display.win == win
+    and display.buf == buf
+    and display.layout == layout
+    and display.sides == sides
+  then
     return
   end
   self:clear_display()
-  local file = buf and self:find_file(buf)
-  if not (win and buf and file) or layout ~= "split" then
+  local file = base_file or (buf and self:find_file(buf))
+  local split = layout == "split" and sides == "both"
+  if not (win and buf and file and split) then
     self:close_base_win()
   end
   if not (win and buf and file) then
     return
   end
+  -- The hunks are in the head buffer. With the "base" sides, it is hidden.
+  local head_buf = buf
+  if base_file then
+    local attached_buf = self:find_attached_buf(base_file)
+    if not attached_buf then
+      self:leave_base()
+      return self:update()
+    end
+    head_buf = attached_buf
+  end
   local number = self.display_count
-  local new_display = { win = win, buf = buf, layout = layout, number = number }
+  local new_display = {
+    win = win,
+    buf = buf,
+    layout = layout,
+    sides = sides,
+    head_buf = head_buf,
+    number = number,
+  }
   self.display = new_display
   local function is_current()
     return self.shown and self.display ~= nil and self.display.number == number
   end
   local attached, base_buf = false, nil
   local function render()
-    if not attached or (layout == "split" and not base_buf) then
+    if not attached or (split and not base_buf) then
       return
     end
     self.provider:render({
       layout = layout,
-      sides = "both",
+      sides = sides,
       file = file,
       target = self.opts.target --[[@as didymus.diff.Target]],
-      head_win = win,
-      head_buf = buf,
-      base_win = new_display.base_win,
-      base_buf = base_buf,
+      head_win = not base_file and win or nil,
+      head_buf = head_buf,
+      base_win = base_file and win or new_display.base_win,
+      base_buf = base_file and buf or base_buf,
     }, function(render_err)
       if render_err and is_current() then
         self:warn_once(file.path, render_err)
       end
     end)
   end
-  self:attach(buf, file, function(err)
+  self:attach(head_buf, file, function(err)
     if not is_current() then
       return
     end
     if err then
-      -- A jump that waits for this buffer shows the error itself.
-      if self.jump and self.jump.buf == buf then
+      -- A jump or a change of the sides that waits for this buffer shows the error itself.
+      local jump, request = self.jump, self.base_request
+      if (jump and jump.buf == head_buf) or (request and request.buf == head_buf) then
         return
       end
       return self:warn_once(file.path, err)
@@ -414,7 +589,7 @@ function View:update()
     attached = true
     render()
   end)
-  if layout ~= "split" then
+  if not split then
     return
   end
   self:get_base_buf(file, function(result, err)
@@ -457,22 +632,14 @@ function View:forget(buf)
     return
   end
   self.attached[buf] = nil
-  if self.display and self.display.buf == buf then
+  if self.display and (self.display.buf == buf or self.display.head_buf == buf) then
     self:clear_display()
+    self:schedule_update()
   end
   -- The provider must not change the buffer while it unloads.
   vim.schedule(function()
     self.provider:detach(buf)
   end)
-end
-
---- Put the cursor of `win` on the first non-blank character of `line`.
----@param win integer
----@param line integer
-local function set_cursor(win, line)
-  local buf = vim.api.nvim_win_get_buf(win)
-  local text = vim.api.nvim_buf_get_lines(buf, line - 1, line, true)[1]
-  vim.api.nvim_win_set_cursor(win, { line, (text:find("%S") or 1) - 1 })
 end
 
 --- The stop of the hunks after `line` on `side`, in `direction`, and its hunk. Nil if there is no
@@ -492,17 +659,14 @@ end
 
 --- Show the code window again as it was before the jump. Do not change the jumplist.
 ---@param start didymus.diff.view.Start
+---@param hide boolean Keep the buffer of the code window loaded, because it has the hunks.
 ---@return boolean restored
-local function restore(start)
+local function restore(start, hide)
   if not (vim.api.nvim_win_is_valid(start.win) and vim.api.nvim_buf_is_valid(start.buf)) then
     return false
   end
   vim.api.nvim_set_current_win(start.win)
-  local ok = pcall(vim.api.nvim_cmd, {
-    cmd = "buffer",
-    count = start.buf,
-    mods = { keepjumps = true, keepalt = true },
-  }, {})
+  local ok = pcall(show_buf, start.win, start.buf, hide)
   return ok and pcall(vim.api.nvim_win_set_cursor, start.win, start.cursor)
 end
 
@@ -558,12 +722,13 @@ end
 
 ---@class didymus.diff.view.Stop
 ---@field line integer The head line.
----@field base_buf integer? Only for a jump in the base window.
----@field base_line integer? Only for a jump in the base window.
+---@field base_buf integer? Only for a jump in the base window, or with the "base" sides.
+---@field base_line integer? Only for a jump in the base window, or with the "base" sides.
 
 --- Go to the next or the previous hunk of the provider in the code window, also in the next files of
 --- the target. Do not wrap. In the base window, use the base lines, and move the cursor of the base
---- window. See docs/architecture/diff.md#navigation.
+--- window. With the "base" sides, use the base lines, and show the base buffers in the code window.
+--- See docs/architecture/diff.md#navigation.
 ---@param direction 1|-1
 function View:go_to(direction)
   if not self.shown then
@@ -579,8 +744,20 @@ function View:go_to(direction)
   self.jump = jump
   local start_win = self.opts.get_code_win()
   local start_buf = start_win and vim.api.nvim_win_get_buf(start_win)
-  local start_file = start_buf and self:find_file(start_buf)
+  local base_sides = self.sides == "base"
+  local start_file, start_head_buf
+  if base_sides then
+    start_file = start_buf and self:find_base_file(start_buf)
+    start_head_buf = start_file and self:find_attached_buf(start_file)
+    if not start_head_buf then
+      start_file = nil
+    end
+  else
+    start_file = start_buf and self:find_file(start_buf)
+    start_head_buf = start_buf
+  end
   local from_base = self.base_win ~= nil and vim.api.nvim_get_current_win() == self.base_win
+  local use_base = from_base or base_sides
   ---@type didymus.diff.view.Start?
   local start
   -- A file that the jump opened only to get its hunks.
@@ -602,20 +779,24 @@ function View:go_to(direction)
     end
     if self.jump == jump then
       self.jump = nil
+      -- The code window can show a buffer that ends the "base" sides.
+      self:schedule_update()
     end
     return false
   end
 
-  --- Wait for the hunks of `buf`, and for the base buffer in the base window. Stop the jump if the
-  --- code window shows a different buffer. An error shows each time, because the user gave the
-  --- command.
+  --- Wait for the hunks of the head buffer `buf`, and for the base buffer if the jump uses the base
+  --- lines. Stop the jump if the code window does not show `shown_buf`. An error shows each time,
+  --- because the user gave the command.
   ---@param buf integer
   ---@param file didymus.diff.File
   ---@param cb fun(file_hunks: didymus.diff.Hunk[]?, base_buf: integer?) No hunks after an error.
-  local function wait_for_hunks(buf, file, cb)
+  ---@param shown_buf integer? The buffer of the code window. Default `buf`.
+  local function wait_for_hunks(buf, file, cb, shown_buf)
+    shown_buf = shown_buf or buf
     jump.buf = buf
     self:attach(buf, file, function(err)
-      if not is_shown(buf) then
+      if not is_shown(shown_buf) then
         return
       end
       jump.buf = nil
@@ -624,11 +805,11 @@ function View:go_to(direction)
         return cb(nil)
       end
       local file_hunks = self.provider:hunks(buf) or {}
-      if not from_base then
+      if not use_base then
         return cb(file_hunks)
       end
       self:get_base_buf(file, function(base_buf, base_err)
-        if not is_shown(buf) then
+        if not is_shown(shown_buf) then
           return
         end
         if base_err then
@@ -640,14 +821,15 @@ function View:go_to(direction)
     end)
   end
 
-  --- The stop after `line` in the head buffer `buf`, or in `base_buf` in the base window.
+  --- The stop after `line` in the head buffer `buf`, or in `base_buf` if the jump uses the base
+  --- lines.
   ---@param file_hunks didymus.diff.Hunk[]
   ---@param buf integer
   ---@param base_buf integer?
   ---@param line integer
   ---@return didymus.diff.view.Stop?
   local function get_stop(file_hunks, buf, base_buf, line)
-    if not from_base then
+    if not use_base then
       local head_line = find_stop(file_hunks, buf, "head", line, direction)
       return head_line and { line = head_line }
     end
@@ -664,7 +846,17 @@ function View:go_to(direction)
   ---@param stop didymus.diff.view.Stop
   local function land(path, stop)
     self.jump = nil
-    local restored = opened and start ~= nil and restore(start)
+    local restored = opened and start ~= nil and restore(start, base_sides)
+    local code_win = self.opts.get_code_win()
+    if base_sides and stop.base_buf and code_win then
+      vim.api.nvim_set_current_win(code_win)
+      if not opened or restored then
+        vim.cmd("normal! m'")
+      end
+      show_buf(code_win, stop.base_buf, true)
+      set_cursor(code_win, stop.base_line --[[@as integer]])
+      return self:update()
+    end
     if not self.opts.open_file(path, stop.line, { keepjumps = opened and not restored }) then
       return
     end
@@ -682,7 +874,7 @@ function View:go_to(direction)
     if not file then
       self.jump = nil
       if opened and start then
-        restore(start)
+        restore(start, base_sides)
       end
       if from_base and self.base_win and vim.api.nvim_win_is_valid(self.base_win) then
         vim.api.nvim_set_current_win(self.base_win)
@@ -699,7 +891,7 @@ function View:go_to(direction)
         end
         check(index + 1)
       end
-      if not from_base then
+      if not use_base then
         return check_ready(nil)
       end
       return self:get_base_buf(file, function(base_buf, err)
@@ -742,7 +934,8 @@ function View:go_to(direction)
   end
   ---@cast start_win integer
   ---@cast start_buf integer
-  wait_for_hunks(start_buf, start_file, function(file_hunks, base_buf)
+  ---@cast start_head_buf integer
+  wait_for_hunks(start_head_buf, start_file, function(file_hunks, base_buf)
     if not file_hunks then
       self.jump = nil
       return
@@ -755,7 +948,7 @@ function View:go_to(direction)
         and self.base_win_buf == base_buf
       line = shows_base and vim.api.nvim_win_get_cursor(base_win)[1] or 1
     end
-    local stop = get_stop(file_hunks, start_buf, base_buf, line)
+    local stop = get_stop(file_hunks, start_head_buf, base_buf, line)
     if not stop then
       start = { win = start_win, buf = start_buf, cursor = vim.api.nvim_win_get_cursor(start_win) }
       return check(1)
@@ -766,14 +959,20 @@ function View:go_to(direction)
     end
     vim.api.nvim_set_current_win(start_win)
     vim.cmd("normal! m'")
-    set_cursor(start_win, stop.line)
-  end)
+    set_cursor(start_win, base_sides and stop.base_line or stop.line)
+  end, start_buf)
 end
 
 ---@param layout string
 ---@return string
 local function get_layout_err(layout)
   return ("the diff provider does not have the %s layout"):format(layout)
+end
+
+---@param sides string
+---@return string
+local function get_sides_err(sides)
+  return ("the diff provider does not have the %s sides"):format(sides)
 end
 
 --- Show the diff in the code window. If the provider or the target is not available, show why.
@@ -796,6 +995,14 @@ function View:show()
     end
     self.layout = "inline"
   end
+  if not self.provider.capabilities.sides[self.sides] then
+    local err = get_sides_err(self.sides)
+    if not self.warned[err] then
+      self.warned[err] = true
+      warn(err)
+    end
+    self.sides = "both"
+  end
   self.shown = true
   self.opts.on_show()
   self:update()
@@ -806,6 +1013,11 @@ function View:hide()
   if not self.shown then
     return
   end
+  -- The base buffers are deleted below, so the code window must show the head buffer.
+  if self.sides == "base" then
+    self:leave_base()
+  end
+  self.base_request = nil
   self.shown = false
   self:clear_display()
   self:close_base_win()
@@ -835,6 +1047,40 @@ function View:set_layout(layout)
     self:update()
   else
     self:show()
+  end
+end
+
+local next_sides = { both = "head", head = "base", base = "both" }
+
+--- Set the sides, and show the diff if it is hidden. With no sides, go to the next sides: both,
+--- head, base. The "base" sides show the base buffer in the code window. They need a file of the
+--- target in the code window.
+---@param sides didymus.diff.Sides?
+function View:set_sides(sides)
+  sides = sides or next_sides[self.sides]
+  if self.provider and not self.provider.capabilities.sides[sides] then
+    return warn(get_sides_err(sides))
+  end
+  self.base_request = nil
+  if sides ~= "base" then
+    if self.sides == "base" then
+      self:leave_base(sides)
+    else
+      self.sides = sides
+    end
+    if self.shown then
+      self:update()
+    else
+      self:show()
+    end
+    return
+  end
+  if self.sides == "base" then
+    return
+  end
+  self:show()
+  if self.shown then
+    self:enter_base()
   end
 end
 

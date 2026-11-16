@@ -302,7 +302,10 @@ T["next from a different tabpage goes to the review tabpage"] = function()
 end
 
 T[":Didymus diff completes its actions"] = function()
-  eq(child.fn.getcompletion("Didymus diff ", "cmdline"), { "layout", "next", "prev", "toggle" })
+  eq(
+    child.fn.getcompletion("Didymus diff ", "cmdline"),
+    { "layout", "next", "prev", "side", "toggle" }
+  )
 end
 
 T["next with no review shows a message"] = function()

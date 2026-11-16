@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation, new comments, replies, resolve, the submit or the discard of the review, the refresh, the inline and split diff, and the diff navigation work now.
+> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation, new comments, replies, resolve, the submit or the discard of the review, the refresh, the inline and split diff, the sides of the diff, and the diff navigation work now.
 
 ## Goals
 
@@ -296,17 +296,22 @@ The review tabpage shows the diff of the pull request on the real file, in the c
 | --- | --- |
 | `:Didymus diff toggle` | Show or hide the diff in the review tabpage. |
 | `:Didymus diff layout [inline\|split]` | Set the layout of the diff. With no argument, change to the other layout. |
+| `:Didymus diff side [both\|base\|head]` | Show both sides, only the base side, or only the head side. With no argument, go to the next sides: `both`, `head`, `base`. |
 | `:Didymus diff next`, `:Didymus diff prev` | Go to the next or the previous hunk of the diff, also in a different file. |
 
 The diff shows when the review opens, and follows the code window: after `<CR>` in the files panel, `gd`, `gf` or `:e` to a file of the pull request, the diff shows for that file. Other windows show only the gitsigns signs. A deleted file has no diff.
 
-In a different tabpage, `toggle`, `layout`, `next` and `prev` go to the review tabpage first. With no review, a warning shows.
+In a different tabpage, `toggle`, `layout`, `side`, `next` and `prev` go to the review tabpage first. With no review, a warning shows.
 
 The `inline` layout shows the deleted lines in the code window. The `split` layout shows the base of the file in the base window, on the left of the code window, in the diff mode of Neovim. The base window is read-only. It follows the code window, and closes when the code window shows a file that is not in the pull request. If you close the base window, or open a different buffer in it, the layout changes to `inline`. `layout` of a hidden diff shows the diff.
 
+The `head` side shows only the code window, with the signs of the added and changed lines. The `base` side shows the base of the file in the code window, with the deleted lines in the `DiffDelete` highlight. The base buffer is read-only, and has no LSP and no threads. Both of them ignore the layout, so the base window closes. `both` opens it again. When the side changes, the cursor goes to the matching line of the other side. `side` of a hidden diff shows the diff.
+
+The `base` side is temporary. `next` and `prev` keep it, and show the base of the next file. Any other buffer in the code window ends it, for example `<CR>` in the files panel. Then the side goes back to the value before `base`. A comment needs the head side, so `:Didymus review comment` on the base side shows a warning.
+
 In the `split` layout, Neovim computes the diff of the two windows with your `'diffopt'`. So the diff mode can show a hunk a little differently from the gitsigns signs. When the diff hides or the layout changes, didymus puts back the window options that the diff mode changed, such as `'foldmethod'` and `'wrap'`.
 
-`next` and `prev` move the cursor in the code window. In the base window, they move the cursor of the base window, to the base lines of the hunks. At the last hunk of a file, `next` goes to the first hunk of the next file with hunks, in the order of the files panel. `prev` goes to the last hunk of the previous file. They skip a file with no hunks, such as a binary file. The stop of a deletion is the line after the deleted lines. At the last or the first hunk, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. A hidden diff has no hunks, so a message shows.
+`next` and `prev` move the cursor in the code window. In the base window, they move the cursor of the base window, to the base lines of the hunks. With the `base` side, they use the base lines in the code window. At the last hunk of a file, `next` goes to the first hunk of the next file with hunks, in the order of the files panel. `prev` goes to the last hunk of the previous file. They skip a file with no hunks, such as a binary file. The stop of a deletion is the line after the deleted lines. At the last or the first hunk, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. A hidden diff has no hunks, so a message shows.
 
 `:Didymus review next hunk` uses the hunks of GitHub, where you can comment. `:Didymus diff next` uses the hunks of the diff provider, one for each change.
 
@@ -321,11 +326,12 @@ There are no default keymaps. For example:
 ```lua
 vim.keymap.set("n", "<leader>dt", "<Plug>(didymus-diff-toggle)")
 vim.keymap.set("n", "<leader>dl", "<Plug>(didymus-diff-layout)")
+vim.keymap.set("n", "<leader>ds", "<Plug>(didymus-diff-side)")
 vim.keymap.set("n", "<leader>dn", "<Plug>(didymus-diff-next)")
 vim.keymap.set("n", "<leader>dp", "<Plug>(didymus-diff-prev)")
 ```
 
-`<Plug>(didymus-diff-toggle)`, `<Plug>(didymus-diff-layout)`, `<Plug>(didymus-diff-layout-inline)`, `<Plug>(didymus-diff-layout-split)`, `<Plug>(didymus-diff-next)` and `<Plug>(didymus-diff-prev)` are normal mode mappings. `<Plug>(didymus-diff-layout)` changes to the other layout. To check gitsigns.nvim, run `:checkhealth didymus`.
+`<Plug>(didymus-diff-toggle)`, `<Plug>(didymus-diff-layout)`, `<Plug>(didymus-diff-layout-inline)`, `<Plug>(didymus-diff-layout-split)`, `<Plug>(didymus-diff-side)`, `<Plug>(didymus-diff-side-both)`, `<Plug>(didymus-diff-side-base)`, `<Plug>(didymus-diff-side-head)`, `<Plug>(didymus-diff-next)` and `<Plug>(didymus-diff-prev)` are normal mode mappings. `<Plug>(didymus-diff-layout)` changes to the other layout. `<Plug>(didymus-diff-side)` goes to the next sides. To check gitsigns.nvim, run `:checkhealth didymus`.
 
 The defaults:
 
@@ -335,6 +341,7 @@ require("didymus").setup({
     provider = "gitsigns", -- "gitsigns", "test" for tests, or a provider table
     enabled = true, -- the diff shows when a review opens
     layout = "inline", -- "inline" or "split"
+    sides = "both", -- "both" or "head". Only `:Didymus diff side base` shows the base side.
     split = { width = 0.5 }, -- the width of the base window: below 1, a fraction of the code window, else columns
   },
 })

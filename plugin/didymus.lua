@@ -86,3 +86,13 @@ for _, layout in ipairs({ "inline", "split" }) do
     require("didymus.diff").layout({ layout = layout })
   end, { desc = "didymus: diff layout " .. layout })
 end
+
+vim.keymap.set("n", "<Plug>(didymus-diff-side)", function()
+  require("didymus.diff").side()
+end, { desc = "didymus: diff go to the next sides" })
+
+for _, side in ipairs({ "both", "base", "head" }) do
+  vim.keymap.set("n", ("<Plug>(didymus-diff-side-%s)"):format(side), function()
+    require("didymus.diff").side({ side = side })
+  end, { desc = "didymus: diff side " .. side })
+end

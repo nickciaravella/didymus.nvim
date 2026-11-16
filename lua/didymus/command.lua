@@ -19,7 +19,13 @@ local tree = {
     discard = {},
     refresh = {},
   },
-  diff = { toggle = {}, layout = { inline = {}, split = {} }, next = {}, prev = {} },
+  diff = {
+    toggle = {},
+    layout = { inline = {}, split = {} },
+    side = { both = {}, base = {}, head = {} },
+    next = {},
+    prev = {},
+  },
 }
 
 ---@param text string
@@ -124,6 +130,9 @@ local diff_actions = {
   layout = function(rest)
     require("didymus.diff").layout({ layout = non_empty(rest) })
   end,
+  side = function(rest)
+    require("didymus.diff").side({ side = non_empty(rest) })
+  end,
   next = function()
     require("didymus.diff").next()
   end,
@@ -144,7 +153,7 @@ local groups = {
   },
   diff = {
     actions = diff_actions,
-    usage = "Use :Didymus diff toggle, layout, next or prev.",
+    usage = "Use :Didymus diff toggle, layout, side, next or prev.",
   },
 }
 

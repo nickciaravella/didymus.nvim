@@ -1,6 +1,7 @@
 --- The gitsigns diff provider. gitsigns computes the hunks against the base commit and shows the
 --- signs. Its unified view shows the deleted lines in the code window. The split layout uses native
---- diff mode in the base window and the code window.
+--- diff mode in the base window and the code window. The "base" sides highlight the deleted lines of
+--- the base buffer.
 --- See docs/architecture/diff.md#gitsigns-provider and agents/expertise/gitsigns.md.
 
 --- The calls to internal gitsigns modules. gitsigns has no public API for them. If gitsigns
@@ -105,7 +106,7 @@ end
 local M = {
   capabilities = {
     layouts = { inline = true, split = true },
-    sides = { both = true, head = true },
+    sides = { both = true, base = true, head = true },
     bases = { commit = true },
     heads = { worktree = true },
   },
@@ -455,6 +456,45 @@ function M:detach(buf)
   end
 end
 
+--- The marks of the "base" sides in each window. Each window has its own namespace, so that the
+--- marks show only in that window.
+---@type table<integer, { ns: integer, buf: integer }>
+local base_marks = {}
+
+---@param win integer
+local function clear_base_marks(win)
+  local marks = base_marks[win]
+  base_marks[win] = nil
+  if marks and vim.api.nvim_buf_is_valid(marks.buf) then
+    vim.api.nvim_buf_clear_namespace(marks.buf, marks.ns, 0, -1)
+  end
+end
+
+vim.api.nvim_create_autocmd("WinClosed", {
+  group = diff_group,
+  callback = function(args)
+    clear_base_marks(tonumber(args.match) --[[@as integer]])
+  end,
+})
+
+--- Highlight the base lines of the hunks in `buf`, only in `win`.
+---@param win integer
+---@param buf integer
+---@param file_hunks didymus.diff.Hunk[]
+local function put_base_marks(win, buf, file_hunks)
+  clear_base_marks(win)
+  local ns = vim.api.nvim_create_namespace(("didymus.diff.gitsigns.base.%d"):format(win))
+  local line_count = vim.api.nvim_buf_line_count(buf)
+  for _, hunk in ipairs(file_hunks) do
+    local last = math.min(hunk.base.start + hunk.base.count - 1, line_count)
+    for line = hunk.base.start, last do
+      vim.api.nvim_buf_set_extmark(buf, ns, line - 1, 0, { line_hl_group = "DiffDelete" })
+    end
+  end
+  vim.api.nvim__ns_set(ns, { wins = { win } })
+  base_marks[win] = { ns = ns, buf = buf }
+end
+
 ---@param buf integer
 ---@return didymus.diff.Hunk[]?
 function M:hunks(buf)
@@ -482,26 +522,29 @@ local function check_render(display)
   if not M.capabilities.sides[display.sides] then
     return ("the gitsigns provider does not have the %q sides yet"):format(display.sides)
   end
-  local win, buf = display.head_win, display.head_buf
-  if not (win and buf and vim.api.nvim_win_is_valid(win)) then
-    return "the display has no head window"
-  end
-  if vim.api.nvim_win_get_buf(win) ~= buf then
-    return "the head window does not show the head buffer"
-  end
-  local state = attached[buf]
+  local state = display.head_buf and attached[display.head_buf]
   if not (state and state.ready) then
     return ("%s is not attached"):format(display.file.path)
   end
-  if display.layout == "split" and display.sides == "both" then
-    local base_win, base_buf = display.base_win, display.base_buf
-    if not (base_win and base_buf and vim.api.nvim_win_is_valid(base_win)) then
-      return "the display has no base window"
+  ---@param side didymus.diff.Side
+  ---@return string?
+  local function check_win(side)
+    local win, buf = display[side .. "_win"], display[side .. "_buf"]
+    if not (win and buf and vim.api.nvim_win_is_valid(win)) then
+      return ("the display has no %s window"):format(side)
     end
-    if vim.api.nvim_win_get_buf(base_win) ~= base_buf then
-      return "the base window does not show the base buffer"
+    if vim.api.nvim_win_get_buf(win) ~= buf then
+      return ("the %s window does not show the %s buffer"):format(side, side)
     end
   end
+  if display.sides == "base" then
+    return check_win("base")
+  end
+  local err = check_win("head")
+  if not err and display.layout == "split" and display.sides == "both" then
+    err = check_win("base")
+  end
+  return err
 end
 
 --- Open the unified view in `win`, if it has no view.
@@ -557,6 +600,12 @@ function M:render(display, cb)
   local win, buf =
     display.head_win, --[[@as integer]]
     display.head_buf --[[@as integer]]
+  if display.sides == "base" then
+    local base_win = display.base_win --[[@as integer]]
+    put_base_marks(base_win, display.base_buf --[[@as integer]], M:hunks(buf) or {})
+    done(nil)
+    return
+  end
   if display.sides == "head" then
     opened_views[win] = nil
     done(internal.close_view(win))
@@ -582,6 +631,7 @@ end
 
 ---@param win integer
 function M:clear(win)
+  clear_base_marks(win)
   opened_views[win] = nil
   internal.close_view(win)
   if vim.api.nvim_win_is_valid(win) then

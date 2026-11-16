@@ -425,10 +425,78 @@ T["render"]["shows no view with the head sides"] = function()
   eq(child.lua_get("view_marks(...)", { head_win, buf }), 0)
 end
 
-T["render"]["gives an error for the base sides"] = function()
+--- Show a base buffer of a.txt in `win`, and keep the head buffer loaded. Render the "base" sides.
+---@param win integer
+---@param head_buf integer
+---@return integer base_buf
+local function render_base(win, head_buf)
+  return child.lua(
+    [[
+    local win, head_buf = ...
+    local base_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(base_buf, 0, -1, false, { "one", "two", "three", "four", "five" })
+    vim.api.nvim_win_call(win, function()
+      vim.cmd("hide buffer " .. base_buf)
+    end)
+    results.render = nil
+    provider:render({
+      layout = "inline",
+      sides = "base",
+      file = { path = "a.txt", status = "modified" },
+      target = target(),
+      head_buf = head_buf,
+      base_win = win,
+      base_buf = base_buf,
+    }, function(err)
+      results.render = { err = err or vim.NIL }
+    end)
+    return base_buf
+  ]],
+    { win, head_buf }
+  )
+end
+
+--- The lines with the `DiffDelete` marks of the "base" sides in `win`, and the windows of their
+--- namespace.
+---@param win integer
+---@param buf integer
+---@return { lines: integer[], wins: integer[]? }
+local function base_marks(win, buf)
+  return child.lua(
+    [[
+    local win, buf = ...
+    local ns = vim.api.nvim_get_namespaces()["didymus.diff.gitsigns.base." .. win]
+    if not ns then
+      return { lines = {} }
+    end
+    local lines = {}
+    for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
+      if mark[4].line_hl_group == "DiffDelete" then
+        table.insert(lines, mark[2] + 1)
+      end
+    end
+    return { lines = lines, wins = vim.api.nvim__ns_get(ns).wins }
+  ]],
+    { win, buf }
+  )
+end
+
+T["render"]["highlights the deleted lines of the base buffer with the base sides"] = function()
+  local buf, head_win = attach_in_two_windows()
+  local base_buf = render_base(head_win, buf)
+  eq(wait_for_render(), vim.NIL)
+  -- "two" changed, and "four" is deleted.
+  eq(base_marks(head_win, base_buf), { lines = { 2, 4 }, wins = { head_win } })
+  eq(child.lua_get("view_marks(...)", { head_win, buf }), 0)
+
+  child.lua("provider:clear(...)", { head_win })
+  eq(base_marks(head_win, base_buf).lines, {})
+end
+
+T["render"]["gives an error for the base sides with no attached head buffer"] = function()
   local _, head_win = attach_in_two_windows()
-  child.lua("render(...)", { head_win, "base" })
-  eq(wait_for_render(), 'the gitsigns provider does not have the "base" sides yet')
+  render_base(head_win, child.api.nvim_create_buf(false, true))
+  eq(wait_for_render(), "a.txt is not attached")
 end
 
 T["split"] = MiniTest.new_set()

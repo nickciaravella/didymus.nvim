@@ -530,6 +530,15 @@ end
 ---@param range didymus.review.Range
 ---@return didymus.review.ChangedFile?
 local function check_comment(session, buf, range)
+  local base_file = session.diff_view:find_base_file(buf)
+  if base_file then
+    show_warning(
+      ("the current window shows the base of %s. A comment needs the head side."):format(
+        base_file.path
+      )
+    )
+    return
+  end
   local index = session:find_file_index(buf)
   if not index then
     show_warning(("the current window does not show a file of %s"):format(session.label))
