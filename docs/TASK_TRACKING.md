@@ -10,7 +10,7 @@ Each epic is a GitHub label.
 | --- | --- | --- |
 | `agent` | Interaction with the agent: questions, follow-ups, and links from the agent back to the code. | [`architecture/agent.md`](architecture/agent.md) |
 | `agentic-dev` | Tools, docs and skills that help agents work on didymus.nvim, such as a memory of domain knowledge. | None |
-| `diff` | Presentation and navigation of the diff, across all files in the change. | None |
+| `diff` | Presentation and navigation of the diff, across all files in the change. | [`architecture/diff.md`](architecture/diff.md) |
 | `review` | Review actions: pick a change, comment, reply, resolve, approve. | [`architecture/review.md`](architecture/review.md) |
 
 ## Rules
