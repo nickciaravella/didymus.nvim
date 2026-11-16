@@ -146,10 +146,10 @@ end
 ---@param target didymus.review.provider.github.Target
 ---@return didymus.review.provider.github.Change
 local function to_change(pages, file_pages, target)
-  local patches = {}
+  local rest_files = {}
   for _, page in ipairs(file_pages) do
     for _, file in ipairs(page) do
-      patches[file.filename] = file.patch
+      rest_files[file.filename] = file
     end
   end
 
@@ -165,12 +165,15 @@ local function to_change(pages, file_pages, target)
   change.files = {}
   for _, page in ipairs(pages) do
     for _, file in ipairs(page.data.repository.pullRequest.files.nodes) do
+      -- GraphQL has no old path, so it comes from REST, with the patch.
+      local rest_file = rest_files[file.path] or {}
       table.insert(change.files, {
         path = file.path,
+        old_path = rest_file.previous_filename,
         status = statuses[file.changeType] or "modified",
         additions = file.additions,
         deletions = file.deletions,
-        patch = patches[file.path],
+        patch = rest_file.patch,
       })
     end
   end
@@ -199,7 +202,8 @@ function M:list_changes(opts, cb)
   end)
 end
 
---- Get the PR data and the files with GraphQL, and the patches with REST, at the same time.
+--- Get the PR data and the files with GraphQL, and the patches and old paths with REST, at the
+--- same time.
 ---@param id string A PR number, or a PR URL.
 ---@param cb fun(err: string?, change: didymus.review.provider.github.Change?)
 function M:get_change(id, cb)
