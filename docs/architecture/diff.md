@@ -186,6 +186,8 @@ A provider obeys these rules:
 
 `diff.provider` in the config is `"gitsigns"` (the default), `"test"` or a provider table. `require("didymus.diff.provider").get(spec)` gives the provider, as `review.provider` does.
 
+`didymus.diff.target` has the checks `check_revision()`, `check_file()` and `check_target()`. Each one gives an error message or nil. They do not raise an error, because a provider table of a user can give the data. A `sha` is necessary for a `"commit"` revision, and not permitted for other kinds. `base_path(file)` gives `file.base_path or file.path`.
+
 ### The diff target of a review
 
 `review/diff_target.lua` makes the target from the review session:
@@ -288,7 +290,7 @@ diff = {
 
 `diff/hunks.lua` finds the stop. `diff/view.lua` moves the cursor. The rules follow [the review navigation](review.md#navigation).
 
-1. The stop of a hunk is its first head line, or its first base line with the `base` sides. A deletion stops at the line after the deleted lines, or at line 1.
+1. The stop of a hunk is its first head line, or its first base line with the `base` sides. A deletion stops at the line after the deleted lines, or at line 1. A deletion at the end of the file stops at the last line, as in rule 5 of the review navigation.
 2. With no hunk after the cursor, `next` goes to the next file of the target that has hunks, at its first hunk. It opens the file with `open_file()` of the review, waits for `attach`, then moves the cursor. `prev` does the same backward, at the last hunk.
 3. A file with no hunks, such as a binary file, has no stops.
 4. In the base window of the split layout, `next` and `prev` move the cursor in the base window, with the base lines.
@@ -296,6 +298,13 @@ diff = {
 6. At the last or the first stop, `didymus: no next hunk` shows, and the cursor does not move.
 7. A hidden diff has no hunks, so `next` shows `didymus: the diff is hidden`.
 8. `:Didymus review next hunk` does not change. It uses the hunks of the patch of the code host, which are the commentable blocks. `diff next` uses the hunks of the diff provider, which are each change.
+
+`hunks.next(hunks, opts)` and `hunks.prev(hunks, opts)` take `opts = { line, side, line_count }`. `side` is `"head"` or `"base"`. They give the line of the stop and its hunk, or nil.
+
+- `next` gives the first stop after `line`. `prev` gives the last stop before `line`. So in a hunk, `prev` goes to the stop of that hunk.
+- The hunks do not have to be in order.
+- `hunks.stop(hunk, side, line_count)` gives the stop of one hunk. The stop is in the range 1 to `line_count`.
+- The map of a line to the other side is not in `hunks.lua` yet. Task 6 or task 7 adds it.
 
 ## gitsigns provider
 
@@ -323,8 +332,11 @@ The gitsigns view of the user, such as `:Gitsigns diffthis`, can conflict with t
 
 1. Tests give it the hunks of each path: `provider.hunks_by_path[path]`.
 2. `attach` calls `cb` in `vim.schedule()`. `delays[path]` makes it wait.
-3. `render` puts one extmark at each hunk in the namespace `didymus.diff.test`, with the layout and the sides in the text. So an end-to-end test can check the screen.
-4. It records each call in `provider.calls`. `errors.<method>` makes the next call fail.
+3. `render` puts one extmark at the stop of each hunk, with the virtual text `diff <layout> <sides>`. So an end-to-end test can check the screen. It marks `head_win` with the head stops and `base_win` with the base stops.
+4. Each window has its own namespace, `didymus.diff.test.<win>`, scoped to that window with `nvim__ns_set()`. So `clear(win)` removes only the marks of that window. A second window with the same buffer keeps its marks.
+5. With the `base` sides, the display has no head buffer. Then `render` uses the hunks of an attached buffer of `display.file`.
+6. It records each call in `provider.calls`, as plain data, such as `{ method = "attach", buf = 3, path = "a.lua" }`. `errors.attach` and `errors.render` make the next call fail.
+7. Its capabilities accept all layouts, sides, bases and heads.
 
 ## External providers
 
@@ -411,6 +423,8 @@ flowchart LR
 Task 1 can start now. After task 1, tasks 2 and 3 can go in parallel. After task 4, tasks 5 and 6 can go in parallel.
 
 Task 1 does not add gitsigns to the built-in providers. Task 3 adds it and the health check, before task 4 shows the diff to users.
+
+Task 1 adds the `diff` options to the config, but no code reads them. Task 4 adds them to the README, when the diff shows.
 
 ### Post-MVP tasks
 

@@ -33,6 +33,13 @@ M.defaults = {
       keys = { reply = "r", resolve = "x" },
     },
   },
+  diff = {
+    provider = "gitsigns", -- "gitsigns", "test" or a provider table. See lua/didymus/diff/provider/.
+    enabled = true, -- The diff shows when a review opens.
+    layout = "inline", -- "inline" or "split"
+    sides = "both", -- "both", "base" or "head"
+    split = { width = 0.5 }, -- The width of the base window. Below 1, a fraction of the code window.
+  },
 }
 
 M.options = vim.deepcopy(M.defaults)
