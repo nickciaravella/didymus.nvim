@@ -75,7 +75,7 @@ The notebook [`agents/expertise/gitsigns.md`](../../agents/expertise/gitsigns.md
 flowchart LR
   cmd[":Didymus diff"] --> api["diff API"]
   api --> review["Review session"]
-  review -- "target, code window, open_file" --> view["Diff view"]
+  review -- "target, code window, open_file, on_show" --> view["Diff view"]
   view --> provider["Diff provider<br/>gitsigns, test"]
   view --> revision["Revision buffers"]
   view --> hunks["Hunk navigation"]
@@ -83,7 +83,7 @@ flowchart LR
 
 | Part | Owns | Does not |
 | --- | --- | --- |
-| Review session | The diff target, the code window, the diff view of the review. It opens files. | Know about diff providers. |
+| Review session | The diff target, the code window, the diff view of the review. It opens files, and checks the local changes. | Know about diff providers. |
 | Diff view | The state (on, layout, sides), the base window, the revision buffers, the attached buffers. It calls the provider. | Know about code hosts or threads. |
 | Diff provider | The marks of the diff on the buffers and windows that it gets, and the hunks of a buffer. | Open, close or focus windows. Change state outside the windows that it gets. |
 | Revision buffers | Read-only buffers with `git show <sha>:<path>`. | Know about providers. |
@@ -112,12 +112,13 @@ lua/didymus/
 plugin/didymus.lua         the <Plug>(didymus-diff-…) mappings
 tests/unit/didymus/diff/   hunks, target
 tests/e2e/diff/            the flows, with the test provider
-tests/integration/diff/    the gitsigns provider, with the real gitsigns
+tests/integration/diff/    the gitsigns provider and the diff view, with the real gitsigns
 ```
 
 Calls go in one direction: `command` → `diff/init` → `review` (for the current session) → `diff/view` → the provider.
 
-- `diff/` does not require `review/`. The review session gives the diff view a target and two functions: `get_code_win()` and `open_file(path, line)`.
+- `diff/` does not require `review/`. The review session gives the diff view a target and three functions: `get_code_win()`, `open_file(path, line)` and `on_show()`. Task 5 adds `open_file()`.
+- The diff view calls `on_show()` each time the diff shows. The session checks the local changes in it, one time for each review.
 - `diff/init.lua` gets the diff view from `require("didymus.review").current()`. This is the only link from `diff/` to `review/`.
 - Providers can use `diff/hunks.lua` and `diff/target.lua`. They do not use `diff/view.lua`.
 
@@ -202,7 +203,7 @@ A provider obeys these rules:
 
 1. A provider can set `change.diff = { base = Revision, head = Revision }`. Then the target uses them. The `local` review provider uses this later. The GitHub provider does not set it.
 2. GitHub REST gives `previous_filename` for a renamed file. The GitHub provider puts it in `ChangedFile.old_path`.
-3. If `HEAD` is not the change head, or the file has local changes, the diff shows them too. A warning shows once for each review, because the diff then is not the diff of the code host.
+3. If `HEAD` is not the change head, or a file of the change has local changes, the diff shows them too. A warning shows once for each review, because the diff then is not the diff of the code host. See [Show](#show).
 
 `make(session)` gives the target, or nil and an error with no `didymus:` prefix. The diff view adds the prefix when it shows the warning.
 
@@ -261,16 +262,21 @@ diff = {
 ### Show
 
 1. The diff shows when a review opens, if `diff.enabled` is true. `toggle` shows it later.
-2. If the provider is not available, a warning shows, and the review opens with no diff. See [Health check](#health-check).
+2. If `diff.provider` is unknown, or the review gives no target, a warning shows at the open and at each `toggle`. The review opens with no diff.
 3. The diff view attaches the provider to the buffer of the code window, if it is a file of the target. It renders the display in `cb`.
-4. A progress message shows if `attach` takes more than 500 milliseconds.
-5. In a different tabpage, `toggle` goes to the review tabpage first. With no review, a warning shows: `didymus: no review is open`.
+4. An error of `attach` or `render` shows as `didymus: cannot show the diff of <path>: <err>`. Each different error shows once in a review. So a missing gitsigns gives one warning, not one for each file. See [Health check](#health-check).
+5. A progress message shows if `attach` takes more than 500 milliseconds.
+6. In a different tabpage, `toggle` goes to the review tabpage first. With no review, a warning shows: `didymus: no review is open`.
+7. At the first show in a review, the session runs `git status` async. If `HEAD` is not the change head, or a file of the change has uncommitted changes, a warning tells it. Changes in other files do not count. Edits after the check give no warning (decision 8).
 
 ### Follow the code window
 
 1. On `BufWinEnter` in the code window, the diff view clears the old display. If the new buffer is a file of the target, it attaches and renders again.
-2. A buffer stays attached until the diff hides or the review closes. Then the diff view detaches all buffers. So a return to a file is fast.
-3. A deleted file is not in the checkout. It has no diff in the MVP.
+2. The diff view attaches only when the review tabpage is current (fact 8). On `TabEnter`, it checks the code window again.
+3. The callbacks of an old display do nothing. For example, a slow `attach` does not render after the code window shows a different file.
+4. A buffer stays attached until the diff hides or the review closes. Then the diff view detaches all buffers. So a return to a file is fast. An unloaded buffer is detached.
+5. A deleted file is not in the checkout. It has no diff in the MVP.
+6. The target does not change at a refresh, because the checkout does not change. See rule 5 of [the review refresh](review.md#refresh).
 
 ### Hide and close
 
@@ -440,6 +446,13 @@ The user approved these decisions of task 3 on 2026-11-15.
 16. **The gitsigns provider calls internal gitsigns modules** for the hunks, the unified view and the base of the config, because the diff must be correct and D3 must hold. See [Internal gitsigns calls](#internal-gitsigns-calls).
 17. **The capabilities of a provider list only what it does now.** Tasks 6 and 7 add `split` and `base` to the gitsigns provider.
 
+The user approved these decisions of task 4 on 2026-11-15.
+
+18. **The local changes warning comes at the first show of the diff in a review.** It uses `git status` and counts only the files of the change. The session does the check in `on_show()`.
+19. **Each different error of the diff provider shows once in a review.**
+20. **Task 4 shows only `inline` with `both` sides.** It ignores `diff.layout` and `diff.sides`. The README documents `diff.provider` and `diff.enabled`. Task 6 adds `diff.layout` and `diff.split` to the README, and task 7 adds `diff.sides`.
+21. **The target stays the target of the open,** also after a refresh.
+
 ## Work plan
 
 Each task is one GitHub issue and one pull request. Each task adds its tests and updates the docs. After each task, a person can do a manual test.
@@ -463,14 +476,14 @@ flowchart LR
 | 3. [gitsigns provider](https://github.com/nickciaravella/didymus.nvim/issues/73) | `attach`, `detach`, `hunks`, inline `render`, `clear`, `health`. The `didymus diff` section of the health check. gitsigns in `make deps`. Integration tests. The gitsigns notebook. | 1 | A setup file shows the inline diff of a file. `:checkhealth didymus` with and without gitsigns. |
 | 4. [Diff view and toggle](https://github.com/nickciaravella/didymus.nvim/issues/74) | `diff/view.lua` and `diff/init.lua` for the inline layout with `both` sides. `:Didymus diff toggle`. Show at the review open. Follow the code window. Hide at close. The warning for local changes. | 2, 3 | Open a real PR, go through the files, toggle. |
 | 5. [Navigation](https://github.com/nickciaravella/didymus.nvim/issues/75) | `:Didymus diff next` and `prev`, across files, with the wait for `attach`. | 4 | Go through all hunks of a PR. |
-| 6. [Split layout](https://github.com/nickciaravella/didymus.nvim/issues/76) | `diff/revision.lua`. The base window. `:Didymus diff layout`. Split `render` in the gitsigns and test providers, and `split` in the capabilities of the gitsigns provider. | 4 | Change the layout on a few files. |
-| 7. [Sides](https://github.com/nickciaravella/didymus.nvim/issues/77) | `:Didymus diff side`. The base buffer in the code window. The `head` and `base` marks. `base` in the capabilities of the gitsigns provider. `next` and `prev` with the `base` sides. | 5, 6 | Look at each side of a file, then go to the next hunk. |
+| 6. [Split layout](https://github.com/nickciaravella/didymus.nvim/issues/76) | `diff/revision.lua`. The base window. `:Didymus diff layout`. Split `render` in the gitsigns and test providers, and `split` in the capabilities of the gitsigns provider. `diff.layout` and `diff.split` in the README. | 4 | Change the layout on a few files. |
+| 7. [Sides](https://github.com/nickciaravella/didymus.nvim/issues/77) | `:Didymus diff side`. The base buffer in the code window. The `head` and `base` marks. `base` in the capabilities of the gitsigns provider. `next` and `prev` with the `base` sides. `diff.sides` in the README. | 5, 6 | Look at each side of a file, then go to the next hunk. |
 
 Task 1 can start now. After task 1, tasks 2 and 3 can go in parallel. After task 4, tasks 5 and 6 can go in parallel.
 
 Task 1 does not add gitsigns to the built-in providers. Task 3 adds it and the health check, before task 4 shows the diff to users.
 
-Task 1 adds the `diff` options to the config, but no code reads them. Task 4 adds them to the README, when the diff shows.
+Task 1 adds the `diff` options to the config. Task 4 reads `diff.provider` and `diff.enabled`, and adds them to the README. Tasks 6 and 7 read the other options, and add them to the README.
 
 ### Post-MVP tasks
 

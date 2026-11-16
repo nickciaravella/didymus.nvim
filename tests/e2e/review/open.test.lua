@@ -456,7 +456,7 @@ T["the command completes the review actions"] = function()
   )
   eq(child.fn.getcompletion("Didymus review next ", "cmdline"), { "file", "hunk", "thread" })
   eq(child.fn.getcompletion("Didymus review fold ", "cmdline"), { "all" })
-  eq(child.fn.getcompletion("Didymus ", "cmdline"), { "agent", "review" })
+  eq(child.fn.getcompletion("Didymus ", "cmdline"), { "agent", "diff", "review" })
 end
 
 T["an unknown review action shows the usage"] = function()

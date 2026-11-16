@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation, new comments, replies, resolve, the submit or the discard of the review, and the refresh work now.
+> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation, new comments, replies, resolve, the submit or the discard of the review, the refresh, and the inline diff work now.
 
 ## Goals
 
@@ -17,6 +17,7 @@ Review pull requests in Neovim. Read the real code with full LSP, comment on the
 - Neovim 0.12+
 - `git`
 - For the review: [snacks.nvim](https://github.com/folke/snacks.nvim) and the [GitHub CLI](https://cli.github.com/) (`gh`), authenticated with `gh auth login`
+- For the diff (optional): [gitsigns.nvim](https://github.com/lewis6991/gitsigns.nvim), a commit after v2.1.0, because v2.1.0 has no unified view. Without it, the review works with no diff.
 
 ## Installation
 
@@ -283,6 +284,43 @@ require("didymus").setup({
     thread = { -- the thread float of a thread that shows only in the panel
       keys = { reply = "r", resolve = "x" }, -- false turns a key off
     },
+  },
+})
+```
+
+## Diff
+
+The review tabpage shows the diff of the pull request on the real file, in the code window. The base is the merge-base of the pull request. The head is the file in your checkout. The default diff provider is [gitsigns.nvim](https://github.com/lewis6991/gitsigns.nvim). It shows the signs, and the deleted lines in the code window.
+
+| Command | Behavior |
+| --- | --- |
+| `:Didymus diff toggle` | Show or hide the diff in the review tabpage. |
+
+The diff shows when the review opens, and follows the code window: after `<CR>` in the files panel, `gd`, `gf` or `:e` to a file of the pull request, the diff shows for that file. Other windows show only the gitsigns signs. A deleted file has no diff.
+
+In a different tabpage, `toggle` goes to the review tabpage first. With no review, a warning shows.
+
+The diff shows your local changes too. If `HEAD` is not the head of the pull request, or a file of the pull request has uncommitted changes, a warning shows one time in each review. Then the diff is not the diff of GitHub.
+
+While the diff shows, gitsigns compares each file that you opened in the review with the merge-base. Its signs show this diff also in other tabpages. When the diff hides, or the review closes, didymus puts back the base of your gitsigns config.
+
+If the diff is not available, a warning tells why, and the review works with no diff. For example, gitsigns.nvim is not installed, or git found no merge-base.
+
+There are no default keymaps. For example:
+
+```lua
+vim.keymap.set("n", "<leader>dt", "<Plug>(didymus-diff-toggle)")
+```
+
+`<Plug>(didymus-diff-toggle)` is a normal mode mapping. To check gitsigns.nvim, run `:checkhealth didymus`.
+
+The defaults:
+
+```lua
+require("didymus").setup({
+  diff = {
+    provider = "gitsigns", -- "gitsigns", "test" for tests, or a provider table
+    enabled = true, -- the diff shows when a review opens
   },
 })
 ```

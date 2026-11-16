@@ -70,3 +70,7 @@ end, { desc = "didymus: review resolve or unresolve" })
 vim.keymap.set({ "n", "x" }, "<Plug>(didymus-review-comment)", function()
   require("didymus.review").comment()
 end, { desc = "didymus: review comment" })
+
+vim.keymap.set("n", "<Plug>(didymus-diff-toggle)", function()
+  require("didymus.diff").toggle()
+end, { desc = "didymus: diff toggle" })
