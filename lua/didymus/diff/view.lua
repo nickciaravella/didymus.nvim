@@ -3,6 +3,7 @@
 --- See docs/architecture/diff.md#flows.
 
 local config = require("didymus.config")
+local hunks = require("didymus.diff.hunks")
 local providers = require("didymus.diff.provider")
 
 --- The time in milliseconds before the progress message of `attach` shows.
@@ -13,6 +14,7 @@ local progress_delay = 500
 ---@field target didymus.diff.Target? Nil if the diff is not available.
 ---@field target_err string? Why the diff is not available, with no "didymus:" prefix.
 ---@field get_code_win fun(): integer? The code window, or nil if it is closed.
+---@field open_file fun(path: string, line: integer, opts: { keepjumps: boolean? }?): boolean Open a file of the target in the code window at `line`, and focus that window. False if it did not open. Then the error shows.
 ---@field on_show fun() Called each time the diff shows.
 
 ---@class didymus.diff.view.Attached
@@ -25,6 +27,14 @@ local progress_delay = 500
 ---@field buf integer
 ---@field number integer Only the callbacks of the newest display apply.
 
+---@class didymus.diff.view.Jump The newest `next` or `prev`. Only its callbacks apply.
+---@field buf integer? The buffer whose `attach()` the jump waits for. The jump shows its error.
+
+---@class didymus.diff.view.Start The code window before a jump to a different file.
+---@field win integer
+---@field buf integer
+---@field cursor integer[]
+
 ---@class didymus.diff.View
 ---@field shown boolean
 ---@field private opts didymus.diff.ViewOpts
@@ -34,6 +44,7 @@ local progress_delay = 500
 ---@field private display didymus.diff.view.Shown?
 ---@field private display_count integer
 ---@field private warned table<string, boolean> The provider errors that showed. Each one shows once.
+---@field private jump didymus.diff.view.Jump?
 ---@field private update_scheduled boolean
 ---@field private group integer
 local View = {}
@@ -82,14 +93,20 @@ local function warn(message)
   vim.notify("didymus: " .. message, vim.log.levels.WARN)
 end
 
+---@param path string
+---@param err string
+function View:warn_error(path, err)
+  self.warned[err] = true
+  warn(("cannot show the diff of %s: %s"):format(path, err))
+end
+
 --- Show an error of the provider. The same error shows only once in a review, so that a missing
 --- tool does not give a warning for each file.
 ---@param path string
 ---@param err string
 function View:warn_once(path, err)
   if not self.warned[err] then
-    self.warned[err] = true
-    warn(("cannot show the diff of %s: %s"):format(path, err))
+    self:warn_error(path, err)
   end
 end
 
@@ -208,6 +225,10 @@ function View:update()
       return
     end
     if err then
+      -- A jump that waits for this buffer shows the error itself.
+      if self.jump and self.jump.buf == buf then
+        return
+      end
       return self:warn_once(file.path, err)
     end
     self.provider:render({
@@ -251,6 +272,206 @@ function View:forget(buf)
   -- The provider must not change the buffer while it unloads.
   vim.schedule(function()
     self.provider:detach(buf)
+  end)
+end
+
+--- Put the cursor of `win` on the first non-blank character of `line`.
+---@param win integer
+---@param line integer
+local function set_cursor(win, line)
+  local buf = vim.api.nvim_win_get_buf(win)
+  local text = vim.api.nvim_buf_get_lines(buf, line - 1, line, true)[1]
+  vim.api.nvim_win_set_cursor(win, { line, (text:find("%S") or 1) - 1 })
+end
+
+--- The stop of the hunks of `buf` after `line` in `direction`, or nil.
+---@param file_hunks didymus.diff.Hunk[]
+---@param buf integer
+---@param line integer
+---@param direction 1|-1
+---@return integer?
+local function find_stop(file_hunks, buf, line, direction)
+  local opts = { line = line, side = "head", line_count = vim.api.nvim_buf_line_count(buf) }
+  local find = direction > 0 and hunks.next or hunks.prev
+  return (find(file_hunks, opts))
+end
+
+--- Show the code window again as it was before the jump. Do not change the jumplist.
+---@param start didymus.diff.view.Start
+---@return boolean restored
+local function restore(start)
+  if not (vim.api.nvim_win_is_valid(start.win) and vim.api.nvim_buf_is_valid(start.buf)) then
+    return false
+  end
+  vim.api.nvim_set_current_win(start.win)
+  local ok = pcall(vim.api.nvim_cmd, {
+    cmd = "buffer",
+    count = start.buf,
+    mods = { keepjumps = true, keepalt = true },
+  }, {})
+  return ok and pcall(vim.api.nvim_win_set_cursor, start.win, start.cursor)
+end
+
+--- An attached buffer of `file` that has its hunks, or nil.
+---@param file didymus.diff.File
+---@return integer?
+function View:find_ready_buf(file)
+  for buf, state in pairs(self.attached) do
+    if state.ready and state.file == file and vim.api.nvim_buf_is_valid(buf) then
+      return buf
+    end
+  end
+end
+
+--- The files of the target after `file` in `direction`. With no file, all files. A deleted file is
+--- not in the checkout, so it has no hunks.
+---@param file didymus.diff.File?
+---@param direction 1|-1
+---@return didymus.diff.File[]
+function View:get_next_files(file, direction)
+  local target_files = (self.opts.target --[[@as didymus.diff.Target]]).files
+  local first, last = 1, #target_files
+  if direction < 0 then
+    first, last = last, first
+  end
+  local files = {}
+  for index = first, last, direction do
+    local target_file = target_files[index]
+    if target_file == file then
+      files = {}
+    elseif target_file.status ~= "deleted" then
+      table.insert(files, target_file)
+    end
+  end
+  return files
+end
+
+--- Go to the next or the previous hunk of the provider in the code window, also in the next files of
+--- the target. Do not wrap. See docs/architecture/diff.md#navigation.
+---@param direction 1|-1
+function View:go_to(direction)
+  if not self.shown then
+    if not self.provider then
+      return warn(self.provider_err --[[@as string]])
+    elseif not self.opts.target then
+      return warn(self.opts.target_err or "the diff is not available")
+    end
+    return warn("the diff is hidden")
+  end
+  ---@type didymus.diff.view.Jump
+  local jump = {}
+  self.jump = jump
+  local start_win = self.opts.get_code_win()
+  local start_buf = start_win and vim.api.nvim_win_get_buf(start_win)
+  local start_file = start_buf and self:find_file(start_buf)
+  ---@type didymus.diff.view.Start?
+  local start
+  -- A file that the jump opened only to get its hunks.
+  local opened = false
+
+  local function is_current()
+    return self.shown
+      and self.jump == jump
+      and vim.api.nvim_get_current_tabpage() == self.opts.tabpage
+  end
+
+  --- Wait for the hunks of `buf`. Stop the jump if the code window shows a different buffer. An
+  --- error of `attach()` shows each time, because the user gave the command.
+  ---@param buf integer
+  ---@param file didymus.diff.File
+  ---@param cb fun(file_hunks: didymus.diff.Hunk[]?) Nil after an error.
+  local function wait_for_hunks(buf, file, cb)
+    jump.buf = buf
+    self:attach(buf, file, function(err)
+      local win = self.opts.get_code_win()
+      if not (is_current() and win and vim.api.nvim_win_get_buf(win) == buf) then
+        if self.jump == jump then
+          self.jump = nil
+        end
+        return
+      end
+      jump.buf = nil
+      if err then
+        self:warn_error(file.path, err)
+        return cb(nil)
+      end
+      cb(self.provider:hunks(buf) or {})
+    end)
+  end
+
+  --- Open `path` at `line`. Only the start position goes into the jumplist.
+  ---@param path string
+  ---@param line integer
+  local function land(path, line)
+    self.jump = nil
+    local restored = opened and start ~= nil and restore(start)
+    self.opts.open_file(path, line, { keepjumps = opened and not restored })
+  end
+
+  local name = direction > 0 and "next" or "previous"
+  local files = self:get_next_files(start_file, direction)
+  local function check(index)
+    local file = files[index]
+    if not file then
+      self.jump = nil
+      if opened and start then
+        restore(start)
+      end
+      return warn(("no %s hunk"):format(name))
+    end
+    local from = direction > 0 and 0 or math.huge
+    local ready_buf = self:find_ready_buf(file)
+    if ready_buf then
+      local line = find_stop(self.provider:hunks(ready_buf) or {}, ready_buf, from, direction)
+      if line then
+        return land(file.path, line)
+      end
+      return check(index + 1)
+    end
+    if not self.opts.open_file(file.path, 1, { keepjumps = true }) then
+      self.jump = nil
+      return
+    end
+    opened = true
+    local buf = vim.api.nvim_get_current_buf()
+    wait_for_hunks(buf, file, function(file_hunks)
+      if not file_hunks then
+        return land(file.path, 1)
+      end
+      local line = find_stop(file_hunks, buf, from, direction)
+      if line then
+        return land(file.path, line)
+      end
+      check(index + 1)
+    end)
+  end
+
+  if not start_file then
+    start = start_win
+      and {
+        win = start_win,
+        buf = start_buf --[[@as integer]],
+        cursor = vim.api.nvim_win_get_cursor(start_win),
+      }
+    return check(1)
+  end
+  ---@cast start_win integer
+  ---@cast start_buf integer
+  wait_for_hunks(start_buf, start_file, function(file_hunks)
+    if not file_hunks then
+      self.jump = nil
+      return
+    end
+    local cursor = vim.api.nvim_win_get_cursor(start_win)
+    local line = find_stop(file_hunks, start_buf, cursor[1], direction)
+    if not line then
+      start = { win = start_win, buf = start_buf, cursor = cursor }
+      return check(1)
+    end
+    self.jump = nil
+    vim.api.nvim_set_current_win(start_win)
+    vim.cmd("normal! m'")
+    set_cursor(start_win, line)
   end)
 end
 

@@ -117,7 +117,7 @@ tests/integration/diff/    the gitsigns provider and the diff view, with the rea
 
 Calls go in one direction: `command` → `diff/init` → `review` (for the current session) → `diff/view` → the provider.
 
-- `diff/` does not require `review/`. The review session gives the diff view a target and three functions: `get_code_win()`, `open_file(path, line)` and `on_show()`. Task 5 adds `open_file()`.
+- `diff/` does not require `review/`. The review session gives the diff view a target and three functions: `get_code_win()`, `open_file(path, line, opts)` and `on_show()`. With `opts.keepjumps`, `open_file()` does not change the jumplist and the alternate file.
 - The diff view calls `on_show()` each time the diff shows. The session checks the local changes in it, one time for each review.
 - `diff/init.lua` gets the diff view from `require("didymus.review").current()`. This is the only link from `diff/` to `review/`.
 - Providers can use `diff/hunks.lua` and `diff/target.lua`. They do not use `diff/view.lua`.
@@ -307,11 +307,17 @@ diff = {
 
 1. The stop of a hunk is its first head line, or its first base line with the `base` sides. A deletion stops at the line after the deleted lines, or at line 1. A deletion at the end of the file stops at the last line, as in rule 5 of the review navigation.
 2. With no hunk after the cursor, `next` goes to the next file of the target that has hunks, at its first hunk. It opens the file with `open_file()` of the review, waits for `attach`, then moves the cursor. `prev` does the same backward, at the last hunk.
-3. A file with no hunks, such as a binary file, has no stops.
-4. In the base window of the split layout, `next` and `prev` move the cursor in the base window, with the base lines.
+3. A file with no hunks, such as a binary file, has no stops. A deleted file has no hunks.
+4. In the base window of the split layout, `next` and `prev` move the cursor in the base window, with the base lines. Task 6 adds this.
 5. Each jump adds the old position to the jumplist.
-6. At the last or the first stop, `didymus: no next hunk` shows, and the cursor does not move.
-7. A hidden diff has no hunks, so `next` shows `didymus: the diff is hidden`.
+6. At the last or the first stop, `didymus: no next hunk` or `didymus: no previous hunk` shows, and the cursor does not move.
+7. A hidden diff has no hunks, so `next` shows `didymus: the diff is hidden`. If the diff is not available, `next` shows why.
+8. `next` and `prev` move the cursor in the code window, also from the panel or a split, because only the code window has the diff (decision 10).
+9. With no file of the target in the code window, `next` goes to the first stop, and `prev` goes to the last stop.
+10. To get the hunks of a file, `next` opens it with `keepjumps` and waits for `attach`. A buffer that is attached and ready gives its hunks with no open. At the stop, the code window shows the start position again with `:keepjumps buffer`. Then `open_file()` opens the file of the stop. So the jumplist gets one entry: the start position.
+11. If no file after the cursor has hunks, the code window shows the start position again with `keepjumps`, and the message of rule 6 shows.
+12. An error of `attach` stops the jump at that file, and shows each time. `next` is a command of the user, so each one gives a message. The display of the diff shows each error only once.
+13. The newest `next` or `prev` wins. The callbacks of an old jump do nothing. A jump also stops if the code window shows a different buffer, or the user goes to a different tabpage, while it waits for `attach`.
 8. `:Didymus review next hunk` does not change. It uses the hunks of the patch of the code host, which are the commentable blocks. `diff next` uses the hunks of the diff provider, which are each change.
 
 `hunks.next(hunks, opts)` and `hunks.prev(hunks, opts)` take `opts = { line, side, line_count }`. `side` is `"head"` or `"base"`. They give the line of the stop and its hunk, or nil.
@@ -320,6 +326,8 @@ diff = {
 - The hunks do not have to be in order.
 - `hunks.stop(hunk, side, line_count)` gives the stop of one hunk. The stop is in the range 1 to `line_count`.
 - The map of a line to the other side is not in `hunks.lua` yet. Task 6 or task 7 adds it.
+
+`nvim_win_set_buf()` adds the old position to the jumplist. `:keepjumps edit` and `:keepjumps buffer` do not. See [the Neovim notebook](../../agents/expertise/neovim.md#windows).
 
 ## gitsigns provider
 
@@ -453,6 +461,14 @@ The user approved these decisions of task 4 on 2026-11-15.
 20. **Task 4 shows only `inline` with `both` sides.** It ignores `diff.layout` and `diff.sides`. The README documents `diff.provider` and `diff.enabled`. Task 6 adds `diff.layout` and `diff.split` to the README, and task 7 adds `diff.sides`.
 21. **The target stays the target of the open,** also after a refresh.
 
+The user approved these decisions of task 5 on 2026-11-15.
+
+22. **`next` and `prev` use only the code window.** See rule 8 of [Navigation](#navigation).
+23. **`next` opens a file to get its hunks, and skips a file with no hunks.** The jumplist gets only the start position (rule 10).
+24. **With no stop, the cursor goes back to the start position** (rule 11).
+25. **An attach error at a jump shows each time** (rule 12).
+26. **Rule 4 of [Navigation](#navigation) is a part of task 6.**
+
 ## Work plan
 
 Each task is one GitHub issue and one pull request. Each task adds its tests and updates the docs. After each task, a person can do a manual test.
@@ -476,7 +492,7 @@ flowchart LR
 | 3. [gitsigns provider](https://github.com/nickciaravella/didymus.nvim/issues/73) | `attach`, `detach`, `hunks`, inline `render`, `clear`, `health`. The `didymus diff` section of the health check. gitsigns in `make deps`. Integration tests. The gitsigns notebook. | 1 | A setup file shows the inline diff of a file. `:checkhealth didymus` with and without gitsigns. |
 | 4. [Diff view and toggle](https://github.com/nickciaravella/didymus.nvim/issues/74) | `diff/view.lua` and `diff/init.lua` for the inline layout with `both` sides. `:Didymus diff toggle`. Show at the review open. Follow the code window. Hide at close. The warning for local changes. | 2, 3 | Open a real PR, go through the files, toggle. |
 | 5. [Navigation](https://github.com/nickciaravella/didymus.nvim/issues/75) | `:Didymus diff next` and `prev`, across files, with the wait for `attach`. | 4 | Go through all hunks of a PR. |
-| 6. [Split layout](https://github.com/nickciaravella/didymus.nvim/issues/76) | `diff/revision.lua`. The base window. `:Didymus diff layout`. Split `render` in the gitsigns and test providers, and `split` in the capabilities of the gitsigns provider. `diff.layout` and `diff.split` in the README. | 4 | Change the layout on a few files. |
+| 6. [Split layout](https://github.com/nickciaravella/didymus.nvim/issues/76) | `diff/revision.lua`. The base window. `:Didymus diff layout`. `next` and `prev` in the base window. Split `render` in the gitsigns and test providers, and `split` in the capabilities of the gitsigns provider. `diff.layout` and `diff.split` in the README. | 4 | Change the layout on a few files. |
 | 7. [Sides](https://github.com/nickciaravella/didymus.nvim/issues/77) | `:Didymus diff side`. The base buffer in the code window. The `head` and `base` marks. `base` in the capabilities of the gitsigns provider. `next` and `prev` with the `base` sides. `diff.sides` in the README. | 5, 6 | Look at each side of a file, then go to the next hunk. |
 
 Task 1 can start now. After task 1, tasks 2 and 3 can go in parallel. After task 4, tasks 5 and 6 can go in parallel.

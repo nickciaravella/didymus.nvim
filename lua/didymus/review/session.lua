@@ -141,6 +141,9 @@ function Session:make_diff_view()
         return self.code_win
       end
     end,
+    open_file = function(path, line, opts)
+      return self:open_file(path, line, opts)
+    end,
     on_show = function()
       self:check_workspace()
     end,
@@ -624,12 +627,17 @@ local function set_cursor(win, line)
   vim.api.nvim_win_set_cursor(win, { line, (text:find("%S") or 1) - 1 })
 end
 
+---@class didymus.review.OpenFileOpts
+---@field keepjumps boolean? Do not change the jumplist and the alternate file.
+
 --- Open a file of the change in the code window at `line`, and focus that window. If the user
 --- closed the code window, open a new one on the right.
 ---@param path string Relative to `cwd`.
 ---@param line integer
+---@param opts didymus.review.OpenFileOpts?
 ---@return boolean opened False if the file did not open. Then the error shows.
-function Session:open_file(path, line)
+function Session:open_file(path, line, opts)
+  local keepjumps = opts and opts.keepjumps or false
   if not self:is_open() then
     return false
   end
@@ -637,7 +645,12 @@ function Session:open_file(path, line)
   self:focus()
   local full_path = self:get_full_path(path)
   ---@type vim.api.keyset.cmd?
-  local command = { cmd = "edit", args = { full_path }, magic = { file = false } }
+  local command = {
+    cmd = "edit",
+    args = { full_path },
+    magic = { file = false },
+    mods = { keepjumps = keepjumps, keepalt = keepjumps },
+  }
   if
     vim.api.nvim_win_is_valid(self.code_win)
     and vim.api.nvim_win_get_tabpage(self.code_win) == self.tabpage
@@ -648,10 +661,12 @@ function Session:open_file(path, line)
       command = nil
       -- `:edit` of a different file adds the old position to the jumplist. A move in the same file
       -- does not.
-      vim.cmd("normal! m'")
+      if not keepjumps then
+        vim.cmd("normal! m'")
+      end
     end
   else
-    command.mods = { split = "botright" }
+    command.mods.split = "botright"
     command.cmd = "vsplit"
   end
   if command then
