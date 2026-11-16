@@ -44,6 +44,17 @@ local function check_review()
   end
 end
 
+local function check_diff()
+  vim.health.start("didymus diff")
+  local provider, err =
+    require("didymus.diff.provider").get(require("didymus.config").options.diff.provider)
+  if provider then
+    provider.health()
+  else
+    vim.health.error(("%s (diff.provider)"):format(err), "Set `diff.provider`.")
+  end
+end
+
 function M.check()
   vim.health.start("didymus")
 
@@ -62,6 +73,7 @@ function M.check()
 
   check_agent()
   check_review()
+  check_diff()
 end
 
 return M

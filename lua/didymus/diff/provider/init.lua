@@ -28,6 +28,7 @@
 local M = {}
 
 local builtin = {
+  gitsigns = "didymus.diff.provider.gitsigns",
   test = "didymus.diff.provider.test",
 }
 
@@ -41,7 +42,8 @@ function M.get(spec)
   end
   local module = builtin[spec]
   if not module then
-    return nil, ('unknown provider %q. Use "test" or a provider table.'):format(tostring(spec))
+    return nil,
+      ('unknown provider %q. Use "gitsigns", "test" or a provider table.'):format(tostring(spec))
   end
   return require(module)
 end

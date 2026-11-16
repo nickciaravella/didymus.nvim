@@ -58,15 +58,16 @@ The facts in this section were checked on 2026-11-15 in the source of each plugi
 
 ### gitsigns API facts
 
-Each task that uses one of these facts adds it to a new notebook, `agents/expertise/gitsigns.md`, with a proof.
+The notebook [`agents/expertise/gitsigns.md`](../../agents/expertise/gitsigns.md) has these facts, each with a proof. Task 3 corrected facts 2, 3 and 7.
 
-1. `change_base(base, global, cb)` acts on the current buffer. It has no buffer argument. So call it in `nvim_buf_call()`. `async.run()` starts the task at once, so the task reads the buffer before it yields. Check this with a test.
-2. `change_base(nil)` goes back to the original base. The signs of a buffer show in all windows, also outside the review tabpage, until then.
-3. `diffthis(base, { unified = true })` shows the deleted lines in the current window. A second call closes the view. There is no public function that tells if the view is open, so the provider keeps the state.
-4. The unified view uses `nvim__ns_set()` with only its window. It closes on `BufWinLeave` and `WinClosed`. So didymus shows it again after the code window shows a new buffer.
+1. `change_base(base, global, cb)` acts on the current buffer. It has no buffer argument. So call it in `nvim_buf_call()`. `async.run()` starts the task at once, so the task reads the buffer before it yields.
+2. `change_base(nil)` sets the index as the base, not the `base` of the gitsigns config. So `detach` uses `config.base`. The signs of a buffer show in all windows, also outside the review tabpage, until then.
+3. `diffthis(base, { unified = true })` shows the deleted lines in the current window. A second call closes the view. The public API cannot tell if a view is open, and cannot close a view after the window shows a different buffer.
+4. The unified view uses `nvim__ns_set()` with only its window. It closes on `WinClosed`, and on `BufWinLeave` only if no other window shows the buffer. So didymus shows it again after the code window shows a new buffer.
 5. `toggle_linehl()`, `toggle_word_diff()` and `toggle_signs()` change the global config. didymus must not call them (D3).
 6. `toggle_deleted()` and the option `show_deleted` are deprecated. Use the unified view.
-7. `User GitSignsUpdate` has no buffer in its data. The `cb` of `change_base()` is the signal that the hunks are ready. Check this with a test.
+7. The `cb` of `change_base()` is not a signal that the hunks are ready. If an update runs, `cb` comes before the new hunks. An update that reads the base text during `change_base()` keeps the text of the old base. `User GitSignsUpdate` has a buffer in its data, but it fires only when the status changes.
+8. gitsigns computes the hunks only for a buffer in a window of the current tabpage.
 
 ## Parts
 
@@ -320,19 +321,46 @@ diff = {
 
 | Method | gitsigns call |
 | --- | --- |
-| `attach` | Wait for gitsigns to attach to the buffer (`attach(buf, cb)`). Then `change_base(sha, false, cb)` in `nvim_buf_call(buf, …)`. |
-| `detach` | `change_base(nil)` in `nvim_buf_call(buf, …)`. Close the unified view of the buffer. |
-| `hunks` | `get_hunks(buf)`, changed into `didymus.diff.Hunk`. |
-| `render`, inline `both` | `diffthis(sha, { unified = true })` in `nvim_win_call(head_win, …)`, if the provider has no unified view on that window. |
-| `render`, `split` | `:diffthis` in the base window and in the code window. The signs of the head buffer stay. |
-| `render`, `head` | Nothing more. The signs show the hunks. |
-| `render`, `base` | Line highlights `DiffDelete` on the base buffer, from the `base` ranges of `hunks()`, in a namespace scoped to the window. |
+| `attach` | `attach({ bufnr = buf }, cb)`. Wait until gitsigns knows the buffer. Then `change_base(sha, false, cb)` in `nvim_buf_call(buf, …)`. Then wait until the hunks are against `sha`. |
+| `detach` | Close the unified views that the provider opened for the buffer. `change_base(config.base)` in `nvim_buf_call(buf, …)`. |
+| `hunks` | `get_hunks(buf)`, changed into `didymus.diff.Hunk`. Nil until `attach` calls `cb`. |
+| `render`, inline `both` | `diffthis(sha, { unified = true })` in `nvim_win_call(head_win, …)`, if that window has no unified view. |
+| `render`, `split` | `:diffthis` in the base window and in the code window. The signs of the head buffer stay. Task 6. |
+| `render`, `head` | Close the unified view. The signs show the hunks. |
+| `render`, `base` | Line highlights `DiffDelete` on the base buffer, from the `base` ranges of `hunks()`, in a namespace scoped to the window. Task 7. |
 | `clear` | Close the unified view, or `:diffoff` in the window. |
-| `health` | gitsigns is on the `'runtimepath'`, and `diffthis` accepts `unified`. |
+| `health` | See [Health check](#health-check). |
 
-Capabilities: layouts `inline` and `split`, all sides, base `commit`, head `worktree`. The index and a head commit come with the local diffs.
+Capabilities: layout `inline`, sides `both` and `head`, base `commit`, head `worktree`. Task 6 adds `split`, and task 7 adds `base`. The index and a head commit come with the local diffs.
+
+1. `attach` calls `cb` one time. After `timeout` (5 seconds), `cb` gets an error, for example if gitsigns does not attach to an untracked file.
+2. `attach` gives an error if gitsigns is not set up, or if the buffer is not in a window of the current tabpage (fact 8). The provider does not call `setup()`.
+3. The `change_base()` calls of a buffer go in a queue. Each call waits until gitsigns does not compute the hunks (fact 7). Two calls at the same time can end in any order, and the last one to end sets the base.
+4. A `detach` during `attach` gives the error `the buffer was detached` to the `cb` of `attach`, and puts back the base.
+5. gitsigns tells if a window has a unified view. The provider keeps only the windows where it opened a view, so that `detach` does not close a view of the user (D3).
 
 The gitsigns view of the user, such as `:Gitsigns diffthis`, can conflict with the diff view. The provider does not detect it in the MVP.
+
+### Internal gitsigns calls
+
+The public API of gitsigns cannot do some things that the diff must do. The provider calls internal modules for them. All the calls are in one set of local functions, `internal`, at the top of `diff/provider/gitsigns.lua`.
+
+| Call | Reason |
+| --- | --- |
+| `require("gitsigns.cache").cache[buf]` | Tell when the hunks are against the base (fact 7). `get_hunks()` gives `{}` also while gitsigns computes the hunks. |
+| `require("gitsigns.unified").get_view(win)` | Tell if a window has a unified view (fact 3). |
+| `require("gitsigns.unified").close(win)` | Close the view, also after the window shows a different buffer (fact 3). |
+| `require("gitsigns.config").config.base` | The base that `detach` puts back (fact 2). |
+
+Risk: a new gitsigns version can change or remove these modules. Then:
+
+1. Each call is in `pcall`. A failed call gives an error in the `cb` of `attach` or `render`, and the review works with no diff.
+2. The health check reports a warning if a function is missing.
+3. The integration tests use the pinned commit `GITSIGNS_COMMIT`. Run them after a change of the commit.
+
+A public API in gitsigns can replace these calls later.
+
+One race stays. If a git operation in the repo, such as a commit, starts an update during `change_base()`, the hunks can be against the old base until the next update.
 
 ## Test provider
 
@@ -373,7 +401,11 @@ The MVP does not build this kind. The diff view does not depend on it.
 
 1. If `diff.provider` is not a built-in provider or a table, the section reports an error, as for `review.provider`.
 2. Else, it calls `health()` of the provider.
-3. The gitsigns provider reports a warning if gitsigns is not on the `'runtimepath'`, or if its `diffthis()` does not accept `unified`. It is a warning, not an error, because the review works with no diff. The advice tells the user to install gitsigns, or to set `diff.provider`.
+3. The gitsigns provider reports a warning in these cases. It is a warning, not an error, because the review works with no diff. The advice tells the user to install, update or set up gitsigns, or to set `diff.provider`.
+   - gitsigns is not on the `'runtimepath'`.
+   - gitsigns has no unified view: `lua/gitsigns/unified.lua` is not on the `'runtimepath'`.
+   - gitsigns is not set up: there is no `:Gitsigns` command.
+   - A function of the [internal gitsigns calls](#internal-gitsigns-calls) is missing.
 
 ## Tests
 
@@ -402,6 +434,12 @@ The user approved these decisions on 2026-11-15.
 13. **The side by side of gitsigns uses native diff mode,** not `diffthis()`, because `diffthis()` opens its own window (provider rule 1).
 14. **This plan replaces [#51](https://github.com/nickciaravella/didymus.nvim/issues/51).**
 
+The user approved these decisions of task 3 on 2026-11-15.
+
+15. **gitsigns is pinned at `fd78092`.** No tag has the unified view.
+16. **The gitsigns provider calls internal gitsigns modules** for the hunks, the unified view and the base of the config, because the diff must be correct and D3 must hold. See [Internal gitsigns calls](#internal-gitsigns-calls).
+17. **The capabilities of a provider list only what it does now.** Tasks 6 and 7 add `split` and `base` to the gitsigns provider.
+
 ## Work plan
 
 Each task is one GitHub issue and one pull request. Each task adds its tests and updates the docs. After each task, a person can do a manual test.
@@ -425,8 +463,8 @@ flowchart LR
 | 3. [gitsigns provider](https://github.com/nickciaravella/didymus.nvim/issues/73) | `attach`, `detach`, `hunks`, inline `render`, `clear`, `health`. The `didymus diff` section of the health check. gitsigns in `make deps`. Integration tests. The gitsigns notebook. | 1 | A setup file shows the inline diff of a file. `:checkhealth didymus` with and without gitsigns. |
 | 4. [Diff view and toggle](https://github.com/nickciaravella/didymus.nvim/issues/74) | `diff/view.lua` and `diff/init.lua` for the inline layout with `both` sides. `:Didymus diff toggle`. Show at the review open. Follow the code window. Hide at close. The warning for local changes. | 2, 3 | Open a real PR, go through the files, toggle. |
 | 5. [Navigation](https://github.com/nickciaravella/didymus.nvim/issues/75) | `:Didymus diff next` and `prev`, across files, with the wait for `attach`. | 4 | Go through all hunks of a PR. |
-| 6. [Split layout](https://github.com/nickciaravella/didymus.nvim/issues/76) | `diff/revision.lua`. The base window. `:Didymus diff layout`. Split `render` in the gitsigns and test providers. | 4 | Change the layout on a few files. |
-| 7. [Sides](https://github.com/nickciaravella/didymus.nvim/issues/77) | `:Didymus diff side`. The base buffer in the code window. The `head` and `base` marks. `next` and `prev` with the `base` sides. | 5, 6 | Look at each side of a file, then go to the next hunk. |
+| 6. [Split layout](https://github.com/nickciaravella/didymus.nvim/issues/76) | `diff/revision.lua`. The base window. `:Didymus diff layout`. Split `render` in the gitsigns and test providers, and `split` in the capabilities of the gitsigns provider. | 4 | Change the layout on a few files. |
+| 7. [Sides](https://github.com/nickciaravella/didymus.nvim/issues/77) | `:Didymus diff side`. The base buffer in the code window. The `head` and `base` marks. `base` in the capabilities of the gitsigns provider. `next` and `prev` with the `base` sides. | 5, 6 | Look at each side of a file, then go to the next hunk. |
 
 Task 1 can start now. After task 1, tasks 2 and 3 can go in parallel. After task 4, tasks 5 and 6 can go in parallel.
 
