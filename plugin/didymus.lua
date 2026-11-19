@@ -76,3 +76,13 @@ for _, action in ipairs({ "toggle", "next", "prev" }) do
     require("didymus.diff")[action]()
   end, { desc = "didymus: diff " .. action })
 end
+
+vim.keymap.set("n", "<Plug>(didymus-diff-layout)", function()
+  require("didymus.diff").layout()
+end, { desc = "didymus: diff change the layout" })
+
+for _, layout in ipairs({ "inline", "split" }) do
+  vim.keymap.set("n", ("<Plug>(didymus-diff-layout-%s)"):format(layout), function()
+    require("didymus.diff").layout({ layout = layout })
+  end, { desc = "didymus: diff layout " .. layout })
+end

@@ -290,7 +290,15 @@ diff = {
 2. `split`: the diff view opens the base window on the left of the code window, with the base revision buffer. The provider decorates both windows.
 3. The base window has `'diff'`, `'scrollbind'` and `'cursorbind'` if the provider uses native diff mode. It is not the code window, so the panel and `next` do not open files in it.
 4. If the code window shows a file that is not in the target, the base window closes. It opens again with the next file of the target.
-5. If the user closes the base window, the layout changes to `inline`, and a message tells it.
+5. If the user closes the base window, the layout changes to `inline`, and the message `didymus: the base window closed, so the diff layout is inline` shows.
+6. The width of a new base window is `diff.split.width`. Below 1, it is a fraction of the width of the code window. The base window does not get the focus when it opens.
+7. If the user shows a different buffer in the base window, the layout changes to `inline`, and a message tells it. The window stays, because it is a window of the user now. The provider removes its diff state from the window.
+8. The diff view gets the base buffer with `git show`, and shows it when it is ready. It renders when the attach and the base buffer are both ready. A `git show` error shows once, as for the errors of the provider, and closes the base window.
+9. The base buffers stay while the diff shows, so a return to a file is fast. The diff view deletes them when the diff hides or the review closes.
+10. If the provider does not have a layout, `layout` shows `didymus: the diff provider does not have the <layout> layout`, and the layout does not change. If `diff.layout` has such a layout, the diff shows `inline`, with this warning once.
+11. `:tabclose` and `review close` close the base window with no message.
+
+The revision buffers of `diff/revision.lua` have the name `didymus://<sha7>/<path>`, `buftype=nofile`, `bufhidden=hide`, no swap file, and the filetype of the path. They are unlisted and not modifiable. `nofile` keeps LSP off, because `vim.lsp.enable()` attaches only to buffers with an empty `buftype`. gitsigns also skips them. An added file has an empty base buffer, with no `git show`. A renamed file uses its base path.
 
 ### Sides
 
@@ -308,7 +316,7 @@ diff = {
 1. The stop of a hunk is its first head line, or its first base line with the `base` sides. A deletion stops at the line after the deleted lines, or at line 1. A deletion at the end of the file stops at the last line, as in rule 5 of the review navigation.
 2. With no hunk after the cursor, `next` goes to the next file of the target that has hunks, at its first hunk. It opens the file with `open_file()` of the review, waits for `attach`, then moves the cursor. `prev` does the same backward, at the last hunk.
 3. A file with no hunks, such as a binary file, has no stops. A deleted file has no hunks.
-4. In the base window of the split layout, `next` and `prev` move the cursor in the base window, with the base lines. Task 6 adds this.
+4. In the base window of the split layout, `next` and `prev` move the cursor in the base window, with the base lines. The stops are in the order of the base lines. In a different file, the code window goes to the head stop of the hunk, as in rule 10. Then the base window shows the new base buffer, its cursor goes to the base stop, and it gets the focus. Only a jump in the same file adds the old position to the jumplist of the base window. A jump to a different file changes the base buffer with `keepjumps`, because `<C-o>` to an old base buffer would end the split layout (rule 7 of [Layout](#layout)).
 5. Each jump adds the old position to the jumplist.
 6. At the last or the first stop, `didymus: no next hunk` or `didymus: no previous hunk` shows, and the cursor does not move.
 7. A hidden diff has no hunks, so `next` shows `didymus: the diff is hidden`. If the diff is not available, `next` shows why.
@@ -325,7 +333,7 @@ diff = {
 - `next` gives the first stop after `line`. `prev` gives the last stop before `line`. So in a hunk, `prev` goes to the stop of that hunk.
 - The hunks do not have to be in order.
 - `hunks.stop(hunk, side, line_count)` gives the stop of one hunk. The stop is in the range 1 to `line_count`.
-- The map of a line to the other side is not in `hunks.lua` yet. Task 6 or task 7 adds it.
+- The map of a line to the other side is not in `hunks.lua` yet. The split layout does not need it, because native diff mode binds the cursors. Task 7 adds it for the `base` sides.
 
 `nvim_win_set_buf()` adds the old position to the jumplist. `:keepjumps edit` and `:keepjumps buffer` do not. See [the Neovim notebook](../../agents/expertise/neovim.md#windows).
 
@@ -339,13 +347,13 @@ diff = {
 | `detach` | Close the unified views that the provider opened for the buffer. `change_base(config.base)` in `nvim_buf_call(buf, …)`. |
 | `hunks` | `get_hunks(buf)`, changed into `didymus.diff.Hunk`. Nil until `attach` calls `cb`. |
 | `render`, inline `both` | `diffthis(sha, { unified = true })` in `nvim_win_call(head_win, …)`, if that window has no unified view. |
-| `render`, `split` | `:diffthis` in the base window and in the code window. The signs of the head buffer stay. Task 6. |
+| `render`, `split` | Close the unified view that the provider opened in the code window. Then `:diffthis` in the base window and in the code window. The signs of the head buffer stay. |
 | `render`, `head` | Close the unified view. The signs show the hunks. |
 | `render`, `base` | Line highlights `DiffDelete` on the base buffer, from the `base` ranges of `hunks()`, in a namespace scoped to the window. Task 7. |
-| `clear` | Close the unified view, or `:diffoff` in the window. |
+| `clear` | Close the unified view. If the provider set `'diff'` in the window, `:diffoff`, and put back the window options. |
 | `health` | See [Health check](#health-check). |
 
-Capabilities: layout `inline`, sides `both` and `head`, base `commit`, head `worktree`. Task 6 adds `split`, and task 7 adds `base`. The index and a head commit come with the local diffs.
+Capabilities: layouts `inline` and `split`, sides `both` and `head`, base `commit`, head `worktree`. Task 7 adds `base`. The index and a head commit come with the local diffs.
 
 1. `attach` calls `cb` one time. After `timeout` (5 seconds), `cb` gets an error, for example if gitsigns does not attach to an untracked file.
 2. `attach` gives an error if gitsigns is not set up, or if the buffer is not in a window of the current tabpage (fact 8). The provider does not call `setup()`.
@@ -354,6 +362,14 @@ Capabilities: layout `inline`, sides `both` and `head`, base `commit`, head `wor
 5. gitsigns tells if a window has a unified view. The provider keeps only the windows where it opened a view, so that `detach` does not close a view of the user (D3).
 
 The gitsigns view of the user, such as `:Gitsigns diffthis`, can conflict with the diff view. The provider does not detect it in the MVP.
+
+### Native diff mode
+
+1. Neovim computes the diff of the split layout with the `'diffopt'` of the user. So it can show a hunk differently from the gitsigns hunks. `next` and `prev` use the gitsigns hunks.
+2. Before `:diffthis`, the provider saves the window options that diff mode changes: `'diff'`, `'scrollbind'`, `'cursorbind'`, `'wrap'`, `'foldmethod'`, `'foldcolumn'`, `'foldenable'` and `'foldlevel'`. `clear` sets them again after `:diffoff`, because `:diffoff` does not put back `'foldenable'`. It also puts back the global `'scrollopt'`.
+3. Neovim keeps the window options of each buffer. So diff mode comes back when the buffer comes back to the window, also after `clear`. The provider turns it off in `BufWinEnter`, and the diff view renders again if necessary.
+4. The provider turns off only the diff mode that it turned on. A new buffer in the window has no diff options. See [the Neovim notebook](../../agents/expertise/neovim.md#windows).
+5. Diff mode folds the lines that did not change. The inline threads stay in the code window, as virtual lines. A thread on a line in a closed fold shows when the fold opens.
 
 ### Internal gitsigns calls
 
@@ -468,6 +484,15 @@ The user approved these decisions of task 5 on 2026-11-15.
 24. **With no stop, the cursor goes back to the start position** (rule 11).
 25. **An attach error at a jump shows each time** (rule 12).
 26. **Rule 4 of [Navigation](#navigation) is a part of task 6.**
+
+The user approved these decisions of task 6 on 2026-11-15.
+
+27. **The base buffers are `didymus://<sha7>/<path>`**, and the diff view deletes them when the diff hides.
+28. **A different buffer in the base window ends the split layout,** as a close of the base window does. See rules 5 and 7 of [Layout](#layout).
+29. **A provider without a layout gives a warning,** and the layout does not change (rule 10).
+30. **`next` and `prev` in the base window use the base lines,** and go to the base window of the next file (rule 4 of [Navigation](#navigation)).
+31. **Task 7 adds the map of a line to the other side.** The split layout uses the cursor binding of native diff mode.
+32. **The diff of native diff mode can be different from the gitsigns hunks.** See [Native diff mode](#native-diff-mode).
 
 ## Work plan
 

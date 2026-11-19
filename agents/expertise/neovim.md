@@ -135,6 +135,30 @@ With `signcolumn=auto`, the first sign of a buffer makes the sign column show. B
 
 - Checked: Neovim 0.12.6
 
+### `:diffoff` does not put back 'foldenable' if 'foldmethod' goes back to "manual"
+
+`:diffoff` puts back most window options from before `:diffthis`. But if 'foldmethod' was "manual", which is the default, `:diffoff` sets 'foldenable' to off. `:h :diffoff` tells it only as "most-likely". `:diffthis` also adds "hor" to the global 'scrollopt'. So save the options before `:diffthis`, and set them again after `:diffoff`. The gitsigns diff provider does this.
+
+- Proof: the test "sets 'diff' in both windows, and clear puts back the options" in `tests/integration/diff/gitsigns.test.lua`. This command prints `false manual`, but 'foldenable' was on before:
+
+  ```sh
+  nvim --clean --headless -c 'vnew' -c 'windo diffthis' -c 'windo diffoff' -c 'lua print(vim.wo.foldenable, vim.wo.foldmethod)' -c qa
+  ```
+
+- Checked: Neovim 0.12.6
+
+### Diff mode comes back when its buffer comes back to the window
+
+Neovim keeps the window options of each buffer in each window. If the window shows a different buffer, `:diffoff` changes the options of that buffer only. When the old buffer comes back to the window, 'diff', 'scrollbind', 'cursorbind' and 'foldmethod=diff' come back too. A new buffer in the window gets no diff options. So turn off diff mode before the buffer leaves, or in `BufWinEnter` when it comes back. The gitsigns diff provider does it in `BufWinEnter`.
+
+- Proof: the test "turns off diff mode when the buffer comes back to the window" in `tests/integration/diff/gitsigns.test.lua`. This command prints `true true diff`:
+
+  ```sh
+  cd "$(mktemp -d)" && echo a > a.txt && echo b > b.txt && nvim --clean --headless -c 'edit a.txt' -c 'vsplit b.txt' -c 'windo diffthis' -c 'wincmd l' -c 'enew' -c 'diffoff' -c 'buffer a.txt' -c 'lua print(vim.wo.diff, vim.wo.scrollbind, vim.wo.foldmethod)' -c qa
+  ```
+
+- Checked: Neovim 0.12.6
+
 ## Floats
 
 ### The float of `open_floating_preview()` closes when you leave its source buffer, also for a picker

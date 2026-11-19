@@ -23,8 +23,31 @@ function M.toggle()
   end
 end
 
---- Go to the next hunk of the diff in the code window. At the last hunk of a file, go to the first
---- hunk of the next file with hunks, in the order of the panel. Do not wrap.
+local layouts = { inline = true, split = true }
+
+---@class didymus.diff.LayoutOpts
+---@field layout didymus.diff.Layout? Nil changes to the other layout.
+
+--- Set the layout of the diff, and show a hidden diff. With no layout, change to the other layout.
+---@param opts didymus.diff.LayoutOpts?
+function M.layout(opts)
+  local layout = opts and opts.layout
+  if layout and not layouts[layout] then
+    vim.notify(
+      ("didymus: unknown layout %q. Use inline or split."):format(layout),
+      vim.log.levels.ERROR
+    )
+    return
+  end
+  local view = focus_view()
+  if view then
+    view:set_layout(layout)
+  end
+end
+
+--- Go to the next hunk of the diff in the code window, or in the base window with the base lines.
+--- At the last hunk of a file, go to the first hunk of the next file with hunks, in the order of the
+--- panel. Do not wrap.
 function M.next()
   local view = focus_view()
   if view then
