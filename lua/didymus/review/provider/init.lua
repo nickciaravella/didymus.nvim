@@ -24,9 +24,16 @@
 ---@field head_sha string
 ---@field files didymus.review.ChangedFile[]
 ---@field pending_review_id string? The pending review of the user, if there is one.
+---@field diff didymus.review.ChangeDiff? The revisions of the diff. Nil gives the merge-base and the working tree.
+
+--- The revisions of the diff of a change, such as the index and `HEAD` of a local review.
+---@class didymus.review.ChangeDiff
+---@field base didymus.diff.Revision
+---@field head didymus.diff.Revision
 
 ---@class didymus.review.ChangedFile
 ---@field path string
+---@field old_path string? The path before a rename or a copy.
 ---@field status "added"|"modified"|"deleted"|"renamed"
 ---@field additions integer
 ---@field deletions integer

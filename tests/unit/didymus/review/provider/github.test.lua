@@ -167,18 +167,18 @@ T["get_change()"]["a PR with a fork head, by URL"] = function()
   })
 end
 
-T["get_change()"]["a renamed file has its new path, and the files of all pages"] = function()
+T["get_change()"]["a renamed file has its new path and its old path, and the files of all pages"] = function()
   mock_change("fork")
   local files = get_change("38540").files
 
   eq(
     vim.tbl_map(function(file)
-      return { file.path, file.status, file.additions, file.deletions }
+      return { file.path, file.old_path or vim.NIL, file.status, file.additions, file.deletions }
     end, files),
     {
-      { "src/nvim/tui/tui.c", "modified", 1, 1 },
-      { "src/nvim/tui/ugrid.c", "renamed", 2, 2 },
-      { "src/nvim/tui/ugrid.h", "renamed", 1, 1 },
+      { "src/nvim/tui/tui.c", vim.NIL, "modified", 1, 1 },
+      { "src/nvim/tui/ugrid.c", "src/nvim/ugrid.c", "renamed", 2, 2 },
+      { "src/nvim/tui/ugrid.h", "src/nvim/ugrid.h", "renamed", 1, 1 },
     }
   )
   eq(

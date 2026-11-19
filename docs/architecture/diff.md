@@ -203,6 +203,14 @@ A provider obeys these rules:
 2. GitHub REST gives `previous_filename` for a renamed file. The GitHub provider puts it in `ChangedFile.old_path`.
 3. If `HEAD` is not the change head, or the file has local changes, the diff shows them too. A warning shows once for each review, because the diff then is not the diff of the code host.
 
+`make(session)` gives the target, or nil and an error with no `didymus:` prefix. The diff view adds the prefix when it shows the warning.
+
+- With no merge-base and no `change.diff`, the error is `the diff is not available: git found no merge-base of <base> and <head>`, with 7 characters of each sha. The open flow already showed the error of git.
+- `change.diff` does not need a merge-base.
+- `make()` checks the target with `check_target()`, because a provider table of a user can give a wrong `change.diff`.
+- The GitHub provider sets `old_path` for each file with `previous_filename`, also for a copied file.
+- The target has its own tables. Fields such as `patch` stay in the review (D7).
+
 ## API and commands
 
 ```lua

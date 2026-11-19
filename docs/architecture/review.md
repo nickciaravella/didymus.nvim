@@ -441,9 +441,15 @@ The types come from the [reference file](../reference/design-prompt.md#data-mode
 ---@field head_sha string
 ---@field files didymus.review.ChangedFile[]
 ---@field pending_review_id string?
+---@field diff didymus.review.ChangeDiff? The revisions of the diff. Nil gives the merge-base and the working tree.
+
+---@class didymus.review.ChangeDiff
+---@field base didymus.diff.Revision
+---@field head didymus.diff.Revision
 
 ---@class didymus.review.ChangedFile
 ---@field path string
+---@field old_path string?          The path before a rename or a copy.
 ---@field status "added"|"modified"|"deleted"|"renamed"
 ---@field additions integer
 ---@field deletions integer
@@ -483,6 +489,7 @@ The types come from the [reference file](../reference/design-prompt.md#data-mode
 3. A thread and a draft use a `Range`, not `line` and `start_line`. Then a draft and a commentable range have the same type.
 4. A thread on the base side cannot show at a line of the head file. So `Thread` has `side`. A draft is always on the head side in the MVP.
 5. The `can_…` fields come from the code host, because only it knows the permissions of the viewer. On GitHub, they also depend on the state: a resolved thread has `can_resolve` false.
+6. `diff` and `old_path` are for the diff target. See [the diff target of a review](diff.md#the-diff-target-of-a-review). No provider sets `diff` yet.
 
 The MVP does not use these fields of the reference file:
 
@@ -490,7 +497,6 @@ The MVP does not use these fields of the reference file:
 | --- | --- |
 | `ChangeRef` | There is one provider in the config, and it works on the current repo. |
 | `updated_at`, `url`, `state`, `source` | No MVP feature uses them. The provider does the checkout. |
-| `old_path` | The GraphQL `PullRequestChangedFile` does not have it. |
 | `viewed` | [Mark as viewed](https://github.com/nickciaravella/didymus.nvim/issues/49) is after the MVP. |
 | `original_line` | Outdated threads show only in the panel. |
 | `Comment.id`, `created_at` | No MVP feature uses them. |
@@ -501,7 +507,7 @@ The MVP does not use these fields of the reference file:
 The `github` provider is in `lua/didymus/review/provider/github/`. It runs the [`gh` commands](#gh-commands) with `vim.system`, in the current directory.
 
 1. `get_change` takes a PR number or a PR URL. A number is a PR of the current repo. `gh` finds the repo with the `{owner}` and `{repo}` placeholders. A URL gives the host, the owner and the repo. `checkout` then uses `--repo`.
-2. `get_change` runs the GraphQL query and the REST files at the same time. The files come from GraphQL. Each file gets the `patch` with the same path from REST. A renamed file has its new path.
+2. `get_change` runs the GraphQL query and the REST files at the same time. The files come from GraphQL. Each file gets the `patch` and the `old_path` (`previous_filename`) with the same path from REST, because GraphQL does not have them. A renamed file has its new path.
 3. `change.id` is the PR number. The provider keeps its data in `change.github`: the number, the repo of a URL and the GraphQL `node_id`.
 4. For a PR from a fork, `head_branch` is `owner:branch`, as github.com shows it.
 5. `changeType` `CHANGED` (only the file mode changed) is `modified`. `COPIED` is `added`.
