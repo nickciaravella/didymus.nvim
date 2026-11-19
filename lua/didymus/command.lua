@@ -18,6 +18,7 @@ local tree = {
     submit = { approve = {}, comment = {}, request_changes = {} },
     discard = {},
     refresh = {},
+    viewed = {},
   },
   diff = {
     toggle = {},
@@ -121,6 +122,9 @@ local review_actions = {
   refresh = function()
     require("didymus.review").refresh()
   end,
+  viewed = function()
+    require("didymus.review").viewed()
+  end,
 }
 
 local diff_actions = {
@@ -149,7 +153,7 @@ local groups = {
   review = {
     actions = review_actions,
     usage = "Use :Didymus review open, close, files, fold, next, prev, comment, reply, resolve, "
-      .. "submit, discard or refresh.",
+      .. "submit, discard, refresh or viewed.",
   },
   diff = {
     actions = diff_actions,

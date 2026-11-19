@@ -213,6 +213,33 @@ function M:discard_review(change, cb)
   end)
 end
 
+--- Set the viewed state of the file in the stored change, so that a refresh gives it.
+---@param change didymus.review.Change
+---@param path string
+---@param viewed boolean
+---@param cb fun(err: string?)
+function M:set_viewed(change, path, viewed, cb)
+  if fail("set_viewed", cb) then
+    return
+  end
+  for _, stored in ipairs(self.changes) do
+    if stored.id == change.id then
+      for _, file in ipairs(stored.files) do
+        if file.path == path then
+          file.viewed = viewed and "viewed" or "unviewed"
+          vim.schedule(function()
+            cb(nil)
+          end)
+          return
+        end
+      end
+    end
+  end
+  vim.schedule(function()
+    cb(("no file %q in change %q"):format(path, change.id))
+  end)
+end
+
 --- Run `git checkout <head_sha>` in the current directory.
 ---@param change didymus.review.Change
 ---@param cb fun(err: string?)

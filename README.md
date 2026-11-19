@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation, new comments, replies, resolve, the submit or the discard of the review, the refresh, the inline and split diff, the sides of the diff, and the diff navigation work now.
+> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation, new comments, replies, resolve, the submit or the discard of the review, the refresh, the viewed state of files, the inline and split diff, the sides of the diff, and the diff navigation work now.
 
 ## Goals
 
@@ -128,6 +128,7 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review submit [approve\|comment\|request_changes]` | Submit your pending review with a verdict and a body. With no verdict, choose one in the picker. |
 | `:Didymus review discard` | Delete your pending review and its comments. The picker asks you to confirm. |
 | `:Didymus review refresh` | Get the pull request and its threads again. `R` in the files panel does the same. |
+| `:Didymus review viewed` | Mark the file of the current window as viewed, or unmark it. `v` in the files panel does the same for the file at the cursor. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
 
@@ -140,6 +141,8 @@ The files panel opens on the left of the review tabpage. It shows the title, the
 Under each file, the panel shows its review threads: an icon for the state (💬 active, ✅ resolved), the author and the first line of the first comment. A resolved thread is dim. An outdated thread has the `[outdated]` tag. `<CR>` on a thread goes to its line in the code window, and unfolds the thread. The file row shows the thread count.
 
 `a` in the panel shows only the active threads, or all threads again. The default is all threads. The third row of the header shows the filter: `All threads` or `Active threads`. The thread count of a file counts only the threads that show.
+
+`v` in the panel marks the file at the cursor as viewed, or unmarks it, as the "Viewed" box on github.com does. On a thread row, it uses the file of the thread. A viewed file is dim and has the `[viewed]` tag. A file with new changes since you viewed it has the `[changed]` tag, and `v` marks it as viewed again. `:Didymus review viewed` uses the file of the current window. If the current window does not show a file of the pull request, it uses the code window. A refresh gets the viewed state again.
 
 In the file, each thread has a sign with its comment count. The thread shows under its line, so it does not cover the code. A thread on a range shows at the last line of the range. The signs and the threads show only in the windows of the review tabpage. In a window outside the review tabpage, the file can have an empty sign column.
 
@@ -208,7 +211,7 @@ After a submit or a discard, didymus gets the threads again. The review stays op
 
 `refresh` gets the pull request and its threads again, for example after a comment on github.com. Then the files panel and the threads in the files show the new data. A message shows when the refresh starts and when it ends. If the pull request has a new head, a warning shows, and didymus does not check it out. To check out the new head, close the review and open it again.
 
-The highlight groups are `DidymusThread` (default: `DiagnosticInfo`), `DidymusThreadResolved` (default: `Comment`) and `DidymusThreadPending` (default: `DiagnosticHint`).
+The highlight groups are `DidymusThread` (default: `DiagnosticInfo`), `DidymusThreadResolved` (default: `Comment`) and `DidymusThreadPending` (default: `DiagnosticHint`) and `DidymusFileViewed` (default: `Comment`).
 
 `close` does not check out the branch from before the review. Its message names that branch. `:tabclose` of the review tabpage also closes the review.
 
@@ -232,11 +235,12 @@ vim.keymap.set("n", "<leader>rx", "<Plug>(didymus-review-resolve)")
 vim.keymap.set("n", "<leader>rs", "<Plug>(didymus-review-submit)")
 vim.keymap.set("n", "<leader>rd", "<Plug>(didymus-review-discard)")
 vim.keymap.set("n", "<leader>rR", "<Plug>(didymus-review-refresh)")
+vim.keymap.set("n", "<leader>rv", "<Plug>(didymus-review-viewed)")
 ```
 
 | Mapping | Modes |
 | --- | --- |
-| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-fold)`, `<Plug>(didymus-review-fold-all)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-submit)`, `<Plug>(didymus-review-discard)`, `<Plug>(didymus-review-refresh)` | Normal |
+| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-fold)`, `<Plug>(didymus-review-fold-all)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-submit)`, `<Plug>(didymus-review-discard)`, `<Plug>(didymus-review-refresh)`, `<Plug>(didymus-review-viewed)` | Normal |
 | `<Plug>(didymus-review-next-thread)`, `<Plug>(didymus-review-next-file)`, `<Plug>(didymus-review-next-hunk)`, `<Plug>(didymus-review-prev-thread)`, `<Plug>(didymus-review-prev-file)`, `<Plug>(didymus-review-prev-hunk)` | Normal |
 | `<Plug>(didymus-review-comment)` | Normal, visual |
 
@@ -274,7 +278,7 @@ require("didymus").setup({
     picker_config = {}, -- the options of each kind of list, for each adapter
     provider = "github", -- "github", "test" for tests, or a provider table
     icons = { active = "💬", resolved = "✅" }, -- the state of a thread. "" shows no icon.
-    panel = { keys = { toggle_active = "a", refresh = "R" } }, -- the files panel. false turns off a key
+    panel = { keys = { toggle_active = "a", refresh = "R", viewed = "v" } }, -- the files panel. false turns off a key
     input = { -- the float of comment, reply and submit
       width = 60, -- below 1 is a fraction of the window width
       max_height = 10, -- the float grows to this height, then it scrolls

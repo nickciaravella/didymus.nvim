@@ -29,6 +29,9 @@ local statuses = {
   RENAMED = "renamed",
 }
 
+---@type table<string, didymus.review.ViewedState>
+local viewed_states = { VIEWED = "viewed", UNVIEWED = "unviewed", DISMISSED = "changed" }
+
 --- Run `gh` in the current directory. Call `cb` in the main loop.
 ---@param label string The command for the error message, such as "gh pr list".
 ---@param args string[] The arguments after `gh`.
@@ -174,6 +177,7 @@ local function to_change(pages, file_pages, target)
         additions = file.additions,
         deletions = file.deletions,
         patch = rest_file.patch,
+        viewed = viewed_states[file.viewerViewedState],
       })
     end
   end
@@ -669,6 +673,33 @@ function M:discard_review(change, cb)
       change.pending_review_id = nil
       cb(nil)
     end)
+  end)
+end
+
+--- Mark the file as viewed for the viewer, or unmark it.
+---@param change didymus.review.provider.github.Change
+---@param path string
+---@param viewed boolean
+---@param cb fun(err: string?)
+function M:set_viewed(change, path, viewed, cb)
+  local label = "gh api graphql"
+  local query = viewed and graphql.mark_viewed or graphql.unmark_viewed
+  local mutation = viewed and "markFileAsViewed" or "unmarkFileAsViewed"
+  local args = get_graphql_args(change.github, query, {
+    "-f",
+    "pullRequestId=" .. change.github.node_id,
+    "-f",
+    "path=" .. path,
+  })
+  run_json(label, args, function(err, result)
+    if err then
+      return cb(err)
+    end
+    -- GitHub can give an error with no message. Then `gh` exits with 0.
+    if not (result.data and result.data[mutation]) then
+      return cb(("%s: GitHub did not change the viewed state"):format(label))
+    end
+    cb(nil)
   end)
 end
 
