@@ -185,6 +185,25 @@ The flow of `:Didymus review open` is async. Poll the child with `wait_for()` un
 
 Each review opens the files panel. `choose()` acts on the last open picker. To answer a select that opened before the panel, hide the panel first with `:Didymus review files`. The test picker has no window. To check that `<CR>` moves the focus to the code window, make a different window current first. See `tests/e2e/review/files.test.lua`.
 
+### The diff test provider
+
+The diff test provider keeps the hunks of each path in memory, in place of gitsigns. Set it in `setup()`:
+
+```lua
+require("didymus").setup({ diff = { provider = "test" } })
+```
+
+Drive it in the child with `require("didymus.diff.provider.test")`:
+
+| Field | Behavior |
+| --- | --- |
+| `hunks_by_path` | The hunks of each head path. `attach()` gives them to `hunks()`. |
+| `delays` | The time in milliseconds before `attach()` of a path calls `cb`. With no delay, `cb` comes in `vim.schedule()`. |
+| `errors` | An error for the next call of `attach` or `render`. |
+| `calls` | One record of plain data for each call, such as `{ method = "attach", buf = 3, path = "a.lua" }`. |
+
+`render()` shows `diff <layout> <sides>` at the end of the stop line of each hunk. Check it with a screenshot. See [Test provider](architecture/diff.md#test-provider).
+
 ### The GitHub provider
 
 The unit tests of the GitHub provider replace `vim.system` with a mock. The mock gives recorded `gh` output from `tests/fixtures/github/`, and calls `on_exit` in a fast event, as the real `vim.system` does. See `tests/unit/didymus/review/provider/github.test.lua`.
