@@ -149,7 +149,8 @@ T["next and prev skip the outdated threads and the other threads with no line"] 
   open_review({
     make_thread("a2", "a.txt", { range = { first = 2, last = 2 } }),
     make_thread("a-outdated", "a.txt", { outdated = true }),
-    make_thread("b-base", "b.txt", { side = "base", range = { first = 2, last = 2 } }),
+    -- A base line out of the hunks has no head line.
+    make_thread("b-base", "b.txt", { side = "base", range = { first = 99, last = 99 } }),
     make_thread("b-file", "b.txt"),
     make_thread("c3", "c.txt", { range = { first = 3, last = 3 } }),
   })

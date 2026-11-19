@@ -92,7 +92,7 @@ function M:add_comment(change, draft, cb)
   local thread = {
     id = ("added-%d"):format(added_count),
     path = draft.path,
-    side = "head",
+    side = draft.side,
     range = vim.deepcopy(draft.range),
     resolved = false,
     outdated = false,

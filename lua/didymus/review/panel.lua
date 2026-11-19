@@ -93,7 +93,7 @@ local function get_thread_item(session, thread)
     { kind = "thread", thread = thread }
   )
   item.depth = 1
-  local line = threads.get_line(thread)
+  local line = session:get_thread_line(thread)
   if line then
     item.location = { path = session:get_full_path(thread.path), line = line }
   end
@@ -130,7 +130,7 @@ local function choose(session, item)
   ---@type didymus.review.panel.Value
   local value = item.value
   if value.kind == "thread" then
-    if threads.get_line(value.thread) then
+    if session:get_thread_line(value.thread) then
       return session:open_thread(value.thread)
     end
     -- The thread has no line in the file. The float is the only place that shows it.

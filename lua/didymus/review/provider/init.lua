@@ -58,9 +58,10 @@
 
 ---@alias didymus.review.Verdict "approve"|"comment"|"request_changes"
 
---- A new comment on the head side.
+--- A new comment.
 ---@class didymus.review.CommentDraft
 ---@field path string
+---@field side didymus.review.Side The side of `range`. A comment on the file is on the head side.
 ---@field range didymus.review.Range? Nil for a comment on the file.
 ---@field body string
 ---@field pending boolean True adds the comment to the pending review. False posts it at once.

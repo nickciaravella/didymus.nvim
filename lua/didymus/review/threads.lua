@@ -3,6 +3,7 @@
 --- the review tabpage. It does not call the provider. See docs/architecture/review.md#inline-threads.
 
 local config = require("didymus.config")
+local patch = require("didymus.review.patch")
 
 local M = {}
 
@@ -40,13 +41,22 @@ function M.scope(wins)
   end
 end
 
---- The head line where the thread shows in the file: the last line of its range, as on GitHub.
---- Nil if the thread shows only in the panel: outdated, on the base side, or on the file.
+--- The head line where the thread shows in the file: the last line of its range, as on GitHub. A
+--- thread on the base side shows at its hunk. Nil if the thread shows only in the panel: outdated,
+--- on the file, or on base lines out of the patch.
 ---@param thread didymus.review.Thread
+---@param file didymus.review.ChangedFile? The file of the thread. It has the patch.
 ---@return integer?
-function M.get_line(thread)
-  if thread.side == "head" and not thread.outdated and thread.range then
+function M.get_line(thread, file)
+  if thread.outdated or not thread.range then
+    return
+  end
+  if thread.side == "head" then
     return thread.range.last
+  end
+  -- A deleted file is not in the checkout.
+  if file and file.status ~= "deleted" then
+    return patch.get_head_line(file.patch, thread.range.last)
   end
 end
 
@@ -73,6 +83,9 @@ function M.get_summary(thread, text_hl)
   -- The first comment is pending until the user submits the review that started the thread.
   if comment and comment.pending then
     table.insert(segments, { " [pending]", dim or "DidymusThreadPending" })
+  end
+  if thread.side == "base" then
+    table.insert(segments, { " [base]", dim or "Comment" })
   end
   if thread.outdated then
     table.insert(segments, { " [outdated]", dim or "DiagnosticWarn" })
@@ -227,6 +240,10 @@ local function get_unfolded_lines(thread, opts)
     if comment.pending then
       table.insert(header, { " [pending]", dim or "DidymusThreadPending" })
     end
+    -- The thread is on deleted lines, so it needs a tag at its head line.
+    if index == 1 and thread.side == "base" then
+      table.insert(header, { " [base]", dim or "Comment" })
+    end
     table.insert(rows, { header = true, chunks = header })
     -- Keep the indent of the first line, because it can be code.
     local body = comment.body:gsub("^%s*\n", ""):gsub("%s+$", "")
@@ -264,6 +281,7 @@ end
 ---@class didymus.review.threads.DrawOpts
 ---@field width integer The width of the text area. The comments of an unfolded thread wrap at it.
 ---@field is_folded fun(thread: didymus.review.Thread): boolean
+---@field get_line fun(thread: didymus.review.Thread): integer? The line of the thread in the file. Nil shows no mark.
 
 --- Draw the threads of `path` in `buf`. The id of each mark is the index of its thread in
 --- `threads`, so that `at_cursor()` finds the thread. A folded thread is one line: its summary. An
@@ -279,7 +297,7 @@ function M.draw(buf, path, threads, opts)
   ---@type table<string, string>?
   local keys
   for index, thread in ipairs(threads) do
-    local line = thread.path == path and M.get_line(thread)
+    local line = thread.path == path and opts.get_line(thread)
     if line then
       -- The file in the checkout can be shorter than the change head.
       line = math.min(line, line_count)
@@ -341,22 +359,26 @@ function M.at_cursor(threads)
   return result
 end
 
---- The path and the line of the thread in messages, such as `file.txt:19`. Only the path if the
---- thread has no line.
+--- The path and the line of the thread in messages, such as `file.txt:19`. A line on the base side
+--- gets `(base)`. Only the path if the thread has no line.
 ---@param thread didymus.review.Thread
 ---@return string
 function M.get_location(thread)
-  if thread.range then
-    return ("%s:%d"):format(thread.path, thread.range.last)
+  if not thread.range then
+    return thread.path
   end
-  return thread.path
+  local location = ("%s:%d"):format(thread.path, thread.range.last)
+  return thread.side == "base" and location .. " (base)" or location
 end
 
 ---@param thread didymus.review.Thread
 ---@return string
 local function get_title(thread)
-  local title = M.get_location(thread)
+  local title = thread.path
   local tags = {}
+  if thread.range then
+    title = ("%s:%d"):format(thread.path, thread.range.last)
+  end
   if thread.side == "base" then
     table.insert(tags, "base")
   end

@@ -40,11 +40,6 @@ local function default_threads()
         { author = "hubot", body = "Because.", pending = true },
       },
     }),
-    make_thread("base", "file.txt", {
-      side = "base",
-      range = { first = 2, last = 2 },
-      comments = { { author = "octocat", body = "Was two.", pending = false } },
-    }),
     make_thread("deleted", "old.txt", {
       side = "base",
       range = { first = 1, last = 1 },
@@ -171,13 +166,12 @@ T["the panel shows the threads under their files, with the resolved and outdated
       return { item.depth or 0, item.text }
     end, vim.list_slice(items, 4)),
     {
-      { 0, "M file.txt +3 -3 4 threads" },
+      { 0, "M file.txt +3 -3 3 threads" },
       { 1, "💬 @octocat Why TWO?" },
       { 1, "✅ @hubot Rename this." },
       { 1, "💬 @octocat Old note. [outdated]" },
-      { 1, "💬 @octocat Was two." },
       { 0, "D old.txt +0 -1 1 thread" },
-      { 1, "💬 @octocat Why delete?" },
+      { 1, "💬 @octocat Why delete? [base]" },
     }
   )
   eq(items[5].segments, { { "💬 " }, { "@octocat", "DidymusThread" }, { " Why TWO?" } })
@@ -187,6 +181,7 @@ T["the panel shows the threads under their files, with the resolved and outdated
     { " Rename this.", "DidymusThreadResolved" },
   })
   eq(items[7].segments[4], { " [outdated]", "DiagnosticWarn" })
+  eq(items[9].segments[4], { " [base]", "Comment" })
 end
 
 T["a thread row with a line has the location of the thread"] = function()
@@ -195,8 +190,8 @@ T["a thread row with a line has the location of the thread"] = function()
   local items = panel().items
   eq(items[5].location, { path = dir .. "/file.txt", line = 2 })
   eq(items[6].location, { path = dir .. "/file.txt", line = 5 })
-  -- Outdated, base side and deleted file: no line.
-  eq({ items[7].location, items[8].location, items[10].location }, { nil, nil, nil })
+  -- Outdated, and base side of a deleted file: no line.
+  eq({ items[7].location, items[9].location }, { nil, nil })
   eq(review.tabpage, child.api.nvim_get_current_tabpage())
 end
 
@@ -219,12 +214,11 @@ T["the panel key shows only the active threads, and then all threads again"] = f
     end, vim.list_slice(items, 3)),
     {
       "Active threads",
-      "M file.txt +3 -3 3 threads",
+      "M file.txt +3 -3 2 threads",
       "💬 @octocat Why TWO?",
       "💬 @octocat Old note. [outdated]",
-      "💬 @octocat Was two.",
       "D old.txt +0 -1 1 thread",
-      "💬 @octocat Why delete?",
+      "💬 @octocat Why delete? [base]",
     }
   )
   eq(panel().cursor, 5)
@@ -237,7 +231,7 @@ T["the panel key shows only the active threads, and then all threads again"] = f
   child.lua("require('didymus.ui.picker.test').press('a')")
   calls = helpers.picker_calls(child, "panel")
   eq(calls[2].items[3].text, "All threads")
-  eq(#calls[2].items, 10)
+  eq(#calls[2].items, 9)
 end
 
 T["the panel key can change, or be off"] = function()
@@ -275,21 +269,44 @@ end
 
 T["an active thread is unfolded with all its comments, and a resolved thread is folded"] = function()
   open_review()
-  choose("M file.txt +3 -3 4 threads")
+  choose("M file.txt +3 -3 3 threads")
   -- The tabline and the status line show the temporary path.
   child.o.showtabline, child.o.laststatus, child.o.ruler = 0, 0, false
   child.cmd("echo ''")
   expect_screenshot(child.get_screenshot())
 end
 
-T["outdated threads and threads on the base side have no mark"] = function()
+T["outdated threads, threads on the file and base lines out of the hunks have no mark"] = function()
   open_review({
     make_thread("outdated", "file.txt", { outdated = true }),
-    make_thread("base", "file.txt", { side = "base", range = { first = 2, last = 2 } }),
+    make_thread("base", "file.txt", { side = "base", range = { first = 9, last = 9 } }),
     make_thread("file", "file.txt"),
   })
   choose("M file.txt +3 -3 3 threads")
   eq(mark_rows(), {})
+end
+
+T["a thread on the base side shows at the head line of its hunk, with the base tag"] = function()
+  open_review({
+    make_thread("base", "file.txt", {
+      side = "base",
+      range = { first = 1, last = 2 },
+      comments = { { author = "octocat", body = "Was two.", pending = false } },
+    }),
+  })
+  -- The last base line is a deleted line. The first added line after it is head line 2.
+  local item = panel().items[5]
+  eq(item.text, "💬 @octocat Was two. [base]")
+  eq(item.location, { path = child.fn.getcwd() .. "/file.txt", line = 2 })
+  choose(5)
+  eq({ current_path(), child.api.nvim_win_get_cursor(0)[1] }, { "file.txt", 2 })
+  eq(marks(), { { 1, { "┌ 💬 @octocat [base]", "└ Was two." } } })
+  child.cmd("Didymus review fold")
+  eq(marks(), { { 1, { "💬 @octocat Was two. [base]" } } })
+  -- `next` stops at the thread.
+  child.api.nvim_win_set_cursor(0, { 1, 0 })
+  child.cmd("Didymus review next")
+  eq(child.api.nvim_win_get_cursor(0)[1], 2)
 end
 
 T["to choose a thread with no line opens its float"] = function()
@@ -305,13 +322,13 @@ T["to choose a thread with no line opens its float"] = function()
   -- In a real panel, the move to a different row closes the float.
   child.cmd("doautocmd CursorMoved")
   eq(float_win(), nil)
-  choose("💬 @octocat Why delete?")
+  choose("💬 @octocat Why delete? [base]")
   eq(float_content().title, " old.txt:1 (base) ")
 end
 
 T[":Didymus review fold folds and unfolds the threads at the cursor line"] = function()
   open_review()
-  choose("M file.txt +3 -3 4 threads")
+  choose("M file.txt +3 -3 3 threads")
   eq(marks(), { { 1, unfolded_open }, { 4, { "    ✅ @hubot Rename this." } } })
 
   child.api.nvim_win_set_cursor(0, { 2, 0 })
@@ -358,7 +375,7 @@ end
 
 T["fold all folds all threads if one is unfolded, else it unfolds all threads"] = function()
   open_review()
-  choose("M file.txt +3 -3 4 threads")
+  choose("M file.txt +3 -3 3 threads")
   child.cmd("Didymus review fold all")
   eq(marks(), { { 1, { "💬 @octocat Why TWO?" } }, { 4, { "    ✅ @hubot Rename this." } } })
   child.cmd("Didymus review fold all")
@@ -376,7 +393,7 @@ end
 
 T["the mappings fold the thread at the cursor, and all threads"] = function()
   open_review()
-  choose("M file.txt +3 -3 4 threads")
+  choose("M file.txt +3 -3 3 threads")
   child.cmd("nmap <F3> <Plug>(didymus-review-fold)")
   child.cmd("nmap <F4> <Plug>(didymus-review-fold-all)")
   child.api.nvim_win_set_cursor(0, { 2, 0 })
@@ -398,7 +415,7 @@ T["fold with no thread at the cursor, no thread at a line or no review shows a w
   expect_message("didymus: no review is open")
 
   open_review()
-  choose("M file.txt +3 -3 4 threads")
+  choose("M file.txt +3 -3 3 threads")
   child.api.nvim_win_set_cursor(0, { 1, 0 })
   child.cmd("Didymus review fold")
   expect_message("didymus: no thread at line 1")
@@ -425,7 +442,7 @@ T["an unfolded thread shows the keys of the user, if they fit"] = function()
     vim.keymap.set("n", "<Leader>rf", "<Plug>(didymus-review-fold)")
   ]])
   open_review()
-  choose("M file.txt +3 -3 4 threads")
+  choose("M file.txt +3 -3 3 threads")
   child.api.nvim_win_set_cursor(0, { 5, 0 })
   child.cmd("Didymus review fold")
   eq(marks(), {
@@ -487,7 +504,7 @@ end
 
 T["the marks show only in the windows of the review tabpage"] = function()
   local review = open_review()
-  choose("M file.txt +3 -3 4 threads")
+  choose("M file.txt +3 -3 3 threads")
   local review_lines = screen_lines()
   eq(has_text(review_lines, "2 TWO"), true)
   eq(has_text(review_lines, "│ Why TWO?"), true)
@@ -540,7 +557,7 @@ end
 
 T[":edit! keeps the marks, and the close of the review removes them"] = function()
   open_review()
-  choose("M file.txt +3 -3 4 threads")
+  choose("M file.txt +3 -3 3 threads")
   child.cmd("edit!")
   eq(mark_rows(), { 1, 4 })
 

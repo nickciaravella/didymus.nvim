@@ -405,6 +405,17 @@ T["get_threads()"]["a deleted author, a pending comment, a thread on the file an
   eq(threads[4].range, { first = 10, last = 12 })
 end
 
+T["get_threads()"]["a range on the base side starts at the base line of originalStartLine"] = function()
+  mock_threads("base_threads_graphql", function(pages)
+    local thread = pages[1].data.node.reviewThreads.nodes[1]
+    -- `startLine` is a head line. The thread moved 6 lines since its original commit.
+    thread.line, thread.startLine, thread.startDiffSide = 30, 99, "LEFT"
+    thread.originalLine, thread.originalStartLine = 24, 21
+  end)
+  local threads = get_threads(threads_change)
+  eq({ threads[1].side, threads[1].range }, { "base", { first = 27, last = 30 } })
+end
+
 T["get_threads()"]["gives the error of gh, also for the comments of a long thread"] = function()
   mock_gh(function()
     return { code = 1, stderr = "gh: Could not resolve to a node with the global id of 'PR_x'.\n" }
@@ -465,6 +476,7 @@ local function make_draft(first, last)
     path = "lua/didymus/init.lua",
     range = { first = first, last = last },
     body = ("Recorded for the unit tests of didymus: lines %d-%d."):format(first, last),
+    side = "head",
     pending = true,
   }
 end
@@ -619,6 +631,42 @@ T["add_comment()"]["adds a thread on the file, with no range"] = function()
   -- GitHub gives line 1 on the head side for a thread on the file.
   eq({ reply.result.side, reply.result.range, reply.result.outdated }, { "head", nil, false })
   eq(reply.result.comments[1].pending, true)
+end
+
+T["add_comment()"]["adds a thread on base lines, with the base lines of the range"] = function()
+  mock_comment({
+    pending_reviews = fixture_reply("comment_pending_review_graphql"),
+    add_thread = fixture_reply("comment_base_range_thread_graphql"),
+  })
+  local draft = vim.tbl_extend("force", make_draft(23, 24), {
+    side = "base",
+    body = "Recorded for the unit tests of didymus: base lines 23-24.",
+  })
+  local reply = call("add_comment", make_comment_change(), draft)
+
+  eq(vim.list_slice(commands[2], 12), {
+    "-f",
+    "subjectType=LINE",
+    "-f",
+    "side=LEFT",
+    "-F",
+    "line=24",
+    "-F",
+    "startLine=23",
+    "-f",
+    "startSide=LEFT",
+  })
+  -- On the base side, GitHub gives the head line of the start in `startLine`.
+  eq({ reply.result.side, reply.result.range }, { "base", { first = 23, last = 24 } })
+
+  mock_comment({
+    pending_reviews = fixture_reply("comment_pending_review_graphql"),
+    add_thread = fixture_reply("comment_base_thread_graphql"),
+  })
+  draft = vim.tbl_extend("force", make_draft(24, 24), { side = "base" })
+  reply = call("add_comment", make_comment_change(), draft)
+  eq(vim.list_slice(commands[2], 14), { "-f", "side=LEFT", "-F", "line=24" })
+  eq({ reply.result.side, reply.result.range }, { "base", { first = 24, last = 24 } })
 end
 
 T["add_comment()"]["gives an error if GitHub adds no thread"] = function()

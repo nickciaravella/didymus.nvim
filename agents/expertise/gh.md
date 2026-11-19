@@ -61,6 +61,13 @@ The exit code is 0, and the reply has no `errors`. So check that `thread` is not
 - Proof: on nickciaravella/didymus.nvim#64, in a pending review, `addPullRequestReviewThread` with `path`, `body` and `subjectType: FILE`. See `tests/fixtures/github/comment_file_thread_graphql.json`.
 - Checked: gh 2.104.0
 
+### On the base side, `startLine` of a thread is a head line, but `line` is a base line
+
+For a range with `side: LEFT` and `startSide: LEFT`, the thread has the base `line`, but `startLine` is the head line that matches the base start. `reviewThreads` gives the same. `originalStartLine` has the base line. For one line, `startLine` is equal to `line`. So read the start of a base range from `originalStartLine`, and move it by `line - originalLine`.
+
+- Proof: on nickciaravella/didymus.nvim#64 (hunk `@@ -21,7 +22,7 @@`), `addPullRequestReviewThread` with `side: LEFT, line: 23, startLine: 21, startSide: LEFT` gives `startLine: 22`. With `line: 24, startLine: 23`, it gives `startLine: 24` and `originalStartLine: 23`. See `tests/fixtures/github/comment_base_range_thread_graphql.json`.
+- Checked: gh 2.104.0
+
 ### `addPullRequestReviewThread` accepts a range across two hunks, but keeps only the hunk of `line`
 
 The thread has the `startLine` and the `line` of the input. But its `diff_hunk` has only the lines of the hunk of `line`, up to `line`. github.com does not let you select across two hunks. didymus refuses such a range.

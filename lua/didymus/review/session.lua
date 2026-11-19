@@ -47,6 +47,7 @@ local workspace = require("didymus.review.workspace")
 ---@field private on_close fun(session: didymus.review.Session)
 ---@field private group integer The autocmds of the review.
 ---@field private thread_paths table<string, string> The path of each file with threads, by its real path.
+---@field private thread_lines table<string, integer> The line of each thread in its file, by thread id. A thread with no line has none.
 ---@field diff_view didymus.diff.View The diff of the change in the code window.
 ---@field private workspace_checked boolean True after the check for local changes in the diff.
 local Session = {}
@@ -70,6 +71,7 @@ function Session.new(opts)
     old_head = opts.old_head,
     on_close = opts.on_close,
     thread_paths = {},
+    thread_lines = {},
     thread_filter = "all",
     folds = {},
     draw_scheduled = false,
@@ -339,6 +341,9 @@ function Session:draw_threads(buf)
       is_folded = function(thread)
         return self:is_folded(thread)
       end,
+      get_line = function(thread)
+        return self:get_thread_line(thread)
+      end,
     })
   end
 end
@@ -407,12 +412,13 @@ end
 --- line come first, by line. The other threads stay in the order of the provider.
 ---@param list didymus.review.Thread[]
 ---@param files didymus.review.ChangedFile[]
+---@param lines table<string, integer> The line of each thread, by thread id.
 ---@return didymus.review.Thread[]
-local function sort_threads(list, files)
+local function sort_threads(list, files, lines)
   local file_indexes = get_file_indexes(files)
   local keys = {}
   for index, thread in ipairs(list) do
-    local line = threads.get_line(thread)
+    local line = lines[thread.id]
     keys[thread] = { file_indexes[thread.path] or math.huge, line or math.huge, index }
   end
   local sorted = vim.list_slice(list)
@@ -431,7 +437,15 @@ end
 --- Keep the threads of the change. Show them in the panel and in the loaded files.
 ---@param list didymus.review.Thread[]
 function Session:set_threads(list)
-  self.threads = sort_threads(list, self.change.files)
+  local files = {}
+  for _, file in ipairs(self.change.files) do
+    files[file.path] = file
+  end
+  self.thread_lines = {}
+  for _, thread in ipairs(list) do
+    self.thread_lines[thread.id] = threads.get_line(thread, files[thread.path])
+  end
+  self.threads = sort_threads(list, self.change.files, self.thread_lines)
   self.thread_paths = {}
   for _, thread in ipairs(self.threads) do
     local real_path = vim.uv.fs_realpath(self:get_full_path(thread.path))
@@ -458,6 +472,13 @@ end
 ---@param thread didymus.review.Thread
 function Session:add_thread(thread)
   self:set_threads(vim.list_extend(vim.list_slice(self.threads), { thread }))
+end
+
+--- The line of the thread in its file. Nil if the thread shows only in the panel.
+---@param thread didymus.review.Thread
+---@return integer?
+function Session:get_thread_line(thread)
+  return self.thread_lines[thread.id]
 end
 
 --- Show all threads in the panel, or only the active threads.
@@ -598,7 +619,7 @@ end
 --- Fold all threads if one of the threads at a line is unfolded. Else, unfold all threads.
 function Session:toggle_all_folds()
   local shown = vim.tbl_filter(function(thread)
-    return threads.get_line(thread) ~= nil
+    return self:get_thread_line(thread) ~= nil
   end, self.threads)
   if #shown == 0 then
     vim.notify(("didymus: %s has no threads at a line"):format(self.label), vim.log.levels.WARN)
@@ -689,7 +710,7 @@ end
 --- Open the file of `thread` at the line of the thread, unfold the thread, and show it.
 ---@param thread didymus.review.Thread
 function Session:open_thread(thread)
-  local line = threads.get_line(thread)
+  local line = self:get_thread_line(thread)
   if line and self:open_file(thread.path, line) then
     self:set_folded({ thread }, false)
     show_threads_under(self.code_win, vim.api.nvim_win_get_cursor(self.code_win)[1])
@@ -756,7 +777,7 @@ function Session:get_stops(kind)
     -- the threads that are not resolved.
     local file_indexes = get_file_indexes(self.change.files)
     for _, thread in ipairs(self.threads) do
-      local line = threads.get_line(thread)
+      local line = self:get_thread_line(thread)
       local file_index = file_indexes[thread.path]
       local shown = self.thread_filter == "all" or not thread.resolved
       if line and file_index and shown then

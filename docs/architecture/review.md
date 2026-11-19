@@ -20,7 +20,7 @@ The facts in this section were checked on 2026-11-08 with `gh` 2.103.2 and the l
 | List PRs | `gh pr list --json number,title,author,body,isDraft --limit 100` | The fields of `ChangeSummary`. `--search "review-requested:@me"` gives the PRs that wait for you. |
 | PR data | `gh api graphql --paginate --slurp`, one query | `id number title body isDraft author baseRefName headRefName baseRefOid headRefOid isCrossRepository headRepositoryOwner`, `files { path changeType additions deletions }`, `reviews(states: [PENDING]) { id viewerDidAuthor }`. Each page repeats the PR data. `viewerViewedState` of `files` is for [#49](https://github.com/nickciaravella/didymus.nvim/issues/49). |
 | Commentable lines | `gh api --paginate --slurp repos/{owner}/{repo}/pulls/{n}/files` | Only REST gives `patch`. A large or binary file, or a pure rename, has no `patch`. |
-| Threads | `gh api graphql --paginate --slurp`, `node(id:)` of the PR, `reviewThreads` | `id path line startLine diffSide startDiffSide isResolved isOutdated subjectType viewerCanReply viewerCanResolve viewerCanUnresolve`, and `comments { author body state }`. A thread with more than 100 comments gets a second query, `node(id:)` of the thread. `gh` reads the first `pageInfo`, so the `pageInfo` of the threads comes before the comments. |
+| Threads | `gh api graphql --paginate --slurp`, `node(id:)` of the PR, `reviewThreads` | `id path line startLine originalLine originalStartLine diffSide startDiffSide isResolved isOutdated subjectType viewerCanReply viewerCanResolve viewerCanUnresolve`, and `comments { author body state }`. A thread with more than 100 comments gets a second query, `node(id:)` of the thread. `gh` reads the first `pageInfo`, so the `pageInfo` of the threads comes before the comments. |
 | General comments | `gh api graphql`, `comments` | Issue comments of the PR. |
 | Check out the PR | `gh pr checkout <n>` | Works for fork PRs. Git refuses if a local change conflicts. |
 
@@ -112,7 +112,7 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 | Header 2 | `@author main ← feature` | `Comment` |
 | Header 3 | `All threads` or `Active threads`: the thread filter | `Comment` |
 | File | `M path +12 -3 2 threads`, in the order of the provider | `Added`, `Changed`, `Removed`, `Comment` |
-| Thread, at depth 1 under its file | `💬 @author <first line of the first comment> [pending] [outdated]`. A resolved thread has ✅. | `DidymusThread` for the author. A resolved thread is all `DidymusThreadResolved`. `[pending]` is `DidymusThreadPending`. `[outdated]` is `DiagnosticWarn`. |
+| Thread, at depth 1 under its file | `💬 @author <first line of the first comment> [pending] [base] [outdated]`. A resolved thread has ✅. | `DidymusThread` for the author. A resolved thread is all `DidymusThreadResolved`. `[pending]` is `DidymusThreadPending`. `[base]` is `Comment`. `[outdated]` is `DiagnosticWarn`. |
 
 1. The status letters are `A`, `M`, `D` and `R`. The full path comes before the counts. A long path can hide the counts in a narrow panel.
 2. The thread count shows only if it is above 0. A count of 0 on each row makes the rows long.
@@ -153,6 +153,7 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 5. The parser skips `\ No newline at end of file` and the lines before the first hunk. An empty line in a hunk is a context line.
 6. The panel parses the patch when it makes the file rows and when it opens a file. There is no cache, because a refresh replaces the change.
 7. The cursor goes to the first non-blank character of `first_change` of the first hunk, or to line 1 with no hunks. If the buffer is shorter, the cursor goes to the last line. The file in the checkout can be different from the change head.
+8. `get_head_line(text, base_line)` gives the head line of a thread on the base side. A context line gives its head line. A deleted line gives the head line after the deleted lines, where the inline diff shows them. At the end of a hunk, it gives the head line before them. A line out of the hunks gives nil.
 
 ### Inline threads
 
@@ -160,13 +161,15 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 
 1. The review gets the threads after the review tabpage opens, with a progress message. Then the session updates the panel and the marks. On an error, the message shows and the review stays open. A close, a newer review or a newer get of the threads ignores the result. See [Refresh](#refresh).
 2. A thread shows in the file at the last line of its range, as on GitHub. The `<CR>` of the panel, `next` and `prev` use this line.
-3. Outdated threads, threads on the base side and threads on the file show only in the panel, and in the thread float.
+3. Outdated threads and threads on the file show only in the panel, and in the thread float.
 4. Each thread has one extmark in the namespace `didymus.review`. It has a sign with the comment count (`9+` above 9), and the thread in `virt_lines` under the line, with the indent of the line. So the thread does not cover the code.
 5. The id of an extmark is the index of its thread in the session. `fold`, `reply` and `resolve` read the extmarks at the cursor line, so they follow edits of the text.
 6. The session draws the marks in all loaded buffers of files with threads, and again on `BufReadPost`, also after `:checktime` or `:edit!`. The close of the review removes all marks.
 7. The marks show only in the windows of the review tabpage, because the review buffers are the normal buffers of the user. See rule 8.
 8. The scope uses `nvim__ns_set(ns, { wins = … })`. Neovim 0.12 marks it as experimental. The session gives it all windows of the review tabpage, at the start and on `WinNew`. The list is never empty, because an empty list shows the marks in all windows. If `vim.api.nvim__ns_set` does not exist, the marks show in all windows, with no error.
 9. With `signcolumn=auto`, a window outside the review tabpage that shows a review buffer has an empty sign column. The sign column counts the signs of the buffer, not of the window.
+10. A thread on the base side shows at the head line of its hunk: `patch.get_head_line()` of the last line of its range. The first comment has the `[base]` tag, folded or unfolded. A thread on a deleted file, or on base lines out of the patch, shows only in the panel. [#82](https://github.com/nickciaravella/didymus.nvim/issues/82) also shows the threads on the base buffer.
+11. The session keeps the line of each thread, by thread id. `set_threads()` makes it, because the line of a base thread needs the patch of its file.
 
 #### Folds
 
@@ -245,6 +248,10 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 16. A comment on the file has no lines. So it needs no check of the buffer, of `HEAD` or of the file on disk. The draft has no `range`. The title of the float is the path, and the float has no `keys.suggest`. The float opens at the cursor line of the current window, such as the panel.
 17. If the lines are not in one commentable range, `picker.confirm()` asks `Line 10 of a.lua is not in a hunk of #12. Comment on the file?`. "Comment on the file" opens the float of a comment on the file. The checks of rule 3 for a modified buffer come first.
 18. A thread on the file shows only in the panel and in the thread float, after the threads with a line. See [Inline threads](#inline-threads), rule 3.
+19. `comment` in a base buffer of the diff adds a thread on the base side, with the base lines. A base buffer is in the base window of the split layout, or in the code window with the `base` sides. The checks use the base commentable ranges.
+20. A base buffer has the text of the merge-base. So a comment on the base side needs no check of the file on disk. `HEAD` must still be the change head, because the patch is of the change head.
+21. The title of the float is `path:3 (base)`, and the messages use the same location. The float has no `keys.suggest`. `comment file` in a base buffer adds a comment on its file.
+22. The draft has `side = "base"`. A comment on the file has `side = "head"`.
 
 ### Replies and resolve
 
@@ -480,8 +487,9 @@ The types come from the [reference file](../reference/design-prompt.md#data-mode
 ---@field body string               Markdown.
 ---@field pending boolean
 
----@class didymus.review.CommentDraft A new comment on the head side.
+---@class didymus.review.CommentDraft A new comment.
 ---@field path string
+---@field side didymus.review.Side   The side of `range`. A comment on the file is on the head side.
 ---@field range didymus.review.Range? Nil for a comment on the file.
 ---@field body string
 ---@field pending boolean            True adds the comment to the pending review. False posts it at once.
@@ -495,7 +503,7 @@ The types come from the [reference file](../reference/design-prompt.md#data-mode
 1. A provider can add its own fields to a `Change`, such as the GraphQL node id of the PR. The review session gives the same table back to the provider.
 2. `ChangedFile` has the raw `patch`, not the commentable ranges. The patch parser makes the hunks and the commentable ranges from it.
 3. A thread and a draft use a `Range`, not `line` and `start_line`. Then a draft and a commentable range have the same type.
-4. A thread on the base side cannot show at a line of the head file. So `Thread` has `side`. A draft is always on the head side in the MVP.
+4. A thread on the base side has base lines, not head lines. So `Thread` and `CommentDraft` have `side`.
 5. The `can_…` fields come from the code host, because only it knows the permissions of the viewer. On GitHub, they also depend on the state: a resolved thread has `can_resolve` false.
 6. `diff` and `old_path` are for the diff target. See [the diff target of a review](diff.md#the-diff-target-of-a-review). No provider sets `diff` yet.
 
@@ -509,7 +517,6 @@ The MVP does not use these fields of the reference file:
 | `original_line` | Outdated threads show only in the panel. |
 | `Comment.id`, `created_at` | No MVP feature uses them. |
 | `CommentDraft.file_level` | A draft with no `range` is a comment on the file. |
-| `CommentDraft.side` | [More comment kinds](https://github.com/nickciaravella/didymus.nvim/issues/53) is after the MVP. |
 
 ### GitHub provider
 
@@ -525,9 +532,9 @@ The `github` provider is in `lua/didymus/review/provider/github/`. It runs the [
 8. An error is `<command>: <the stderr of gh>`, for example `gh pr list: …`. The GraphQL error comes before the REST error, because it is clearer.
 9. `health()` runs `gh auth status --active`, and waits for 10 seconds at most. `:checkhealth` is synchronous.
 10. `get_threads` uses the GraphQL `node_id` of the PR. A thread with more comments than the first page gets all its comments from a second query. These queries run at the same time.
-11. `diffSide` `RIGHT` is `head`, and `LEFT` is `base`. The range is `startLine` (or `line`) to `line`. If the range starts on the other side, the range is only `line`. The range is nil if GitHub gives no `line`, if the thread is outdated, or if `subjectType` is `FILE`. A thread on the file has `line: 1` on `RIGHT`. `pending` is `state == PENDING`.
+11. `diffSide` `RIGHT` is `head`, and `LEFT` is `base`. The range is `startLine` (or `line`) to `line`. If the range starts on the other side, the range is only `line`. The range is nil if GitHub gives no `line`, if the thread is outdated, or if `subjectType` is `FILE`. A thread on the file has `line: 1` on `RIGHT`. On `LEFT`, `startLine` is a head line. So a range on `LEFT` starts at `originalStartLine`, moved by `line - originalLine`. `pending` is `state == PENDING`.
 12. `add_comment` gets the pending review of the viewer before each comment. It does not use `change.pending_review_id`, because the user can start, submit or discard a review on github.com after the open. If there is no pending review, `addPullRequestReview` with `commitOID` of `head_sha` and no `event` starts one. Then `change.pending_review_id` is its id.
-13. `addPullRequestReviewThread` gets `subjectType: LINE`, `side: RIGHT` and `line`. A range also gets `startLine` and `startSide: RIGHT`. A draft with no range gets only `subjectType: FILE`. The reply has the new thread with the fields of `get_threads`.
+13. `addPullRequestReviewThread` gets `subjectType: LINE`, `side` and `line`. The side is `RIGHT` for the head and `LEFT` for the base. A range also gets `startLine` and `startSide` with the same side. A draft with no range gets only `subjectType: FILE`. The reply has the new thread with the fields of `get_threads`.
 14. For a line out of the diff, GitHub gives `thread: null` and no error. Then `add_comment` gives an error.
 15. GitHub posts a comment at once only if the viewer has no pending review. So for a draft that is not pending, `add_comment` first gets the pending review. If there is one, it gives an error and writes nothing. Else it starts a review, adds the thread, and submits the review with `event: COMMENT`. Only this order gives the id of the thread, which a reply and a resolve need. REST and `addPullRequestReview` with `threads` do not give it. After the submit, `add_comment` gets the thread again, because the viewer can then resolve it. If this get fails, it gives the thread of the add, because the comment is posted.
 16. If GitHub does not add the thread to post, `add_comment` deletes the new review, because an empty pending review blocks the next post. If the submit fails, the comment stays in the pending review, and the error says so.

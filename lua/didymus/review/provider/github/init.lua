@@ -257,8 +257,14 @@ local function to_thread(thread, comments)
     if thread.startDiffSide and thread.startDiffSide ~= thread.diffSide then
       -- A range can start on the other side. Only the last line is on the side of the thread.
       first = thread.line
+    elseif thread.diffSide == "LEFT" then
+      -- On the base side, `startLine` is a head line. `originalStartLine` is the base line.
+      first = thread.line
+      if thread.startDiffSide and thread.originalStartLine and thread.originalLine then
+        first = thread.originalStartLine + thread.line - thread.originalLine
+      end
     end
-    range = { first = first, last = thread.line }
+    range = { first = math.min(first, thread.line), last = thread.line }
   end
   return {
     id = thread.id,
@@ -406,8 +412,8 @@ local function get_pending_review(change, cb)
   end)
 end
 
---- Add a thread on the head side to the pending review `review_id`. A draft with no range
---- gives a thread on the file.
+--- Add a thread to the pending review `review_id`. A draft with no range gives a thread on the
+--- file.
 ---@param change didymus.review.provider.github.Change
 ---@param review_id string
 ---@param draft didymus.review.CommentDraft
@@ -420,10 +426,11 @@ local function add_thread(change, review_id, draft, cb)
   if not range then
     vim.list_extend(fields, { "-f", "subjectType=FILE" })
   else
-    vim.list_extend(fields, { "-f", "subjectType=LINE", "-f", "side=RIGHT" })
+    local side = draft.side == "base" and "LEFT" or "RIGHT"
+    vim.list_extend(fields, { "-f", "subjectType=LINE", "-f", "side=" .. side })
     vim.list_extend(fields, { "-F", "line=" .. range.last })
     if range.first ~= range.last then
-      vim.list_extend(fields, { "-F", "startLine=" .. range.first, "-f", "startSide=RIGHT" })
+      vim.list_extend(fields, { "-F", "startLine=" .. range.first, "-f", "startSide=" .. side })
     end
   end
   local args = get_graphql_args(change.github, graphql.add_thread, fields)
@@ -521,7 +528,7 @@ local function post_thread(change, draft, cb)
   end)
 end
 
---- Add a thread on the head side to the pending review of the viewer, and start the review if
+--- Add a thread to the pending review of the viewer, and start the review if
 --- there is none. Or post the thread at once.
 ---@param change didymus.review.provider.github.Change
 ---@param draft didymus.review.CommentDraft

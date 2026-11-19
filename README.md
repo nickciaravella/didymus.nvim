@@ -165,7 +165,7 @@ A thread is folded or unfolded:
 
 The last line of an unfolded thread shows your keys for `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)` and `<Plug>(didymus-review-fold)`, if the line fits.
 
-Outdated threads, threads on deleted lines and threads on the file show only in the panel. `<CR>` on one of them opens its float next to the panel. The float closes when the cursor moves. A second `<CR>` moves the focus into the float, and `q` closes it.
+A thread on deleted lines shows under the first line after the deleted lines, with the `[base]` tag. Outdated threads, threads on the file and threads on a deleted file show only in the panel. `<CR>` on one of them opens its float next to the panel. The float closes when the cursor moves. A second `<CR>` moves the focus into the float, and `q` closes it.
 
 `next` and `prev` go in the order of the panel, from the cursor. If the current window does not show a file of the pull request, they start at the cursor of the code window.
 
@@ -195,6 +195,8 @@ didymus refuses a comment, and shows the reason, in these cases:
 - The lines are not in a hunk of the pull request. A range must be in one hunk. If the hunks of a file are unknown, for example in a large file, GitHub decides. The picker asks if you want to comment on the file.
 
 If GitHub does not add the comment, the error shows. The next `comment` on the same lines starts with your text.
+
+To comment on deleted lines, show the base of the file with `:Didymus diff side base` or the `split` layout. Then use `comment` in the base buffer. The title of the float has `(base)`. The thread shows in the file under the first line after the deleted lines.
 
 `comment file` adds a comment on the file, with no lines. It needs no checks of the lines, so it also works on a modified file. `c` on a file row or a thread row of the files panel also adds a comment on the file, also for a deleted file. A thread on the file shows only in the panel, after the threads with a line.
 
@@ -313,7 +315,7 @@ The `inline` layout shows the deleted lines in the code window. The `split` layo
 
 The `head` side shows only the code window, with the signs of the added and changed lines. The `base` side shows the base of the file in the code window, with the deleted lines in the `DiffDelete` highlight. The base buffer is read-only, and has no LSP and no threads. Both of them ignore the layout, so the base window closes. `both` opens it again. When the side changes, the cursor goes to the matching line of the other side. `side` of a hidden diff shows the diff.
 
-The `base` side is temporary. `next` and `prev` keep it, and show the base of the next file. Any other buffer in the code window ends it, for example `<CR>` in the files panel. Then the side goes back to the value before `base`. A comment needs the head side, so `:Didymus review comment` on the base side shows a warning.
+The `base` side is temporary. `next` and `prev` keep it, and show the base of the next file. Any other buffer in the code window ends it, for example `<CR>` in the files panel. Then the side goes back to the value before `base`. `:Didymus review comment` on the base side adds a comment on the deleted lines. In the `split` layout, it also works in the base window.
 
 In the `split` layout, Neovim computes the diff of the two windows with your `'diffopt'`. So the diff mode can show a hunk a little differently from the gitsigns signs. When the diff hides or the layout changes, didymus puts back the window options that the diff mode changed, such as `'foldmethod'` and `'wrap'`.
 

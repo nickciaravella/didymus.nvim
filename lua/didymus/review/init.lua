@@ -498,18 +498,21 @@ function M.refresh()
   end)
 end
 
---- `path:3` for one line, `path:3-5` for more lines, `path` for the file.
+--- `path:3` for one line, `path:3-5` for more lines, `path` for the file. Lines on the base side
+--- get `(base)`.
 ---@param path string
 ---@param range didymus.review.Range?
+---@param side didymus.review.Side?
 ---@return string
-local function format_location(path, range)
+local function format_location(path, range, side)
   if not range then
     return path
   end
-  if range.first == range.last then
-    return ("%s:%d"):format(path, range.first)
+  local location = ("%s:%d"):format(path, range.first)
+  if range.first ~= range.last then
+    location = ("%s-%d"):format(location, range.last)
   end
-  return ("%s:%d-%d"):format(path, range.first, range.last)
+  return side == "base" and location .. " (base)" or location
 end
 
 --- The lines of the selection in visual mode, else the cursor line. Leave visual mode, as a `:`
@@ -526,29 +529,39 @@ local function get_cursor_range()
   return { first = math.min(first, last), last = math.max(first, last) }
 end
 
+--- The file of the change that `buf` shows, and the side: the head file, or the base buffer of the
+--- diff. Nil if `buf` shows no file of the change.
+---@param session didymus.review.Session
+---@param buf integer
+---@return didymus.review.ChangedFile?
+---@return didymus.review.Side?
+local function find_comment_file(session, buf)
+  local base_file = session.diff_view:find_base_file(buf)
+  if not base_file then
+    local index = session:find_file_index(buf)
+    return index and session.change.files[index], "head"
+  end
+  for _, file in ipairs(session.change.files) do
+    if file.path == base_file.path then
+      return file, "base"
+    end
+  end
+end
+
 --- Check that `buf` shows a file of the change with no unsaved changes, and that the lines accept
 --- comments. If a check fails, show the reason.
 ---@param session didymus.review.Session
 ---@param buf integer
 ---@param range didymus.review.Range
 ---@return didymus.review.ChangedFile?
+---@return didymus.review.Side?
 ---@return string? out_of_hunks The reason if the lines are not in one commentable range. Then the file can get a comment.
 local function check_comment(session, buf, range)
-  local base_file = session.diff_view:find_base_file(buf)
-  if base_file then
-    show_warning(
-      ("the current window shows the base of %s. A comment needs the head side."):format(
-        base_file.path
-      )
-    )
-    return
-  end
-  local index = session:find_file_index(buf)
-  if not index then
+  local file, side = find_comment_file(session, buf)
+  if not file then
     show_warning(("the current window does not show a file of %s"):format(session.label))
     return
   end
-  local file = session.change.files[index]
   if vim.bo[buf].modified then
     show_warning(
       ("%s is modified. A comment needs the lines of the head of %s."):format(
@@ -558,25 +571,22 @@ local function check_comment(session, buf, range)
     )
     return
   end
-  if not patch.is_commentable(patch.parse(file.patch), "head", range) then
+  if not patch.is_commentable(patch.parse(file.patch), side, range) then
+    local name = side == "base" and "the base of " .. file.path or file.path
     local reason
     if range.first == range.last then
-      reason = ("Line %d of %s is not in a hunk of %s"):format(
-        range.first,
-        file.path,
-        session.label
-      )
+      reason = ("Line %d of %s is not in a hunk of %s"):format(range.first, name, session.label)
     else
       reason = ("Lines %d-%d of %s are not in one hunk of %s"):format(
         range.first,
         range.last,
-        file.path,
+        name,
         session.label
       )
     end
-    return file, reason
+    return file, side, reason
   end
-  return file
+  return file, side
 end
 
 --- Add the comment with the provider. Then show the new thread. If the provider fails, keep the
@@ -584,7 +594,7 @@ end
 ---@param session didymus.review.Session
 ---@param draft didymus.review.CommentDraft
 local function add_comment(session, draft)
-  local location = format_location(draft.path, draft.range)
+  local location = format_location(draft.path, draft.range, draft.side)
   local verb = draft.pending and "add" or "post"
   track(("%s a comment at %s"):format(verb, location), function(done)
     session.provider:add_comment(session.change, draft, done)
@@ -634,13 +644,19 @@ end
 --- Open the input float for a comment on `range` of `path`, or on the file with no range.
 ---@param session didymus.review.Session
 ---@param path string
+---@param side didymus.review.Side
 ---@param range didymus.review.Range?
----@param code string[]? The lines of the range, for a suggestion.
-local function open_comment_input(session, path, range, code)
+---@param code string[]? The lines of the range, for a suggestion. GitHub applies a suggestion only on the head side.
+local function open_comment_input(session, path, side, range, code)
   local options = config.options.review.input
   local failed = session.failed_draft
   local text
-  if failed and failed.path == path and vim.deep_equal(failed.range, range) then
+  if
+    failed
+    and failed.path == path
+    and failed.side == side
+    and vim.deep_equal(failed.range, range)
+  then
     text = failed.body
     session.failed_draft = nil
   end
@@ -655,7 +671,7 @@ local function open_comment_input(session, path, range, code)
     })
   end
   input.open({
-    title = format_location(path, range),
+    title = format_location(path, range, side),
     range = range and { range.first, range.last },
     text = text,
     width = options.width,
@@ -667,14 +683,20 @@ local function open_comment_input(session, path, range, code)
         key = options.keys.post,
         name = "comment now",
         on_submit = function(body)
-          add_comment(session, { path = path, range = range, body = body, pending = false })
+          add_comment(
+            session,
+            { path = path, side = side, range = range, body = body, pending = false }
+          )
         end,
       },
       {
         key = options.keys.add,
         name = "add to review",
         on_submit = function(body)
-          add_comment(session, { path = path, range = range, body = body, pending = true })
+          add_comment(
+            session,
+            { path = path, side = side, range = range, body = body, pending = true }
+          )
         end,
       },
     },
@@ -691,7 +713,7 @@ local function offer_file_comment(session, path, reason)
     choice = "Comment on the file",
     cb = function(confirmed)
       if confirmed and session:is_open() then
-        open_comment_input(session, path)
+        open_comment_input(session, path, "head")
       end
     end,
   })
@@ -703,14 +725,14 @@ end
 ---@param path string?
 local function comment_on_file(session, path)
   if not path then
-    local index = session:find_file_index(vim.api.nvim_get_current_buf())
-    if not index then
+    local file = find_comment_file(session, vim.api.nvim_get_current_buf())
+    if not file then
       return show_warning(("the current window does not show a file of %s"):format(session.label))
     end
-    path = session.change.files[index].path
+    path = file.path
   end
   threads.close_float()
-  open_comment_input(session, path)
+  open_comment_input(session, path, "head")
 end
 
 ---@alias didymus.review.CommentKind "line"|"file"
@@ -743,14 +765,16 @@ function M.comment(opts)
   end
   local win = vim.api.nvim_get_current_win()
   local buf = vim.api.nvim_win_get_buf(win)
-  local file, out_of_hunks = check_comment(session, buf, range)
+  local file, side, out_of_hunks = check_comment(session, buf, range)
   if not file then
     return
   end
   if out_of_hunks then
     return offer_file_comment(session, file.path, out_of_hunks)
   end
-  local code = vim.api.nvim_buf_get_lines(buf, range.first - 1, range.last, false)
+  local code = side == "head"
+      and vim.api.nvim_buf_get_lines(buf, range.first - 1, range.last, false)
+    or nil
   local head_sha = session.change.head_sha
   -- After a refresh with a new head, git can have no commit of the new head. Then `git diff` gives
   -- an error that does not tell the reason.
@@ -765,6 +789,20 @@ function M.comment(opts)
         )
       )
     end
+    -- The checks are async. Open the float only at the same place.
+    local function open_input()
+      if
+        session:is_open()
+        and vim.api.nvim_get_current_win() == win
+        and vim.api.nvim_win_get_buf(win) == buf
+      then
+        open_comment_input(session, file.path, side, range, code)
+      end
+    end
+    -- The base buffer has the text of a commit, so only the head file can change.
+    if side == "base" then
+      return open_input()
+    end
     workspace.has_changes(session.cwd, head_sha, file.path, function(err, changed)
       if err then
         return show_error(err)
@@ -777,14 +815,7 @@ function M.comment(opts)
           )
         )
       end
-      -- The checks are async. Open the float only at the same place.
-      if
-        session:is_open()
-        and vim.api.nvim_get_current_win() == win
-        and vim.api.nvim_win_get_buf(win) == buf
-      then
-        open_comment_input(session, file.path, range, code)
-      end
+      open_input()
     end)
   end)
 end

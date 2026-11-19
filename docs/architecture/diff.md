@@ -307,7 +307,7 @@ The revision buffers of `diff/revision.lua` have the name `didymus://<sha7>/<pat
 3. `base` shows the base revision buffer in the code window, with the marks of the deleted lines. It ignores the layout. The base buffer is read-only, has the filetype of the file, and has no LSP.
 4. `next` and `prev` keep the `base` sides. They use the base lines of the hunks, and open the base buffer of the next file.
 5. Any other buffer in the code window ends the `base` sides. Then the sides go back to the value before `base`. So `<CR>` in the panel and `review next` open the head file at the head line, as before. The base buffer of any file of the target keeps the `base` sides, so `<C-o>` to an older base buffer works.
-6. A comment needs the head file, so `review comment` on a base buffer shows `didymus: the current window shows the base of <path>. A comment needs the head side.` Threads do not show on the base buffer in the MVP.
+6. `review comment` on a base buffer adds a comment on the base side. See [Comments](review.md#comments), rule 19. Threads do not show on the base buffer in the MVP.
 7. A change of the sides puts the cursor at the matching line of the other side, with `hunks.map_line()`. It does not change the jumplist.
 8. The diff view shows the base buffer with `:keepjumps keepalt hide buffer`. So the head buffer stays loaded and attached, also with `'nohidden'`. The display of the `base` sides has this `head_buf`, and no `head_win`.
 9. `base` needs a file of the target in the code window. Else, `didymus: the code window does not show a file of the diff` shows, and the sides do not change.

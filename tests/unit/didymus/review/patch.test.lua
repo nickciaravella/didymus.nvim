@@ -158,4 +158,56 @@ T["is_commentable()"]["accepts all lines if the commentable lines are unknown"] 
   eq(patch.is_commentable(patch.parse(nil), "head", { first = 100, last = 200 }), true)
 end
 
+T["get_head_line()"] = MiniTest.new_set()
+
+---@param lines string[]
+---@param base_line integer
+---@return integer?
+local function get_head_line(lines, base_line)
+  return patch.get_head_line(table.concat(lines, "\n"), base_line)
+end
+
+local two_hunks = {
+  "@@ -1,4 +1,5 @@",
+  " one",
+  "-two",
+  "-three",
+  "+2",
+  "+2.5",
+  "+3",
+  " four",
+  "@@ -10,3 +11,2 @@ local M = {}",
+  " ten",
+  "-eleven",
+  " twelve",
+}
+
+T["get_head_line()"]["gives the head line of a context line"] = function()
+  eq(get_head_line(two_hunks, 1), 1)
+  eq(get_head_line(two_hunks, 4), 5)
+  eq(get_head_line(two_hunks, 12), 12)
+end
+
+T["get_head_line()"]["gives the head line after the deleted lines"] = function()
+  -- The first added line comes after the deleted lines.
+  eq(get_head_line(two_hunks, 2), 2)
+  eq(get_head_line(two_hunks, 3), 2)
+  -- A deletion with no added lines gives the next context line.
+  eq(get_head_line(two_hunks, 11), 12)
+end
+
+T["get_head_line()"]["gives the head line before deleted lines at the end of a hunk"] = function()
+  eq(get_head_line({ "@@ -1,3 +1,1 @@", " one", "-two", "-three" }, 3), 1)
+  eq(get_head_line({ "@@ -1,2 +1,1 @@", " one", "-two", "\\ No newline at end of file" }, 2), 1)
+  -- A deleted file has no head lines. Line 1 is the first line of a buffer.
+  eq(get_head_line({ "@@ -1,2 +0,0 @@", "-one", "-two" }, 2), 1)
+  eq(get_head_line({ "@@ -5,2 +4,0 @@", "-five", "-six" }, 5), 4)
+end
+
+T["get_head_line()"]["gives nil for a line out of the hunks, or with no patch"] = function()
+  eq(get_head_line(two_hunks, 7), nil)
+  eq(get_head_line(two_hunks, 20), nil)
+  eq(patch.get_head_line(nil, 1), nil)
+end
+
 return T

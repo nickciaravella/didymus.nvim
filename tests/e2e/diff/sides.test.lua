@@ -335,14 +335,56 @@ T["a file that is not in the change ends the base sides"] = function()
   eq(shown(code_win), "a.txt")
 end
 
-T["review comment on a base buffer shows a warning"] = function()
-  open_a()
+--- The title, the footer and the lines of the input float, after it opens.
+---@return { title: string, footer: string?, lines: string[] }
+local function wait_for_input()
+  local win
+  wait_for(function()
+    win = vim.iter(tab_wins()):find(function(candidate)
+      return child.api.nvim_win_get_config(candidate).relative ~= ""
+    end)
+    return win ~= nil
+  end, "the input float")
+  local config = child.api.nvim_win_get_config(win)
+  return {
+    title = config.title[1][1],
+    footer = config.footer and config.footer[1][1],
+    lines = child.api.nvim_buf_get_lines(child.api.nvim_win_get_buf(win), 0, -1, true),
+  }
+end
+
+T["review comment on a base buffer adds a thread on the base side"] = function()
+  local code_win = open_a()
   child.cmd("Didymus diff side base")
-  wait_for_render(2)
-  child.cmd("Didymus review comment")
-  wait_for_message(
-    "didymus: the current window shows the base of a.txt. A comment needs the head side."
-  )
+  wait_for_position(code_win, "base:a.txt", 1)
+  child.cmd("2,3Didymus review comment")
+  -- GitHub applies a suggestion only on the head side.
+  eq(wait_for_input(), {
+    title = " a.txt:2-3 (base) ",
+    footer = " <C-s> comment now  <C-y> add to review  q cancel ",
+    lines = { "" },
+  })
+  child.type_keys("Why delete?", "<C-y>")
+  helpers.wait_for_threads(child, 1)
+  local thread = child.lua_get("require('didymus.review.provider.test').threads['1'][1]")
+  eq({ thread.path, thread.side, thread.range }, { "a.txt", "base", { first = 2, last = 3 } })
+  wait_for_message("didymus: added a pending comment at a.txt:2-3 (base)")
+  local item = helpers.picker_calls(child, "panel")[1].items[5]
+  eq(item.text, "💬 @reviewer Why delete? [pending] [base]")
+  -- All base lines of a.txt are deleted, and the first added line is head line 1.
+  eq(item.location.line, 1)
+end
+
+T["review comment file on a base buffer adds a thread on the file"] = function()
+  local code_win = open_a()
+  child.cmd("Didymus diff side base")
+  wait_for_position(code_win, "base:a.txt", 1)
+  child.cmd("Didymus review comment file")
+  eq(wait_for_input().title, " a.txt ")
+  child.type_keys("About a.txt.", "<C-s>")
+  helpers.wait_for_threads(child, 1)
+  local thread = child.lua_get("require('didymus.review.provider.test').threads['1'][1]")
+  eq({ thread.path, thread.side, thread.range }, { "a.txt", "head", nil })
 end
 
 T["the threads do not show on the base buffer"] = function()

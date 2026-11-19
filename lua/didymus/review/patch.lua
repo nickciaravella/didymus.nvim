@@ -120,6 +120,48 @@ function M.parse(text)
   return { hunks = hunks, commentable = commentable }
 end
 
+--- The head line where a thread on `base_line` shows. A context line gives its head line. A deleted
+--- line gives the head line after the deleted lines, where the inline diff shows them. At the end
+--- of a hunk, it gives the head line before them. Nil if no hunk has the line.
+---@param text string? The patch.
+---@param base_line integer
+---@return integer?
+function M.get_head_line(text, base_line)
+  local base, head, in_hunk, deleted = 0, 0, false, false
+  for _, line in ipairs(vim.split(text or "", "\n", { plain = true })) do
+    local header = parse_header(line)
+    if header then
+      if deleted then
+        break
+      end
+      -- A start of 0 lines is the line before the hunk. The next lines come after it.
+      base = header.base_count > 0 and header.base_start - 1 or header.base_start
+      head = header.head_count > 0 and header.head_start - 1 or header.head_start
+      in_hunk = true
+    elseif in_hunk then
+      local kind = line:sub(1, 1)
+      if kind == "-" then
+        base = base + 1
+        deleted = deleted or base == base_line
+      elseif kind == "+" or kind == " " or kind == "" then
+        head = head + 1
+        if deleted then
+          return head
+        end
+        if kind ~= "+" then
+          base = base + 1
+          if base == base_line then
+            return head
+          end
+        end
+      end
+    end
+  end
+  if deleted then
+    return math.max(head, 1)
+  end
+end
+
 --- True if one commentable range of `side` has all lines of `range`. A range across two hunks is
 --- not commentable. True if the commentable lines are unknown, because then the code host decides.
 ---@param parsed didymus.review.Patch

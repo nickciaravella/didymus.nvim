@@ -42,6 +42,8 @@ id
 path
 line
 startLine
+originalLine
+originalStartLine
 diffSide
 startDiffSide
 isResolved
