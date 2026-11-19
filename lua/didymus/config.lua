@@ -37,7 +37,7 @@ M.defaults = {
     provider = "gitsigns", -- "gitsigns", "test" or a provider table. See lua/didymus/diff/provider/.
     enabled = true, -- The diff shows when a review opens.
     layout = "inline", -- "inline" or "split"
-    sides = "both", -- "both", "base" or "head"
+    sides = "both", -- "both" or "head". Only `:Didymus diff side base` shows the base side.
     split = { width = 0.5 }, -- The width of the base window. Below 1, a fraction of the code window.
   },
 }

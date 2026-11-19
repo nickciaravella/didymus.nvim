@@ -196,6 +196,37 @@ T["the cursor of the base window follows the cursor of the code window"] = funct
   eq(child.api.nvim_win_get_cursor(base_win)[1], 3)
 end
 
+T["the base sides highlight the deleted lines of the base buffer in the code window"] = function()
+  open_review()
+  wait_for(has_view, "the unified view")
+  local code_win = child.api.nvim_get_current_win()
+  local head_buf = child.api.nvim_get_current_buf()
+  child.cmd("Didymus diff side base")
+  local function get_marks()
+    return child.lua(
+      [[
+      local win = ...
+      local ns = vim.api.nvim_get_namespaces()["didymus.diff.gitsigns.base." .. win]
+      local buf = vim.api.nvim_win_get_buf(win)
+      return vim.tbl_map(function(mark)
+        return { mark[2] + 1, mark[4].line_hl_group }
+      end, ns and vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true }) or {})
+    ]],
+      { code_win }
+    )
+  end
+  wait_for(function()
+    return #get_marks() > 0
+  end, "the marks of the base sides")
+  eq(get_marks(), { { 2, "DiffDelete" } })
+  eq(child.api.nvim_buf_get_lines(0, 0, -1, true), { "one", "two", "three" })
+  eq(has_view(), false)
+
+  child.cmd("Didymus diff side both")
+  eq(child.api.nvim_get_current_buf(), head_buf)
+  wait_for(has_view, "the unified view after the both sides")
+end
+
 T["with no gitsigns, a warning shows and the review works"] = function()
   child.restart({ "-u", "tests/minimal_init.lua" })
   child.cmd("runtime plugin/didymus.lua")

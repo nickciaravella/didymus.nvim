@@ -1,4 +1,5 @@
---- Find the next or the previous hunk from a line, on one side. Pure: it does not use editor state.
+--- Find the next or the previous hunk from a line, on one side, and map a line to the other side.
+--- Pure: it does not use editor state.
 --- See docs/architecture/diff.md#navigation.
 
 local M = {}
@@ -51,6 +52,37 @@ function M.prev(hunks, opts)
     end
   end
   return best_line, best_hunk
+end
+
+---@class didymus.diff.MapOpts
+---@field line integer A line on `side`.
+---@field side didymus.diff.Side The side of `line`.
+---@field line_count integer The number of lines of the buffer on the other side.
+
+--- The line on the other side that matches `opts.line`. A line in a hunk goes to the same line of
+--- the hunk on the other side, or to its last line. A line in a hunk with no lines on the other
+--- side goes to the stop of the hunk on the other side.
+---@param hunks didymus.diff.Hunk[]
+---@param opts didymus.diff.MapOpts
+---@return integer
+function M.map_line(hunks, opts)
+  local other = opts.side == "head" and "base" or "head"
+  local line = opts.line
+  local offset = 0
+  for _, hunk in ipairs(hunks) do
+    local from, to = hunk[opts.side], hunk[other]
+    local last = from.count == 0 and from.start or from.start + from.count - 1
+    if from.count > 0 and line >= from.start and line <= last then
+      if to.count == 0 then
+        return M.stop(hunk, other, opts.line_count)
+      end
+      line, offset = to.start + math.min(line - from.start, to.count - 1), 0
+      break
+    elseif last < line then
+      offset = offset + to.count - from.count
+    end
+  end
+  return math.max(1, math.min(line + offset, opts.line_count))
 end
 
 return M

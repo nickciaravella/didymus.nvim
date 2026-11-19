@@ -157,7 +157,7 @@ Calls go in one direction: `command` → `diff/init` → `review` (for the curre
 ---@field file didymus.diff.File
 ---@field target didymus.diff.Target
 ---@field head_win integer?  The code window with the head buffer. Nil if the sides are "base".
----@field head_buf integer?
+---@field head_buf integer?  The attached head buffer, which has the hunks. Also for "base", when it is hidden.
 ---@field base_win integer?  The window with the base revision buffer. The code window if the sides are "base".
 ---@field base_buf integer?  Nil for inline "both" and for "head".
 
@@ -250,7 +250,7 @@ diff = {
   provider = "gitsigns", -- "gitsigns", "test" or a provider table. See lua/didymus/diff/provider/.
   enabled = true,        -- The diff shows when a review opens.
   layout = "inline",     -- "inline" or "split"
-  sides = "both",        -- "both", "base" or "head"
+  sides = "both",        -- "both" or "head". Only `:Didymus diff side base` shows the base side.
   split = { width = 0.5 }, -- The width of the base window. Below 1, a fraction of the code window.
 }
 ```
@@ -282,7 +282,7 @@ diff = {
 
 1. `toggle` of a shown diff clears all displays, closes the base window and detaches all buffers. The layout and the sides stay in the session.
 2. `:Didymus review close` and `:tabclose` do the same.
-3. `layout` and `side` of a hidden diff set the value and show the diff.
+3. `layout` and `side` of a hidden diff set the value and show the diff. `toggle` with the `base` sides shows the head buffer first, because the base buffers are deleted.
 
 ### Layout
 
@@ -306,8 +306,14 @@ The revision buffers of `diff/revision.lua` have the name `didymus://<sha7>/<pat
 2. `head` shows only the code window, with the marks of the added and changed lines, such as signs. It ignores the layout.
 3. `base` shows the base revision buffer in the code window, with the marks of the deleted lines. It ignores the layout. The base buffer is read-only, has the filetype of the file, and has no LSP.
 4. `next` and `prev` keep the `base` sides. They use the base lines of the hunks, and open the base buffer of the next file.
-5. Any other buffer in the code window ends the `base` sides. Then the sides go back to the value before `base`. So `<CR>` in the panel and `review next` open the head file at the head line, as before.
-6. A comment needs the head file, so `review comment` on a base buffer shows a warning. Threads do not show on the base buffer in the MVP.
+5. Any other buffer in the code window ends the `base` sides. Then the sides go back to the value before `base`. So `<CR>` in the panel and `review next` open the head file at the head line, as before. The base buffer of any file of the target keeps the `base` sides, so `<C-o>` to an older base buffer works.
+6. A comment needs the head file, so `review comment` on a base buffer shows `didymus: the current window shows the base of <path>. A comment needs the head side.` Threads do not show on the base buffer in the MVP.
+7. A change of the sides puts the cursor at the matching line of the other side, with `hunks.map_line()`. It does not change the jumplist.
+8. The diff view shows the base buffer with `:keepjumps keepalt hide buffer`. So the head buffer stays loaded and attached, also with `'nohidden'`. The display of the `base` sides has this `head_buf`, and no `head_win`.
+9. `base` needs a file of the target in the code window. Else, `didymus: the code window does not show a file of the diff` shows, and the sides do not change.
+10. `diff.sides` accepts only `both` and `head`, because the `base` sides are temporary. With a different value, a warning shows when the review opens, and the diff shows `both`.
+11. If the provider does not have the sides, `side` shows `didymus: the diff provider does not have the <sides> sides`, and the sides do not change.
+12. `head` and `base` close the base window of the split layout. The layout stays `split`, so `both` opens the base window again.
 
 ### Navigation
 
@@ -316,24 +322,25 @@ The revision buffers of `diff/revision.lua` have the name `didymus://<sha7>/<pat
 1. The stop of a hunk is its first head line, or its first base line with the `base` sides. A deletion stops at the line after the deleted lines, or at line 1. A deletion at the end of the file stops at the last line, as in rule 5 of the review navigation.
 2. With no hunk after the cursor, `next` goes to the next file of the target that has hunks, at its first hunk. It opens the file with `open_file()` of the review, waits for `attach`, then moves the cursor. `prev` does the same backward, at the last hunk.
 3. A file with no hunks, such as a binary file, has no stops. A deleted file has no hunks.
-4. In the base window of the split layout, `next` and `prev` move the cursor in the base window, with the base lines. The stops are in the order of the base lines. In a different file, the code window goes to the head stop of the hunk, as in rule 10. Then the base window shows the new base buffer, its cursor goes to the base stop, and it gets the focus. Only a jump in the same file adds the old position to the jumplist of the base window. A jump to a different file changes the base buffer with `keepjumps`, because `<C-o>` to an old base buffer would end the split layout (rule 7 of [Layout](#layout)).
-5. Each jump adds the old position to the jumplist.
-6. At the last or the first stop, `didymus: no next hunk` or `didymus: no previous hunk` shows, and the cursor does not move.
-7. A hidden diff has no hunks, so `next` shows `didymus: the diff is hidden`. If the diff is not available, `next` shows why.
-8. `next` and `prev` move the cursor in the code window, also from the panel or a split, because only the code window has the diff (decision 10).
-9. With no file of the target in the code window, `next` goes to the first stop, and `prev` goes to the last stop.
-10. To get the hunks of a file, `next` opens it with `keepjumps` and waits for `attach`. A buffer that is attached and ready gives its hunks with no open. At the stop, the code window shows the start position again with `:keepjumps buffer`. Then `open_file()` opens the file of the stop. So the jumplist gets one entry: the start position.
-11. If no file after the cursor has hunks, the code window shows the start position again with `keepjumps`, and the message of rule 6 shows.
-12. An error of `attach` stops the jump at that file, and shows each time. `next` is a command of the user, so each one gives a message. The display of the diff shows each error only once.
-13. The newest `next` or `prev` wins. The callbacks of an old jump do nothing. A jump also stops if the code window shows a different buffer, or the user goes to a different tabpage, while it waits for `attach`.
-8. `:Didymus review next hunk` does not change. It uses the hunks of the patch of the code host, which are the commentable blocks. `diff next` uses the hunks of the diff provider, which are each change.
+4. With the `base` sides, `next` and `prev` use the base lines in the code window. In a different file, they open the head file with `keepjumps` to get its hunks, as in rule 10. Then the code window shows the base buffer of the stop, and the jumplist gets only the start position. The head files on the way do not end the `base` sides.
+5. In the base window of the split layout, `next` and `prev` move the cursor in the base window, with the base lines. The stops are in the order of the base lines. In a different file, the code window goes to the head stop of the hunk, as in rule 11. Then the base window shows the new base buffer, its cursor goes to the base stop, and it gets the focus. Only a jump in the same file adds the old position to the jumplist of the base window. A jump to a different file changes the base buffer with `keepjumps`, because `<C-o>` to an old base buffer would end the split layout (rule 7 of [Layout](#layout)).
+6. Each jump adds the old position to the jumplist.
+7. At the last or the first stop, `didymus: no next hunk` or `didymus: no previous hunk` shows, and the cursor does not move.
+8. A hidden diff has no hunks, so `next` shows `didymus: the diff is hidden`. If the diff is not available, `next` shows why.
+9. `next` and `prev` move the cursor in the code window, also from the panel or a split, because only the code window has the diff (decision 10).
+10. With no file of the target in the code window, `next` goes to the first stop, and `prev` goes to the last stop.
+11. To get the hunks of a file, `next` opens it with `keepjumps` and waits for `attach`. A buffer that is attached and ready gives its hunks with no open. At the stop, the code window shows the start position again with `:keepjumps buffer`. Then `open_file()` opens the file of the stop. So the jumplist gets one entry: the start position.
+12. If no file after the cursor has hunks, the code window shows the start position again with `keepjumps`, and the message of rule 7 shows.
+13. An error of `attach` stops the jump at that file, and shows each time. `next` is a command of the user, so each one gives a message. The display of the diff shows each error only once.
+14. The newest `next` or `prev` wins. The callbacks of an old jump do nothing. A jump also stops if the code window shows a different buffer, or the user goes to a different tabpage, while it waits for `attach`.
+15. `:Didymus review next hunk` does not change. It uses the hunks of the patch of the code host, which are the commentable blocks. `diff next` uses the hunks of the diff provider, which are each change.
 
 `hunks.next(hunks, opts)` and `hunks.prev(hunks, opts)` take `opts = { line, side, line_count }`. `side` is `"head"` or `"base"`. They give the line of the stop and its hunk, or nil.
 
 - `next` gives the first stop after `line`. `prev` gives the last stop before `line`. So in a hunk, `prev` goes to the stop of that hunk.
 - The hunks do not have to be in order.
 - `hunks.stop(hunk, side, line_count)` gives the stop of one hunk. The stop is in the range 1 to `line_count`.
-- The map of a line to the other side is not in `hunks.lua` yet. The split layout does not need it, because native diff mode binds the cursors. Task 7 adds it for the `base` sides.
+- `hunks.map_line(hunks, { line, side, line_count })` gives the line on the other side that matches `line` on `side`. `line_count` is the number of lines on the other side. A line moves by the line counts of the hunks before it. A line in a hunk goes to the same line of the hunk on the other side, or to its last line. If the hunk has no lines on the other side, the line goes to its stop. The split layout does not use it, because native diff mode binds the cursors.
 
 `nvim_win_set_buf()` adds the old position to the jumplist. `:keepjumps edit` and `:keepjumps buffer` do not. See [the Neovim notebook](../../agents/expertise/neovim.md#windows).
 
@@ -349,11 +356,11 @@ The revision buffers of `diff/revision.lua` have the name `didymus://<sha7>/<pat
 | `render`, inline `both` | `diffthis(sha, { unified = true })` in `nvim_win_call(head_win, …)`, if that window has no unified view. |
 | `render`, `split` | Close the unified view that the provider opened in the code window. Then `:diffthis` in the base window and in the code window. The signs of the head buffer stay. |
 | `render`, `head` | Close the unified view. The signs show the hunks. |
-| `render`, `base` | Line highlights `DiffDelete` on the base buffer, from the `base` ranges of `hunks()`, in a namespace scoped to the window. Task 7. |
+| `render`, `base` | Line highlights `DiffDelete` on the base lines of the hunks of `head_buf`, in the namespace `didymus.diff.gitsigns.base.<win>`, scoped to the window. `clear` removes them. |
 | `clear` | Close the unified view. If the provider set `'diff'` in the window, `:diffoff`, and put back the window options. |
 | `health` | See [Health check](#health-check). |
 
-Capabilities: layouts `inline` and `split`, sides `both` and `head`, base `commit`, head `worktree`. Task 7 adds `base`. The index and a head commit come with the local diffs.
+Capabilities: layouts `inline` and `split`, sides `both`, `head` and `base`, base `commit`, head `worktree`. The index and a head commit come with the local diffs.
 
 1. `attach` calls `cb` one time. After `timeout` (5 seconds), `cb` gets an error, for example if gitsigns does not attach to an untracked file.
 2. `attach` gives an error if gitsigns is not set up, or if the buffer is not in a window of the current tabpage (fact 8). The provider does not call `setup()`.
@@ -400,7 +407,7 @@ One race stays. If a git operation in the repo, such as a commit, starts an upda
 2. `attach` calls `cb` in `vim.schedule()`. `delays[path]` makes it wait.
 3. `render` puts one extmark at the stop of each hunk, with the virtual text `diff <layout> <sides>`. So an end-to-end test can check the screen. It marks `head_win` with the head stops and `base_win` with the base stops.
 4. Each window has its own namespace, `didymus.diff.test.<win>`, scoped to that window with `nvim__ns_set()`. So `clear(win)` removes only the marks of that window. A second window with the same buffer keeps its marks.
-5. With the `base` sides, the display has no head buffer. Then `render` uses the hunks of an attached buffer of `display.file`.
+5. `render` uses the hunks of `display.head_buf`, also with the `base` sides.
 6. It records each call in `provider.calls`, as plain data, such as `{ method = "attach", buf = 3, path = "a.lua" }`. `errors.attach` and `errors.render` make the next call fail.
 7. Its capabilities accept all layouts, sides, bases and heads.
 
@@ -493,6 +500,15 @@ The user approved these decisions of task 6 on 2026-11-15.
 30. **`next` and `prev` in the base window use the base lines,** and go to the base window of the next file (rule 4 of [Navigation](#navigation)).
 31. **Task 7 adds the map of a line to the other side.** The split layout uses the cursor binding of native diff mode.
 32. **The diff of native diff mode can be different from the gitsigns hunks.** See [Native diff mode](#native-diff-mode).
+
+The user approved these decisions of task 7 on 2026-11-15.
+
+33. **The display of the `base` sides has `head_buf`,** the attached head buffer, and no `head_win`. So the provider knows which buffer has the hunks.
+34. **The base buffer shows with `:hide buffer`,** so the head buffer keeps its hunks, also with `'nohidden'` (rule 8 of [Sides](#sides)).
+35. **A change of the sides does not change the jumplist.** `next` and `prev` with the `base` sides add only the start position.
+36. **A base buffer of a file of the target keeps the `base` sides.** Other buffers end them (rule 5 of [Sides](#sides)).
+37. **`diff.sides` accepts only `both` and `head`** (rule 10 of [Sides](#sides)).
+38. **The gitsigns `base` marks are `DiffDelete` line highlights** on all base lines of the hunks.
 
 ## Work plan
 

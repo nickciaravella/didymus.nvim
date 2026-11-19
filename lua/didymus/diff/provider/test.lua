@@ -115,21 +115,6 @@ function M:hunks(buf)
   return state and vim.deepcopy(state.hunks)
 end
 
---- The hunks of the file of the display: from the head buffer, or from any attached buffer of
---- the file, because the "base" sides have no head buffer.
----@param display didymus.diff.Display
----@return didymus.diff.Hunk[]?
-local function find_hunks(display)
-  if display.head_buf then
-    return M:hunks(display.head_buf)
-  end
-  for buf, state in pairs(attached) do
-    if state.path == display.file.path and state.hunks then
-      return M:hunks(buf)
-    end
-  end
-end
-
 ---@param win integer
 ---@param buf integer
 ---@param side didymus.diff.Side
@@ -165,7 +150,7 @@ function M:render(display, cb)
   if fail("render", cb) then
     return
   end
-  local file_hunks = find_hunks(display)
+  local file_hunks = display.head_buf and M:hunks(display.head_buf)
   if not file_hunks then
     vim.schedule(function()
       cb(("%s is not attached"):format(display.file.path))

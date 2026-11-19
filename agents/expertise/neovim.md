@@ -135,6 +135,18 @@ With `signcolumn=auto`, the first sign of a buffer makes the sign column show. B
 
 - Checked: Neovim 0.12.6
 
+### With 'nohidden', `nvim_win_set_buf()` and `:buffer` unload the old buffer, but `:hide buffer` does not
+
+`:h nvim_win_set_buf()` does not tell it. If 'hidden' is off, the buffer that leaves the window unloads, if no other window shows it and it is not modified. An unload deletes the extmarks, and plugins such as gitsigns detach. To keep the old buffer loaded, use the `hide` modifier: `nvim_cmd({ cmd = "buffer", count = buf, mods = { hide = true } }, {})`. The `base` sides of the diff use it, so the hidden head buffer keeps its hunks.
+
+- Proof: the test "the base sides keep the head buffer loaded with 'nohidden'" in `tests/e2e/diff/sides.test.lua`. This command prints `false true`:
+
+  ```sh
+  cd "$(mktemp -d)" && echo a > a.txt && nvim --clean --headless -c 'set nohidden' -c 'edit a.txt' -c 'lua local a = vim.api.nvim_get_current_buf(); vim.api.nvim_win_set_buf(0, vim.api.nvim_create_buf(false, true)); local unloaded = vim.api.nvim_buf_is_loaded(a); vim.cmd("buffer " .. a); vim.api.nvim_cmd({ cmd = "buffer", count = vim.api.nvim_create_buf(false, true), mods = { hide = true } }, {}); print(unloaded, vim.api.nvim_buf_is_loaded(a))' -c qa
+  ```
+
+- Checked: Neovim 0.12.6
+
 ### `:diffoff` does not put back 'foldenable' if 'foldmethod' goes back to "manual"
 
 `:diffoff` puts back most window options from before `:diffthis`. But if 'foldmethod' was "manual", which is the default, `:diffoff` sets 'foldenable' to off. `:h :diffoff` tells it only as "most-likely". `:diffthis` also adds "hor" to the global 'scrollopt'. So save the options before `:diffthis`, and set them again after `:diffoff`. The gitsigns diff provider does this.

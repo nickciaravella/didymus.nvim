@@ -35,7 +35,7 @@
 ---@field file didymus.diff.File
 ---@field target didymus.diff.Target
 ---@field head_win integer?  The code window with the head buffer. Nil if the sides are "base".
----@field head_buf integer?
+---@field head_buf integer?  The attached head buffer, which has the hunks. Also for "base", when it is hidden.
 ---@field base_win integer?  The window with the base revision buffer. The code window if the sides are "base".
 ---@field base_buf integer?  Nil for inline "both" and for "head".
 
