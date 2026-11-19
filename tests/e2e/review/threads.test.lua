@@ -172,6 +172,7 @@ T["the panel shows the threads under their files, with the resolved and outdated
       { 1, "💬 @octocat Old note. [outdated]" },
       { 0, "D old.txt +0 -1 1 thread" },
       { 1, "💬 @octocat Why delete? [base]" },
+      { 0, "Conversation" },
     }
   )
   eq(items[5].segments, { { "💬 " }, { "@octocat", "DidymusThread" }, { " Why TWO?" } })
@@ -219,6 +220,7 @@ T["the panel key shows only the active threads, and then all threads again"] = f
       "💬 @octocat Old note. [outdated]",
       "D old.txt +0 -1 1 thread",
       "💬 @octocat Why delete? [base]",
+      "Conversation",
     }
   )
   eq(panel().cursor, 5)
@@ -231,7 +233,7 @@ T["the panel key shows only the active threads, and then all threads again"] = f
   child.lua("require('didymus.ui.picker.test').press('a')")
   calls = helpers.picker_calls(child, "panel")
   eq(calls[2].items[3].text, "All threads")
-  eq(#calls[2].items, 9)
+  eq(#calls[2].items, 10)
 end
 
 T["the panel key can change, or be off"] = function()

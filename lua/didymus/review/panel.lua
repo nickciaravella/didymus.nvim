@@ -9,9 +9,10 @@ local threads = require("didymus.review.threads")
 local M = {}
 
 ---@class didymus.review.panel.Value
----@field kind "header"|"file"|"thread"
+---@field kind "header"|"file"|"thread"|"conversation"|"comment"
 ---@field file? didymus.review.ChangedFile
 ---@field thread? didymus.review.Thread
+---@field comment? didymus.review.Comment
 
 --- The letter and the highlight of each file status.
 ---@type table<string, [string, string]>
@@ -100,9 +101,34 @@ local function get_thread_item(session, thread)
   return item
 end
 
+--- The conversation row with the count of the general comments, and a row for each comment. The
+--- preview of a comment row shows its body.
+---@param session didymus.review.Session
+---@return didymus.picker.Item[]
+local function get_conversation_items(session)
+  local count = #session.comments
+  local segments = { { "Conversation", "Title" } }
+  if count > 0 then
+    local noun = count == 1 and "comment" or "comments"
+    table.insert(segments, { (" %d %s"):format(count, noun), "Comment" })
+  end
+  local items = { make_item("conversation", segments, { kind = "conversation" }) }
+  for index, comment in ipairs(session.comments) do
+    local first_line = vim.trim(vim.trim(comment.body):match("^[^\n]*"))
+    local item = make_item(("comment:%d"):format(index), {
+      { "@" .. comment.author, "DidymusThread" },
+      { " " .. first_line },
+    }, { kind = "comment", comment = comment })
+    item.depth = 1
+    item.preview = { lines = threads.format_comments({ comment }), filetype = "markdown" }
+    table.insert(items, item)
+  end
+  return items
+end
+
 --- The header, then a row for each changed file, in the order of the provider. The threads of
 --- each file come under it, in the order of the session. The thread count counts the threads
---- that show.
+--- that show. The general comments come last, so that the files stay at the top.
 ---@param session didymus.review.Session
 ---@return didymus.picker.Item[]
 local function get_items(session)
@@ -121,7 +147,7 @@ local function get_items(session)
       table.insert(items, get_thread_item(session, thread))
     end
   end
-  return items
+  return vim.list_extend(items, get_conversation_items(session))
 end
 
 ---@param session didymus.review.Session
@@ -129,6 +155,9 @@ end
 local function choose(session, item)
   ---@type didymus.review.panel.Value
   local value = item.value
+  if value.kind == "conversation" or value.kind == "comment" then
+    return threads.open_comments_float("Conversation of " .. session.label, session.comments)
+  end
   if value.kind == "thread" then
     if session:get_thread_line(value.thread) then
       return session:open_thread(value.thread)
@@ -164,13 +193,15 @@ local function get_actions(session)
   if keys.comment then
     table.insert(actions, {
       key = keys.comment,
-      name = "comment on the file",
+      name = "comment on the file or the change",
       fn = function(item)
         ---@type didymus.review.panel.Value?
         local value = item and item.value
         local file = value and (value.file or value.thread)
         if file then
           require("didymus.review").comment({ kind = "file", path = file.path })
+        elseif value and (value.kind == "conversation" or value.kind == "comment") then
+          require("didymus.review").comment({ kind = "change" })
         end
       end,
     })

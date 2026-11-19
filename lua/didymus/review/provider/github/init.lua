@@ -361,6 +361,43 @@ function M:get_threads(change, cb)
   end)
 end
 
+--- Get the general comments of the PR, from all pages.
+---@param change didymus.review.provider.github.Change
+---@param cb fun(err: string?, comments: didymus.review.Comment[]?)
+function M:get_comments(change, cb)
+  local target = change.github
+  local args = get_node_args(target, graphql.comments, target.node_id)
+  run_json("gh api graphql", args, function(err, pages)
+    if err then
+      return cb(err)
+    end
+    local comments = {}
+    for _, page in ipairs(pages) do
+      vim.list_extend(comments, vim.tbl_map(to_comment, page.data.node.comments.nodes))
+    end
+    cb(nil, comments)
+  end)
+end
+
+--- Post a general comment on the PR. GitHub posts it at once, also with a pending review.
+---@param change didymus.review.provider.github.Change
+---@param body string
+---@param cb fun(err: string?, comment: didymus.review.Comment?)
+function M:post_change_comment(change, body, cb)
+  local target = change.github
+  local fields = { "-f", "subjectId=" .. target.node_id, "-f", "body=" .. body }
+  run_json(
+    "gh api graphql",
+    get_graphql_args(target, graphql.add_comment, fields),
+    function(err, result)
+      if err then
+        return cb(err)
+      end
+      cb(nil, to_comment(result.data.addComment.commentEdge.node))
+    end
+  )
+end
+
 --- Find the pending review of the viewer. Do not use `change.pending_review_id`, because the user
 --- can start, submit or discard a review on github.com.
 ---@param change didymus.review.provider.github.Change

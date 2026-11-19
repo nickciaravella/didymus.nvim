@@ -100,6 +100,29 @@ query($id: ID!) {
 }
 ]]
 
+--- The general comments of a PR: its issue comments, not the review comments.
+M.comments = [[
+query($id: ID!, $endCursor: String) {
+  node(id: $id) {
+    ... on PullRequest {
+      comments(first: 100, after: $endCursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes { author { login } body }
+      }
+    }
+  }
+}
+]]
+
+--- Post a general comment on a PR. GitHub posts it at once, also with a pending review.
+M.add_comment = [[
+mutation($subjectId: ID!, $body: String!) {
+  addComment(input: { subjectId: $subjectId, body: $body }) {
+    commentEdge { node { id author { login } body } }
+  }
+}
+]]
+
 --- The pending reviews of a PR. Only the viewer can see a pending review, but `viewerDidAuthor`
 --- makes sure.
 M.pending_reviews = [[

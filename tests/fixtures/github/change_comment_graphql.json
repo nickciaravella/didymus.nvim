@@ -1,0 +1,15 @@
+{
+  "data": {
+    "addComment": {
+      "commentEdge": {
+        "node": {
+          "id": "IC_kwDOVmiVUM8AAAABoTSkXQ",
+          "author": {
+            "login": "nickciaravella"
+          },
+          "body": "Recorded for the unit tests of didymus: a general comment."
+        }
+      }
+    }
+  }
+}

@@ -101,7 +101,7 @@ T["the panel shows the header and one row for each file, in the order of the pro
     texts(calls[1]),
     vim.list_extend(
       vim.deepcopy(header),
-      { "D old.txt +0 -1", "M file.txt +1 -1", "A new.txt +1 -0" }
+      { "D old.txt +0 -1", "M file.txt +1 -1", "A new.txt +1 -0", "Conversation" }
     )
   )
   eq(calls[1].items[1].segments, { { "#1", "Number" }, { " Change the second line", "Title" } })
@@ -133,6 +133,8 @@ T["each file row has the full path and the first change, except a deleted file a
     false,
     { path = vim.fs.joinpath(dir, "file.txt"), line = 2 },
     { path = vim.fs.joinpath(dir, "new.txt"), line = 1 },
+    false,
+    -- The conversation row.
     false,
   }
   eq(locations(), expected)
@@ -325,6 +327,7 @@ T["a file row shows the thread count only if it is above 0"] = function()
       "M file.txt +1 -1 2 threads",
       "A new.txt +1 -0 1 thread",
       "D old.txt +0 -1",
+      "Conversation",
     })
   )
   eq(files[4].segments[5], { " 2 threads", "Comment" })

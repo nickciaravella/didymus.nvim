@@ -27,6 +27,8 @@ local workspace = require("didymus.review.workspace")
 ---@field open_id string The id for `get_change()`. `change.id` of a PR URL is only the number, and `get_change()` of a number uses the current repo.
 ---@field label string
 ---@field threads didymus.review.Thread[] In the order of the panel.
+---@field comments didymus.review.Comment[] The general comments of the change, in the order of the provider.
+---@field failed_change_comment string? The body of the last general comment that the provider did not post. The next general comment starts with it.
 ---@field provider didymus.review.Provider
 ---@field failed_draft didymus.review.CommentDraft? The last comment that the provider did not add. The next comment at its lines starts with its text.
 ---@field failed_reply didymus.review.ReplyDraft? The last reply that the provider did not add. The next reply to its thread starts with its text.
@@ -62,6 +64,7 @@ function Session.new(opts)
     open_id = opts.open_id,
     label = opts.label,
     threads = {},
+    comments = {},
     load_count = 0,
     adapter = opts.adapter,
     provider = opts.provider,
@@ -479,6 +482,21 @@ end
 ---@return integer?
 function Session:get_thread_line(thread)
   return self.thread_lines[thread.id]
+end
+
+--- Keep the general comments of the change. Show them in the panel.
+---@param list didymus.review.Comment[]
+function Session:set_comments(list)
+  self.comments = list
+  if self:is_panel_open() then
+    self.panel:update()
+  end
+end
+
+--- Add a new general comment. Show it in the panel.
+---@param comment didymus.review.Comment
+function Session:add_change_comment(comment)
+  self:set_comments(vim.list_extend(vim.list_slice(self.comments), { comment }))
 end
 
 --- Show all threads in the panel, or only the active threads.

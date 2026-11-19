@@ -398,8 +398,15 @@ end
 ---@param thread didymus.review.Thread
 ---@return string[]
 function M.get_lines(thread)
+  return M.format_comments(thread.comments)
+end
+
+--- Comments as markdown: the author of each comment, then its body. A line separates them.
+---@param comments didymus.review.Comment[]
+---@return string[]
+function M.format_comments(comments)
   local lines = {}
-  for index, comment in ipairs(thread.comments) do
+  for index, comment in ipairs(comments) do
     if index > 1 then
       vim.list_extend(lines, { "", "---", "" })
     end
@@ -472,6 +479,21 @@ function M.open_float(thread)
   end
   float = { win = win, origin_win = origin_win, thread_id = thread.id }
   set_keys(buf, win, thread)
+end
+
+--- Open the general comments of a change in a float next to the cursor, as the thread float.
+---@param title string
+---@param comments didymus.review.Comment[]
+function M.open_comments_float(title, comments)
+  local lines = #comments > 0 and M.format_comments(comments) or { "No comments." }
+  vim.lsp.util.open_floating_preview(lines, "markdown", {
+    focus_id = "didymus.review.comments",
+    -- A title needs a border.
+    border = (vim.o.winborder == "" or vim.o.winborder == "none") and "rounded" or nil,
+    title = (" %s "):format(title),
+    max_width = 80,
+    max_height = math.max(1, math.floor(vim.o.lines * 0.6)),
+  })
 end
 
 --- The id of the thread of the open thread float, if the float or the window where it opened is

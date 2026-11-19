@@ -12,7 +12,7 @@ local tree = {
     fold = { all = {} },
     next = stop_kinds,
     prev = stop_kinds,
-    comment = { file = {} },
+    comment = { file = {}, change = {} },
     reply = {},
     resolve = {},
     submit = { approve = {}, comment = {}, request_changes = {} },

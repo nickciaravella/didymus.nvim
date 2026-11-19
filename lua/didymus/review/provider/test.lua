@@ -5,10 +5,12 @@
 ---@class didymus.review.provider.Test: didymus.review.Provider
 ---@field changes didymus.review.Change[]
 ---@field threads table<string, didymus.review.Thread[]> The threads of each change id.
+---@field comments table<string, didymus.review.Comment[]> The general comments of each change id.
 ---@field viewer string The author of the new comments.
 ---@field errors table<string, string> The next call of a method, such as `add_comment`, fails with this error.
 ---@field reviews { change_id: string, verdict: didymus.review.Verdict, body: string? }[] The reviews that `submit_review()` submitted.
-local M = { changes = {}, threads = {}, viewer = "reviewer", errors = {}, reviews = {} }
+local M =
+  { changes = {}, threads = {}, comments = {}, viewer = "reviewer", errors = {}, reviews = {} }
 
 --- The number of threads that `add_comment()` made, for their ids.
 local added_count = 0
@@ -75,6 +77,35 @@ function M:get_threads(change, cb)
   local threads = vim.deepcopy(self.threads[change.id] or {})
   vim.schedule(function()
     cb(nil, threads)
+  end)
+end
+
+---@param change didymus.review.Change
+---@param cb fun(err: string?, comments: didymus.review.Comment[]?)
+function M:get_comments(change, cb)
+  if fail("get_comments", cb) then
+    return
+  end
+  local comments = vim.deepcopy(self.comments[change.id] or {})
+  vim.schedule(function()
+    cb(nil, comments)
+  end)
+end
+
+--- Add a general comment of `viewer` to the comments of the change. It is posted at once.
+---@param change didymus.review.Change
+---@param body string
+---@param cb fun(err: string?, comment: didymus.review.Comment?)
+function M:post_change_comment(change, body, cb)
+  if fail("post_change_comment", cb) then
+    return
+  end
+  local comment = { author = self.viewer, body = body, pending = false }
+  self.comments[change.id] = self.comments[change.id] or {}
+  table.insert(self.comments[change.id], comment)
+  local copy = vim.deepcopy(comment)
+  vim.schedule(function()
+    cb(nil, copy)
   end)
 end
 

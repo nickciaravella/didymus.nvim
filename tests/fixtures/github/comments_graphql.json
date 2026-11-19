@@ -1,0 +1,22 @@
+[
+  {
+    "data": {
+      "node": {
+        "comments": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "Y3Vyc29yOnYyOpHPAAAAAaE0pF0="
+          },
+          "nodes": [
+            {
+              "author": {
+                "login": "nickciaravella"
+              },
+              "body": "Recorded for the unit tests of didymus: a general comment."
+            }
+          ]
+        }
+      }
+    }
+  }
+]

@@ -1004,6 +1004,78 @@ T["set_resolved()"]["gives the error of gh, or an error if GitHub gives no threa
   })
 end
 
+T["get_comments()"] = MiniTest.new_set()
+
+T["get_comments()"]["gives the general comments of all pages"] = function()
+  local page = vim.json.decode(read_fixture("comments_graphql"))[1]
+  local second = vim.deepcopy(page)
+  second.data.node.comments.nodes[1] = { author = vim.NIL, body = "Second\r\npage." }
+  mock_gh(function()
+    return { stdout = vim.json.encode({ page, second }) }
+  end)
+  local reply = call("get_comments", make_comment_change())
+
+  eq(commands, {
+    {
+      "gh",
+      "api",
+      "graphql",
+      "--paginate",
+      "--slurp",
+      "-f",
+      "query=" .. graphql.comments,
+      "-f",
+      "id=" .. comment_node_id,
+    },
+  })
+  eq(reply, {
+    result = {
+      {
+        author = "nickciaravella",
+        body = "Recorded for the unit tests of didymus: a general comment.",
+        pending = false,
+      },
+      { author = "ghost", body = "Second\npage.", pending = false },
+    },
+  })
+end
+
+T["get_comments()"]["gives the error of gh"] = function()
+  mock_gh(function()
+    return { code = 1, stderr = "gh: HTTP 502\n" }
+  end)
+  eq(call("get_comments", make_comment_change()), { err = "gh api graphql: HTTP 502" })
+end
+
+T["post_change_comment()"] = MiniTest.new_set()
+
+T["post_change_comment()"]["posts a general comment on the PR"] = function()
+  mock_comment({ add_comment = fixture_reply("change_comment_graphql") })
+  local body = "Recorded for the unit tests of didymus: a general comment."
+  local reply = call("post_change_comment", make_comment_change(), body)
+
+  eq(commands, {
+    {
+      "gh",
+      "api",
+      "graphql",
+      "-f",
+      "query=" .. graphql.add_comment,
+      "-f",
+      "subjectId=" .. comment_node_id,
+      "-f",
+      "body=" .. body,
+    },
+  })
+  eq(reply, { result = { author = "nickciaravella", body = body, pending = false } })
+
+  mock_comment({ add_comment = { code = 1, stderr = "gh: Could not resolve to a node\n" } })
+  eq(
+    call("post_change_comment", make_comment_change(), body),
+    { err = "gh api graphql: Could not resolve to a node" }
+  )
+end
+
 T["submit_review()"] = MiniTest.new_set()
 
 T["submit_review()"]["submits the pending review of the viewer with the verdict and the body"] = function()

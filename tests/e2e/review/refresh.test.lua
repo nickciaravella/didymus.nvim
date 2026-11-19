@@ -157,6 +157,7 @@ T["a refresh shows the new threads and the new data of the change"] = function()
     "M file.txt +1 -1 2 threads",
     "💬 @hubot New.",
     "💬 @octocat A comment.",
+    "Conversation",
   })
   eq(mark_lines(), { 2, 3 })
 end
@@ -178,6 +179,7 @@ T["a refresh keeps the thread filter, the icons and the preview locations"] = fu
     "M file.txt +1 -1 2 threads",
     "💬 @octocat A comment.",
     "💬 @octocat A comment.",
+    "Conversation",
   })
   local path = child.lua_get("require('didymus.review').current():get_full_path('file.txt')")
   local locations = vim.tbl_map(function(item)
@@ -190,6 +192,7 @@ T["a refresh keeps the thread filter, the icons and the preview locations"] = fu
     { path = path, line = 2 },
     { path = path, line = 3 },
     { path = path, line = 5 },
+    false,
   })
 
   child.lua("require('didymus.ui.picker.test').press('a')")

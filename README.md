@@ -124,11 +124,12 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review next [thread\|file\|hunk]`, `:Didymus review prev [thread\|file\|hunk]` | Go to the next or the previous thread, changed file or hunk, also in a different file. The default is `thread`. |
 | `:[range]Didymus review comment` | Add a comment on the current line, the selection or the range. Post it at once, or add it to your pending review. |
 | `:Didymus review comment file` | Add a comment on the file of the current window. `c` in the files panel does the same for the file of the row. |
+| `:Didymus review comment change` | Post a general comment on the pull request. |
 | `:Didymus review reply` | Reply to the thread at the cursor. Post the reply at once, or add it to your pending review. |
 | `:Didymus review resolve` | Resolve the thread at the cursor. On a resolved thread, unresolve it. |
 | `:Didymus review submit [approve\|comment\|request_changes]` | Submit your pending review with a verdict and a body. With no verdict, choose one in the picker. |
 | `:Didymus review discard` | Delete your pending review and its comments. The picker asks you to confirm. |
-| `:Didymus review refresh` | Get the pull request and its threads again. `R` in the files panel does the same. |
+| `:Didymus review refresh` | Get the pull request, its threads and its general comments again. `R` in the files panel does the same. |
 
 If `HEAD` is not the head of the pull request, `open` checks out the pull request. If there are uncommitted changes, a warning shows the files, and the picker asks you to confirm. didymus does not stash the changes. If git refuses the checkout, the error shows and the review does not open.
 
@@ -139,6 +140,8 @@ The files panel opens on the left of the review tabpage. It shows the title, the
 `files` in a different tabpage goes to the review tabpage and shows the panel.
 
 Under each file, the panel shows its review threads: an icon for the state (💬 active, ✅ resolved), the author and the first line of the first comment. A resolved thread is dim. An outdated thread has the `[outdated]` tag. `<CR>` on a thread goes to its line in the code window, and unfolds the thread. The file row shows the thread count.
+
+After the files, the `Conversation` row shows the count of the general comments of the pull request. Under it, a row for each comment shows the author and the first line. The preview shows the full comment. `<CR>` on these rows opens all general comments in a float. `c` on these rows posts a general comment.
 
 `a` in the panel shows only the active threads, or all threads again. The default is all threads. The third row of the header shows the filter: `All threads` or `Active threads`. The thread count of a file counts only the threads that show.
 
@@ -198,6 +201,8 @@ If GitHub does not add the comment, the error shows. The next `comment` on the s
 
 To comment on deleted lines, show the base of the file with `:Didymus diff side base` or the `split` layout. Then use `comment` in the base buffer. The title of the float has `(base)`. The thread shows in the file under the first line after the deleted lines.
 
+`comment change` opens a float for a general comment on the pull request. A general comment is not in your review, so only `<C-s>` (comment now) posts it, at once. If GitHub does not post it, the next `comment change` starts with your text.
+
 `comment file` adds a comment on the file, with no lines. It needs no checks of the lines, so it also works on a modified file. `c` on a file row or a thread row of the files panel also adds a comment on the file, also for a deleted file. A thread on the file shows only in the panel, after the threads with a line.
 
 `reply` and `resolve` use the thread at the cursor line. If more than one thread is at the line, the picker asks which one. If the thread float is open, they use the thread of the float, also from the window under the float, such as the panel. In the thread float, `r` replies and `x` resolves or unresolves. The footer of the float shows these keys if it is wide enough.
@@ -212,7 +217,7 @@ After a resolve, the thread is dim in the panel and at its line, and it is folde
 
 After a submit or a discard, didymus gets the threads again. The review stays open.
 
-`refresh` gets the pull request and its threads again, for example after a comment on github.com. Then the files panel and the threads in the files show the new data. A message shows when the refresh starts and when it ends. If the pull request has a new head, a warning shows, and didymus does not check it out. To check out the new head, close the review and open it again.
+`refresh` gets the pull request, its threads and its general comments again, for example after a comment on github.com. Then the files panel and the threads in the files show the new data. A message shows when the refresh starts and when it ends. If the pull request has a new head, a warning shows, and didymus does not check it out. To check out the new head, close the review and open it again.
 
 The highlight groups are `DidymusThread` (default: `DiagnosticInfo`), `DidymusThreadResolved` (default: `Comment`) and `DidymusThreadPending` (default: `DiagnosticHint`).
 
@@ -234,6 +239,7 @@ vim.keymap.set("n", "<leader>rnh", "<Plug>(didymus-review-next-hunk)")
 vim.keymap.set("n", "<leader>rph", "<Plug>(didymus-review-prev-hunk)")
 vim.keymap.set({ "n", "x" }, "<leader>rm", "<Plug>(didymus-review-comment)")
 vim.keymap.set("n", "<leader>rM", "<Plug>(didymus-review-comment-file)")
+vim.keymap.set("n", "<leader>rC", "<Plug>(didymus-review-comment-change)")
 vim.keymap.set("n", "<leader>rr", "<Plug>(didymus-review-reply)")
 vim.keymap.set("n", "<leader>rx", "<Plug>(didymus-review-resolve)")
 vim.keymap.set("n", "<leader>rs", "<Plug>(didymus-review-submit)")
@@ -243,7 +249,7 @@ vim.keymap.set("n", "<leader>rR", "<Plug>(didymus-review-refresh)")
 
 | Mapping | Modes |
 | --- | --- |
-| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-fold)`, `<Plug>(didymus-review-fold-all)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-submit)`, `<Plug>(didymus-review-discard)`, `<Plug>(didymus-review-refresh)`, `<Plug>(didymus-review-comment-file)` | Normal |
+| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-fold)`, `<Plug>(didymus-review-fold-all)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-submit)`, `<Plug>(didymus-review-discard)`, `<Plug>(didymus-review-refresh)`, `<Plug>(didymus-review-comment-file)`, `<Plug>(didymus-review-comment-change)` | Normal |
 | `<Plug>(didymus-review-next-thread)`, `<Plug>(didymus-review-next-file)`, `<Plug>(didymus-review-next-hunk)`, `<Plug>(didymus-review-prev-thread)`, `<Plug>(didymus-review-prev-file)`, `<Plug>(didymus-review-prev-hunk)` | Normal |
 | `<Plug>(didymus-review-comment)` | Normal, visual |
 

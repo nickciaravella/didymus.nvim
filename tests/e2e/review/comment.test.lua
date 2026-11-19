@@ -103,13 +103,18 @@ local function provider_threads()
   return child.lua_get("require('didymus.review.provider.test').threads['1']")
 end
 
---- The rows of the panel under the three header rows.
+--- The rows of the panel under the three header rows, with no conversation rows.
 ---@return string[]
 local function panel_rows()
   local items = helpers.picker_calls(child, "panel")[1].items
-  return vim.tbl_map(function(item)
-    return item.text
-  end, vim.list_slice(items, 4))
+  local rows = {}
+  for _, item in ipairs(vim.list_slice(items, 4)) do
+    if item.value.kind == "conversation" then
+      break
+    end
+    table.insert(rows, item.text)
+  end
+  return rows
 end
 
 --- The row and the lines of each mark in the current buffer, 0-based.
@@ -332,7 +337,7 @@ T["an unknown kind of comment shows an error"] = function()
   open_review()
   -- An error message in a command is an error of `child.cmd()`.
   child.lua("require('didymus.command').run('review comment other')")
-  eq(has_message('didymus: cannot comment on "other". Use line or file.'), true)
+  eq(has_message('didymus: cannot comment on "other". Use line, file or change.'), true)
 end
 
 T["with unknown commentable ranges, the code host decides"] = function()

@@ -21,7 +21,7 @@ The facts in this section were checked on 2026-11-08 with `gh` 2.103.2 and the l
 | PR data | `gh api graphql --paginate --slurp`, one query | `id number title body isDraft author baseRefName headRefName baseRefOid headRefOid isCrossRepository headRepositoryOwner`, `files { path changeType additions deletions }`, `reviews(states: [PENDING]) { id viewerDidAuthor }`. Each page repeats the PR data. `viewerViewedState` of `files` is for [#49](https://github.com/nickciaravella/didymus.nvim/issues/49). |
 | Commentable lines | `gh api --paginate --slurp repos/{owner}/{repo}/pulls/{n}/files` | Only REST gives `patch`. A large or binary file, or a pure rename, has no `patch`. |
 | Threads | `gh api graphql --paginate --slurp`, `node(id:)` of the PR, `reviewThreads` | `id path line startLine originalLine originalStartLine diffSide startDiffSide isResolved isOutdated subjectType viewerCanReply viewerCanResolve viewerCanUnresolve`, and `comments { author body state }`. A thread with more than 100 comments gets a second query, `node(id:)` of the thread. `gh` reads the first `pageInfo`, so the `pageInfo` of the threads comes before the comments. |
-| General comments | `gh api graphql`, `comments` | Issue comments of the PR. |
+| General comments | `gh api graphql --paginate --slurp`, `node(id:)` of the PR, `comments` | Issue comments of the PR: `author { login } body`. |
 | Check out the PR | `gh pr checkout <n>` | Works for fork PRs. Git refuses if a local change conflicts. |
 
 All write actions are GraphQL mutations. Each one is in the live schema:
@@ -36,6 +36,7 @@ All write actions are GraphQL mutations. Each one is in the live schema:
 | Submit with no pending review | `addPullRequestReview` | `pullRequestId`, `commitOID`, `event`, `body`. |
 | Discard | `deletePullRequestReview` | `pullRequestReviewId`. |
 | Viewed | `markFileAsViewed`, `unmarkFileAsViewed` | `pullRequestId`, `path`. |
+| General comment | `addComment` | `subjectId` (the PR), `body`. GitHub posts it at once, also with a pending review. |
 
 ### Pickers
 
@@ -112,6 +113,8 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 | Header 2 | `@author main ← feature` | `Comment` |
 | Header 3 | `All threads` or `Active threads`: the thread filter | `Comment` |
 | File | `M path +12 -3 2 threads`, in the order of the provider | `Added`, `Changed`, `Removed`, `Comment` |
+| Conversation, after the files | `Conversation 2 comments`. The count shows only if it is above 0. | `Title`, `Comment` |
+| General comment, at depth 1 under the conversation row | `@author <first line of the body>` | `DidymusThread` for the author. |
 | Thread, at depth 1 under its file | `💬 @author <first line of the first comment> [pending] [base] [outdated]`. A resolved thread has ✅. | `DidymusThread` for the author. A resolved thread is all `DidymusThreadResolved`. `[pending]` is `DidymusThreadPending`. `[base]` is `Comment`. `[outdated]` is `DiagnosticWarn`. |
 
 1. The status letters are `A`, `M`, `D` and `R`. The full path comes before the counts. A long path can hide the counts in a narrow panel.
@@ -130,6 +133,8 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 14. The key `review.panel.keys.toggle_active` (default `a`, false turns it off) shows only the active threads, or all threads again. The default is all threads. The session keeps the filter, also when the panel opens again. The filter does not change the marks in the files.
 15. A thread row with a line has a `location` with the full path, as rule 4, and the line of the thread. A thread with no line has no `location`.
 16. The key `review.panel.keys.comment` (default `c`) adds a comment on the file of the row. See [Comments](#comments), rule 15. snacks has no default list key `c`. Its explorer has one, but the panel does not use the explorer source.
+17. The conversation rows come after the files, so that the files stay at the top. The rows of the general comments are in the order of the provider. Their preview shows the body as markdown, with `preview` of the item.
+18. `<CR>` on the conversation row or on a comment row opens all general comments in a float, as the thread float. The title is `Conversation of #12`. The float has no keys. `c` on these rows posts a general comment. See [Comments](#comments), rule 23.
 
 ### Patch parser
 
@@ -159,7 +164,7 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 
 `lua/didymus/review/threads.lua` draws the threads in the files, and opens the thread float. The session keeps the fold state.
 
-1. The review gets the threads after the review tabpage opens, with a progress message. Then the session updates the panel and the marks. On an error, the message shows and the review stays open. A close, a newer review or a newer get of the threads ignores the result. See [Refresh](#refresh).
+1. The review gets the threads and the general comments after the review tabpage opens, at the same time, with one progress message. If one get fails, its error shows, and the result of the other get shows. Then the session updates the panel and the marks. On an error, the message shows and the review stays open. A close, a newer review or a newer get of the threads ignores the result. See [Refresh](#refresh).
 2. A thread shows in the file at the last line of its range, as on GitHub. The `<CR>` of the panel, `next` and `prev` use this line.
 3. Outdated threads and threads on the file show only in the panel, and in the thread float.
 4. Each thread has one extmark in the namespace `didymus.review`. It has a sign with the comment count (`9+` above 9), and the thread in `virt_lines` under the line, with the indent of the line. So the thread does not cover the code.
@@ -252,6 +257,8 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 20. A base buffer has the text of the merge-base. So a comment on the base side needs no check of the file on disk. `HEAD` must still be the change head, because the patch is of the change head.
 21. The title of the float is `path:3 (base)`, and the messages use the same location. The float has no `keys.suggest`. `comment file` in a base buffer adds a comment on its file.
 22. The draft has `side = "base"`. A comment on the file has `side = "head"`.
+23. `:Didymus review comment change` posts a general comment on the change, with `provider:post_change_comment()`. A general comment is not in a review. So the float has only "comment now" (`keys.post`). Its title is `Comment on #12`. It opens at the cursor line of the current window.
+24. The new comment shows in the panel. If the provider fails, the session keeps the body, and the next general comment starts with it.
 
 ### Replies and resolve
 
@@ -285,9 +292,9 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 
 `M.refresh()` in `lua/didymus/review/init.lua` gets the change and the threads again. `R` in the files panel calls it.
 
-1. `provider:get_change()` and `provider:get_threads()` run at the same time, with one progress message: `refresh #12`. `get_threads()` gets the change of the session, because the id of the change does not change.
+1. `provider:get_change()`, `provider:get_threads()` and `provider:get_comments()` run at the same time, with one progress message: `refresh #12`. `get_threads()` and `get_comments()` get the change of the session, because the id of the change does not change.
 2. `get_change()` gets the id that `open` used: a PR number or a PR URL. The `change.id` of a URL is only the number, and the GitHub provider looks for a number in the current repo.
-3. If both calls work, `Session:set_change()` replaces the change and the threads, and updates the panel and the marks. Then `didymus: refreshed #12` shows. If one call fails, the error shows, and the session keeps its data.
+3. If all calls work, `Session:set_change()` replaces the change and the threads, `Session:set_comments()` replaces the general comments, and updates the panel and the marks. Then `didymus: refreshed #12` shows. If one call fails, the error shows, and the session keeps its data.
 4. The panel stays open and keeps its thread filter, because the filter is in the session. The rows get the new icons and preview locations.
 5. If `head_sha` is new, a warning names the new head, and didymus does not check it out. `open` of the open change only goes to its tabpage. So the warning tells the user to close the review and open it again. Until then, a new comment shows a warning before the input float opens, because `HEAD` is not the change head. So both actions of the float need the head. A reply works, because it has no line numbers.
 6. Each get of the threads has a number: at the open, after a submit or a discard, and at a refresh. Only the result of the newest get applies. A close ignores all results.
@@ -419,6 +426,8 @@ All methods are async. Each one takes a final `cb(err, result)` and does not blo
 ---@field get_threads fun(self, change: didymus.review.Change, cb: fun(err: string?, threads: didymus.review.Thread[]?))
 ---@field add_comment fun(self, change: didymus.review.Change, draft: didymus.review.CommentDraft, cb: fun(err: string?, thread: didymus.review.Thread?)) Add to the pending review, and start one if there is none. Or post at once.
 ---@field reply fun(self, change: didymus.review.Change, draft: didymus.review.ReplyDraft, cb: fun(err: string?, comment: didymus.review.Comment?)) Add to the pending review, and start one if there is none. Or post at once.
+---@field get_comments fun(self, change: didymus.review.Change, cb: fun(err: string?, comments: didymus.review.Comment[]?)) The general comments of the change, not in a thread.
+---@field post_change_comment fun(self, change: didymus.review.Change, body: string, cb: fun(err: string?, comment: didymus.review.Comment?)) Post a general comment at once.
 ---@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?, thread: didymus.review.Thread?)) Give the thread with its new state.
 ---@field submit_review fun(self, change: didymus.review.Change, verdict: "approve"|"comment"|"request_changes", body: string?, cb: fun(err: string?))
 ---@field discard_review fun(self, change: didymus.review.Change, cb: fun(err: string?))
@@ -429,6 +438,7 @@ All methods are async. Each one takes a final `cb(err, result)` and does not blo
 - The GitHub provider keeps all GraphQL documents as string constants in one module.
 - The `test` provider keeps its changes and threads in memory. Tests give it the data. Its `checkout` runs `git checkout` in a temporary repo of the test. It calls each `cb` in `vim.schedule()`, as a real provider does.
 - The `add_comment` of the `test` provider adds a thread with one comment of `viewer`. The comment is pending if `draft.pending` is true. Its `reply` adds a comment of `viewer`, pending if `draft.pending` is true. Its `set_resolved` changes `resolved`, and then lets the viewer do only the other action, as GitHub does. `errors.<method>` makes the next call of that method fail.
+- The `test` provider keeps the general comments of each change in `comments`. Its `post_change_comment` adds a comment of `viewer` that is not pending.
 - The `submit_review` of the `test` provider records the verdict and the body in `reviews`, and makes the pending comments submitted. Its `discard_review` removes the pending comments, and the threads with no comments left. With no pending comment, it gives an error.
 
 ### Review types
@@ -545,6 +555,7 @@ The `github` provider is in `lua/didymus/review/provider/github/`. It runs the [
 21. GitHub can refuse a review with an error that has no message. Then `gh` exits with 0, and the payload is `null`. So `submit_review` and `discard_review` check the payload.
 22. `discard_review` gets the pending review again, and runs `deletePullRequestReview`. With no pending review, it gives an error.
 23. GitHub does not let the author of a PR approve it or request changes on it. The error of GitHub shows.
+24. `get_comments` gets the issue comments of the PR, from all pages. `post_change_comment` runs `addComment` with the node id of the PR. GitHub posts it at once, also with a pending review, so it needs no check of the pending review.
 
 ## Tests
 

@@ -179,20 +179,58 @@ local function start_load(session)
   end
 end
 
---- Get the threads, and show them in the session.
+---@class didymus.review.Results The results of `call_all()`, by the name of the call.
+---@field change didymus.review.Change?
+---@field threads didymus.review.Thread[]?
+---@field comments didymus.review.Comment[]?
+---@field errors table<string, string> The error of each call that failed.
+
+--- Start the calls at the same time. When all are done, call `cb` with the first error and the
+--- results. The error of the change comes first, then the threads, then the comments.
+---@param calls table<"change"|"threads"|"comments", fun(cb: fun(err: string?, result: any))>
+---@param cb fun(err: string?, results: didymus.review.Results)
+local function call_all(calls, cb)
+  local results, waiting = { errors = {} }, vim.tbl_count(calls)
+  for name, start in pairs(calls) do
+    start(function(err, result)
+      results[name], results.errors[name], waiting = result, err, waiting - 1
+      if waiting == 0 then
+        local errors = results.errors
+        cb(errors.change or errors.threads or errors.comments, results)
+      end
+    end)
+  end
+end
+
+--- Get the threads and the general comments at the same time, and show them in the session.
 ---@param session didymus.review.Session
 local function load_threads(session)
   local is_newest = start_load(session)
   track(("get the threads of %s"):format(session.label), function(done)
-    session.provider:get_threads(session.change, done)
-  end, function(err, list)
+    call_all({
+      threads = function(cb)
+        session.provider:get_threads(session.change, cb)
+      end,
+      comments = function(cb)
+        session.provider:get_comments(session.change, cb)
+      end,
+    }, done)
+  end, function(_, results)
     if not is_newest() then
       return
     end
-    if err then
-      return show_error(("cannot get the threads of %s: %s"):format(session.label, err))
+    -- Each result that the provider gave shows, also if the other call failed.
+    local errors = results.errors
+    if errors.threads then
+      show_error(("cannot get the threads of %s: %s"):format(session.label, errors.threads))
+    else
+      session:set_threads(filter_threads(session, results.threads))
     end
-    session:set_threads(filter_threads(session, list))
+    if errors.comments then
+      show_error(("cannot get the comments of %s: %s"):format(session.label, errors.comments))
+    else
+      session:set_comments(results.comments)
+    end
   end)
 end
 
@@ -463,19 +501,18 @@ function M.refresh()
   end
   local is_newest = start_load(session)
   track(("refresh %s"):format(session.label), function(done)
-    local results, errors, count = {}, {}, 0
-    ---@param name "change"|"threads"
-    local function on_result(name)
-      return function(err, result)
-        results[name], errors[name], count = result, err, count + 1
-        if count == 2 then
-          done(errors.change or errors.threads, results)
-        end
-      end
-    end
-    session.provider:get_change(session.open_id, on_result("change"))
-    -- The change of the session is enough, because its id does not change.
-    session.provider:get_threads(session.change, on_result("threads"))
+    call_all({
+      change = function(cb)
+        session.provider:get_change(session.open_id, cb)
+      end,
+      -- The change of the session is enough, because its id does not change.
+      threads = function(cb)
+        session.provider:get_threads(session.change, cb)
+      end,
+      comments = function(cb)
+        session.provider:get_comments(session.change, cb)
+      end,
+    }, done)
   end, function(err, results)
     if not is_newest() then
       return
@@ -484,7 +521,8 @@ function M.refresh()
       return show_error(("cannot refresh %s: %s"):format(session.label, err))
     end
     local old_head = session.change.head_sha
-    session:set_change(results.change, filter_threads(session, results.threads))
+    session:set_change(assert(results.change), filter_threads(session, assert(results.threads)))
+    session:set_comments(assert(results.comments))
     if results.change.head_sha == old_head then
       return vim.notify(("didymus: refreshed %s"):format(session.label))
     end
@@ -735,7 +773,61 @@ local function comment_on_file(session, path)
   open_comment_input(session, path, "head")
 end
 
----@alias didymus.review.CommentKind "line"|"file"
+--- Post a general comment with the provider. Then show it in the panel. If the provider fails,
+--- keep the text for the next general comment.
+---@param session didymus.review.Session
+---@param body string
+local function post_change_comment(session, body)
+  track(("post a comment on %s"):format(session.label), function(done)
+    session.provider:post_change_comment(session.change, body, done)
+  end, function(err, comment)
+    if err then
+      local message = ("cannot post the comment on %s: %s"):format(session.label, err)
+      if session:is_open() then
+        session.failed_change_comment = body
+        -- One line, because a message with more lines makes the user press Enter.
+        message = ("%s. The next comment on %s starts with its text."):format(
+          (message:gsub("%.$", "")),
+          session.label
+        )
+      end
+      return show_error(message)
+    end
+    -- The comment is on the code host, also after a close of the review.
+    if session:is_open() then
+      session:add_change_comment(comment)
+    end
+    vim.notify(("didymus: posted a comment on %s"):format(session.label))
+  end)
+end
+
+--- Open the input float for a general comment, at the cursor line. A general comment is not in a
+--- review, so the float has only the action that posts it at once.
+---@param session didymus.review.Session
+local function comment_on_change(session)
+  local options = config.options.review.input
+  local text = session.failed_change_comment
+  session.failed_change_comment = nil
+  threads.close_float()
+  input.open({
+    title = "Comment on " .. session.label,
+    text = text,
+    width = options.width,
+    max_height = options.max_height,
+    keys = { cancel = options.keys.cancel },
+    actions = {
+      {
+        key = options.keys.post,
+        name = "comment now",
+        on_submit = function(body)
+          post_change_comment(session, body)
+        end,
+      },
+    },
+  })
+end
+
+---@alias didymus.review.CommentKind "line"|"file"|"change"
 
 ---@class didymus.review.CommentOpts
 ---@field kind didymus.review.CommentKind? Default "line".
@@ -744,13 +836,13 @@ end
 
 --- Add a comment on the current line, the selection or `range`. Post it at once, or add it to the
 --- pending review. Check the lines first. Then open the input float above them. With the kind
---- "file", add a comment on the file.
+--- "file", add a comment on the file. With the kind "change", post a general comment.
 ---@param opts didymus.review.CommentOpts?
 function M.comment(opts)
   opts = opts or {}
   local kind = opts.kind or "line"
-  if kind ~= "line" and kind ~= "file" then
-    return show_error(("cannot comment on %q. Use line or file."):format(kind))
+  if kind ~= "line" and kind ~= "file" and kind ~= "change" then
+    return show_error(("cannot comment on %q. Use line, file or change."):format(kind))
   end
   local range
   if kind == "line" then
@@ -762,6 +854,9 @@ function M.comment(opts)
   end
   if kind == "file" then
     return comment_on_file(session, opts.path)
+  end
+  if kind == "change" then
+    return comment_on_change(session)
   end
   local win = vim.api.nvim_get_current_win()
   local buf = vim.api.nvim_win_get_buf(win)

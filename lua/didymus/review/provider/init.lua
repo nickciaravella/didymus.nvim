@@ -79,6 +79,8 @@
 ---@field checkout fun(self, change: didymus.review.Change, cb: fun(err: string?)) Make the change head the current checkout.
 ---@field get_threads fun(self, change: didymus.review.Change, cb: fun(err: string?, threads: didymus.review.Thread[]?))
 ---@field add_comment fun(self, change: didymus.review.Change, draft: didymus.review.CommentDraft, cb: fun(err: string?, thread: didymus.review.Thread?)) Add to the pending review, and start one if there is none. Or post at once.
+---@field get_comments fun(self, change: didymus.review.Change, cb: fun(err: string?, comments: didymus.review.Comment[]?)) The general comments of the change, not in a thread.
+---@field post_change_comment fun(self, change: didymus.review.Change, body: string, cb: fun(err: string?, comment: didymus.review.Comment?)) Post a general comment at once.
 ---@field reply fun(self, change: didymus.review.Change, draft: didymus.review.ReplyDraft, cb: fun(err: string?, comment: didymus.review.Comment?)) Add to the pending review, and start one if there is none. Or post at once.
 ---@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?, thread: didymus.review.Thread?)) Give the thread with its new state.
 ---@field submit_review fun(self, change: didymus.review.Change, verdict: didymus.review.Verdict, body: string?, cb: fun(err: string?)) Submit the pending review. With no pending review, add a review with no comments.

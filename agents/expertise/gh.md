@@ -54,6 +54,13 @@ The exit code is 0, and the reply has no `errors`. So check that `thread` is not
 - Proof: on nickciaravella/didymus.nvim#64, `addPullRequestReviewThread` with `line: 12` (between the two hunks) gives `{"data":{"addPullRequestReviewThread":{"thread":null}}}` and exit code 0.
 - Checked: gh 2.103.2
 
+### `addComment` on a PR posts at once, also with a pending review
+
+A general comment is an issue comment, not a review comment. So `addComment` with the node id of the PR posts it at once, and the pending review of the viewer stays. A review comment cannot do this. See "A user can have only one pending review on a PR".
+
+- Proof: on nickciaravella/didymus.nvim#64, start a review with `addPullRequestReview`. Then `addComment` with `subjectId` of the PR. `gh api repos/{owner}/{repo}/issues/64/comments` lists the comment, and `reviews(states: [PENDING])` still has the review.
+- Checked: gh 2.104.0
+
 ### A thread on the file has `line: 1` and `diffSide: RIGHT`
 
 `addPullRequestReviewThread` with `subjectType: FILE` and no line gives a thread with `line: 1`, `originalLine: 1` and `diffSide: RIGHT`. `reviewThreads` gives the same. Its comment has an empty `diffHunk`. So read `subjectType`, not `line`, to find a thread on the file.
