@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation, new comments, replies, resolve, the submit or the discard of the review, the refresh, the inline and split diff, the sides of the diff, and the diff navigation work now.
+> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation, new comments, replies, resolve, the submit or the discard of the review, the refresh, the inline and split diff, the sides of the diff, the diff navigation, and the diff in the panel preview work now.
 
 ## Goals
 
@@ -300,6 +300,10 @@ The review tabpage shows the diff of the pull request on the real file, in the c
 | `:Didymus diff next`, `:Didymus diff prev` | Go to the next or the previous hunk of the diff, also in a different file. |
 
 The diff shows when the review opens, and follows the code window: after `<CR>` in the files panel, `gd`, `gf` or `:e` to a file of the pull request, the diff shows for that file. Other windows show only the gitsigns signs. A deleted file has no diff.
+
+When the cursor moves in the files panel, the preview over the code window shows the file with its diff. The preview is always `inline`, and with the `head` side it shows only the signs. The diff goes away when the panel loses the focus. `next` and `prev` do not use the preview.
+
+The preview opens the real file, so its `FileType` autocommands and your LSP servers start for each file that you preview. When the preview moves to a different file, didymus unloads a file that only the preview opened. A file that you opened stays open.
 
 In a different tabpage, `toggle`, `layout`, `side`, `next` and `prev` go to the review tabpage first. With no review, a warning shows.
 

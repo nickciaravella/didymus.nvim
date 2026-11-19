@@ -153,6 +153,15 @@ function Session:make_diff_view()
   end
 end
 
+--- Show the diff in the preview window of the files panel. Nil removes it.
+---@param win integer?
+function Session:preview_diff(win)
+  -- The panel opens before the diff view.
+  if self.diff_view then
+    self.diff_view:set_preview(win)
+  end
+end
+
 --- The reason that the diff is not the diff of the code host, or nil.
 ---@param status didymus.review.workspace.Status
 ---@return string?

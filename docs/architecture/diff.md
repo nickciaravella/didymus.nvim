@@ -18,6 +18,8 @@ These features come later:
 - Diff tools that open their own tabpage, such as codediff and diffview. See [External providers](#external-providers).
 - Deleted files, and threads on the base side, in the base view.
 
+The diff in the preview of the files panel came after the MVP. See [Preview](#preview).
+
 ## Requirements
 
 | ID | Requirement |
@@ -118,6 +120,7 @@ tests/integration/diff/    the gitsigns provider and the diff view, with the rea
 Calls go in one direction: `command` → `diff/init` → `review` (for the current session) → `diff/view` → the provider.
 
 - `diff/` does not require `review/`. The review session gives the diff view a target and three functions: `get_code_win()`, `open_file(path, line, opts)` and `on_show()`. With `opts.keepjumps`, `open_file()` does not change the jumplist and the alternate file.
+- The files panel calls `session:preview_diff(win)` after each preview, and the session calls `set_preview(win)` of the diff view. See [Preview](#preview).
 - The diff view calls `on_show()` each time the diff shows. The session checks the local changes in it, one time for each review.
 - `diff/init.lua` gets the diff view from `require("didymus.review").current()`. This is the only link from `diff/` to `review/`.
 - Providers can use `diff/hunks.lua` and `diff/target.lua`. They do not use `diff/view.lua`.
@@ -277,6 +280,19 @@ diff = {
 4. A buffer stays attached until the diff hides or the review closes. Then the diff view detaches all buffers. So a return to a file is fast. An unloaded buffer is detached.
 5. A deleted file is not in the checkout. It has no diff in the MVP.
 6. The target does not change at a refresh, because the checkout does not change. See rule 5 of [the review refresh](review.md#refresh).
+
+### Preview
+
+The snacks `sidebar` layout shows the preview in a float over the code window, not in the code window. For a file that is not loaded, snacks shows a copy in a scratch buffer, so gitsigns cannot attach to it. So the panel gives the preview its own previewer.
+
+1. The files panel sets `on_preview` of the picker panel. Then the adapter shows the real buffer of the file in the preview, and calls `on_preview(item, win)` after each preview.
+2. `set_preview(win)` clears the old preview display. If `win` shows a file of the target, it attaches the buffer and renders it in `win`. Only the callbacks of the newest preview apply.
+3. The preview has no room for a base window, and the panel owns its buffer. So the display is `inline`, with the `head` sides if the sides are `head`, else `both`. It has `head_win` and `head_buf`, and no base window.
+4. When the panel loses the focus, snacks closes the preview window, and the adapter calls `on_preview(nil, nil)`. Then the diff view clears the preview display. `WinClosed` of the preview window and a hide of the diff also clear it.
+5. A preview attach shows no progress message, because each move of the cursor in the panel previews a file. Its errors show once, as in rule 4 of [Show](#show).
+6. The display of the code window does not change. `next` and `prev` do not use the preview.
+7. A buffer stays attached, as in rule 4 of [Follow the code window](#follow-the-code-window). When the preview leaves a buffer that only it loaded, the adapter unloads it, so it keeps no LSP client. Then the diff view detaches it.
+8. A header row and a deleted file show no diff in the preview.
 
 ### Hide and close
 
@@ -465,8 +481,8 @@ The user approved these decisions on 2026-11-15.
 7. **The diff shows by default.** `diff.enabled = true`.
 8. **The diff includes local changes.** The head is the working tree. If the user edits a file, the diff shows the edit.
 9. **gitsigns signs show outside the review tabpage.** `change_base()` is for each buffer, and signs show in all windows. didymus puts the base back when the diff hides or the review closes.
-10. **Only the code window has the diff.** Other windows of the review tabpage with a file of the change show only the signs.
-11. **No diff in the panel preview.** The diff shows after `<CR>`.
+10. **Only the code window has the diff.** Other windows of the review tabpage with a file of the change show only the signs. Decision 39 adds the preview of the files panel.
+11. **No diff in the panel preview.** The diff shows after `<CR>`. Decision 39 replaces it.
 12. **gitsigns is the default provider, and an optional dependency.** With no gitsigns, the review works with no diff. The health check reports a provider that is not available. See [Health check](#health-check).
 13. **The side by side of gitsigns uses native diff mode,** not `diffthis()`, because `diffthis()` opens its own window (provider rule 1).
 14. **This plan replaces [#51](https://github.com/nickciaravella/didymus.nvim/issues/51).**
@@ -509,6 +525,14 @@ The user approved these decisions of task 7 on 2026-11-15.
 36. **A base buffer of a file of the target keeps the `base` sides.** Other buffers end them (rule 5 of [Sides](#sides)).
 37. **`diff.sides` accepts only `both` and `head`** (rule 10 of [Sides](#sides)).
 38. **The gitsigns `base` marks are `DiffDelete` line highlights** on all base lines of the hunks.
+
+The user approved these decisions of [#84](https://github.com/nickciaravella/didymus.nvim/issues/84) on 2026-11-18.
+
+39. **The preview of the files panel shows the diff.** It shows the real buffer of the file, because gitsigns cannot attach to the copy of snacks. See [Preview](#preview).
+40. **A buffer that only the preview loaded unloads when the preview leaves it.** It keeps no LSP client. A buffer that a window shows, or that the user opened, stays. The cleanup of snacks deletes only its own buffers, and only when the preview window closes.
+41. **The preview is always `inline`.** It keeps the `head` sides. The `base` sides and the `split` layout show `both`.
+42. **A preview attach shows no progress message.** Its errors show once.
+43. **`next` and `prev` do not use the preview.** A header row and a deleted file have no preview.
 
 ## Work plan
 

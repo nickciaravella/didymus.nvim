@@ -428,6 +428,54 @@ T["panel()"]["the preview hides while the focus is in the code window"] = functi
   wait_for_preview_line(20)
 end
 
+T["panel()"]["with on_preview, the preview shows the real buffer, and unloads it after"] = function()
+  child.lua("_G.items = ...", {
+    {
+      preview_items[2],
+      { text = "list.json", location = { path = "tests/fixtures/github/list.json", line = 1 } },
+    },
+  })
+  child.lua([[
+    _G.previews = {}
+    _G.on_preview = function(item, win)
+      table.insert(_G.previews, {
+        text = item and item.text or vim.NIL,
+        win = win or vim.NIL,
+        name = win and vim.fn.fnamemodify(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(win)), ":t") or vim.NIL,
+      })
+    end
+  ]])
+  child.lua([[
+    _G.code_win = vim.api.nvim_get_current_win()
+    _G.panel = require("didymus.ui.picker.snacks").panel({
+      title = "Panel",
+      items = function() return _G.items end,
+      on_choose = function() end,
+      on_preview = function(...) _G.on_preview(...) end,
+    })
+  ]])
+  wait_for_preview_line(20)
+  local win = preview_win()
+  local buf = child.fn.bufnr("tests/fixtures/picker/numbers.txt")
+  eq(child.api.nvim_win_get_buf(win), buf)
+  eq(
+    child.lua_get("_G.previews[#_G.previews]"),
+    { text = "numbers.txt", win = win, name = "numbers.txt" }
+  )
+
+  child.type_keys("j")
+  wait_for_preview_line(1)
+  eq(child.lua_get("_G.previews[#_G.previews]").name, "list.json")
+  -- snacks deletes only the buffers that it loads itself, and only when the preview closes.
+  eq(child.api.nvim_buf_is_valid(buf), false)
+
+  child.lua("vim.api.nvim_set_current_win(_G.code_win)")
+  settle()
+  eq(preview_win(), 0)
+  eq(child.lua_get("_G.previews[#_G.previews]"), { text = vim.NIL, win = vim.NIL, name = vim.NIL })
+  eq(child.fn.bufnr("tests/fixtures/github/list.json"), -1)
+end
+
 T["panel()"]["the user options of files go over the defaults"] = function()
   child.lua("_G.items = ...", { preview_items })
   child.lua([[

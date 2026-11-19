@@ -37,6 +37,11 @@ local progress_delay = 500
 ---@field base_win integer? The base window that has the diff of the split layout.
 ---@field number integer Only the callbacks of the newest display apply.
 
+---@class didymus.diff.view.Preview The preview window of the files panel that has the diff, or waits for it.
+---@field win integer
+---@field buf integer
+---@field number integer Only the callbacks of the newest preview apply.
+
 ---@class didymus.diff.view.Jump The newest `next` or `prev`. Only its callbacks apply.
 ---@field buf integer? The buffer whose `attach()` the jump waits for. The jump shows its error.
 
@@ -62,6 +67,8 @@ local progress_delay = 500
 ---@field private base_win_buf integer? The base buffer that the base window must show. Any other buffer ends the split layout.
 ---@field private display didymus.diff.view.Shown?
 ---@field private display_count integer
+---@field private preview didymus.diff.view.Preview?
+---@field private preview_count integer
 ---@field private warned table<string, boolean> The provider errors that showed. Each one shows once.
 ---@field private jump didymus.diff.view.Jump?
 ---@field private base_request didymus.diff.view.BaseRequest?
@@ -127,6 +134,7 @@ function View.new(opts)
     attached = {},
     revisions = {},
     display_count = 0,
+    preview_count = 0,
     warned = {},
     update_scheduled = false,
   }, View)
@@ -160,6 +168,8 @@ function View.new(opts)
         self:end_split("the base window closed")
       elseif self.display and win == self.display.win then
         self:schedule_update()
+      elseif self.preview and win == self.preview.win then
+        self:clear_preview()
       end
     end,
   })
@@ -262,7 +272,8 @@ end
 ---@param buf integer
 ---@param file didymus.diff.File
 ---@param cb fun(err: string?)
-function View:attach(buf, file, cb)
+---@param quiet boolean? Show no progress message. A move in the panel previews many files.
+function View:attach(buf, file, cb, quiet)
   local state = self.attached[buf]
   if state and state.ready then
     return cb(nil)
@@ -276,7 +287,7 @@ function View:attach(buf, file, cb)
   local text = ("get the diff of %s"):format(file.path)
   local finished, progress_shown = false, false
   vim.defer_fn(function()
-    if not finished and self.attached[buf] == state then
+    if not quiet and not finished and self.attached[buf] == state then
       progress_shown = true
       show_progress(text, "running")
     end
@@ -607,6 +618,61 @@ function View:update()
   end)
 end
 
+--- Remove the diff from the preview window. Make the callbacks of the old preview old.
+function View:clear_preview()
+  local preview = self.preview
+  self.preview = nil
+  self.preview_count = self.preview_count + 1
+  if preview and vim.api.nvim_win_is_valid(preview.win) then
+    self.provider:clear(preview.win)
+  end
+end
+
+--- Show the diff in the preview window of the files panel, if it shows a file of the target. The
+--- preview window is a float, with no room for a base window, and the panel owns its buffer. So
+--- the diff is inline, with the "head" sides or both sides. Nil removes the diff from the preview.
+---@param win integer?
+function View:set_preview(win)
+  self:clear_preview()
+  if
+    not (win and self.shown and vim.api.nvim_win_is_valid(win))
+    or vim.api.nvim_win_get_tabpage(win) ~= self.opts.tabpage
+    or vim.api.nvim_get_current_tabpage() ~= self.opts.tabpage
+  then
+    return
+  end
+  local buf = vim.api.nvim_win_get_buf(win)
+  local file = self:find_file(buf)
+  if not file then
+    return
+  end
+  local number = self.preview_count
+  self.preview = { win = win, buf = buf, number = number }
+  local function is_current()
+    return self.shown and self.preview ~= nil and self.preview.number == number
+  end
+  self:attach(buf, file, function(err)
+    if not is_current() then
+      return
+    end
+    if err then
+      return self:warn_once(file.path, err)
+    end
+    self.provider:render({
+      layout = "inline",
+      sides = self.sides == "head" and "head" or "both",
+      file = file,
+      target = self.opts.target --[[@as didymus.diff.Target]],
+      head_win = win,
+      head_buf = buf,
+    }, function(render_err)
+      if render_err and is_current() then
+        self:warn_once(file.path, render_err)
+      end
+    end)
+  end, true)
+end
+
 --- Update once after the events of one command, such as `BufWinEnter` and `TabEnter` of `:tab
 --- sbuffer`. The code window of the session is correct only after the command.
 function View:schedule_update()
@@ -635,6 +701,9 @@ function View:forget(buf)
   if self.display and (self.display.buf == buf or self.display.head_buf == buf) then
     self:clear_display()
     self:schedule_update()
+  end
+  if self.preview and self.preview.buf == buf then
+    self:clear_preview()
   end
   -- The provider must not change the buffer while it unloads.
   vim.schedule(function()
@@ -1020,6 +1089,7 @@ function View:hide()
   self.base_request = nil
   self.shown = false
   self:clear_display()
+  self:clear_preview()
   self:close_base_win()
   local attached = self.attached
   self.attached = {}

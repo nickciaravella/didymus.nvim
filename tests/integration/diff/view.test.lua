@@ -227,6 +227,51 @@ T["the base sides highlight the deleted lines of the base buffer in the code win
   wait_for(has_view, "the unified view after the both sides")
 end
 
+T["the preview of the snacks files panel shows the unified view, until the panel loses the focus"] = function()
+  helpers.restart(child, { "gitsigns.nvim", "snacks.nvim" })
+  child.cmd("runtime plugin/didymus.lua")
+  child.lua("require('gitsigns').setup()")
+  child.lua("require('didymus').setup({ review = { picker = 'snacks', provider = 'test' } })")
+  child.lua("vim.env.GIT_CONFIG_GLOBAL, vim.env.GIT_CONFIG_NOSYSTEM = '/dev/null', '1'")
+  local repo = review_helpers.make_repo({
+    base = { ["file.txt"] = "one\ntwo\nthree\n" },
+    head = { ["file.txt"] = "one\n2\nthree\n" },
+  })
+  child.fn.chdir(repo.dir)
+  review_helpers.set_changes(child, { repo.change })
+  review_helpers.set_threads(child, "1", {})
+  child.cmd("Didymus review open 1")
+  review_helpers.wait_for_review(child, "1")
+  wait_for(function()
+    return child.bo.filetype == "snacks_picker_list"
+  end, "the focus in the panel")
+
+  -- The rows: the title, the branches, the thread filter, then file.txt.
+  child.type_keys("G")
+  local function preview_win()
+    return child.lua_get([[(function()
+      for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+        if vim.w[win].snacks_picker_preview then
+          return win
+        end
+      end
+      return 0
+    end)()]])
+  end
+  local function preview_has_view()
+    local win = preview_win()
+    return win ~= 0 and child.lua_get("require('gitsigns.unified').get_view(...) ~= nil", { win })
+  end
+  wait_for(preview_has_view, "the unified view in the preview")
+  local buf = child.api.nvim_win_get_buf(preview_win())
+  eq(child.fn.fnamemodify(child.api.nvim_buf_get_name(buf), ":t"), "file.txt")
+
+  child.cmd("wincmd l")
+  wait_for(function()
+    return preview_win() == 0 and not child.api.nvim_buf_is_loaded(buf)
+  end, "no preview, and file.txt is not loaded")
+end
+
 T["with no gitsigns, a warning shows and the review works"] = function()
   child.restart({ "-u", "tests/minimal_init.lua" })
   child.cmd("runtime plugin/didymus.lua")

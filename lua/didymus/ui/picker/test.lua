@@ -1,5 +1,6 @@
 --- A picker adapter with no UI, for end-to-end tests. It records each call. The functions
---- `choose()`, `cancel()` and `press()` act as the user on the last open picker.
+--- `choose()`, `cancel()`, `press()`, `preview()` and `hide_preview()` act as the user on the last
+--- open picker.
 
 local picker = require("didymus.ui.picker")
 
@@ -11,6 +12,8 @@ local picker = require("didymus.ui.picker")
 ---@field cursor integer The index of the item under the cursor.
 ---@field open boolean
 ---@field focus_count integer The number of `focus()` calls of a panel.
+---@field preview_win integer? The float of the preview, as the snacks sidebar has.
+---@field preview_bufs didymus.picker.PreviewBufs
 
 local M = {}
 
@@ -31,6 +34,7 @@ local function record(kind, opts, config, items)
     cursor = 1,
     open = true,
     focus_count = 0,
+    preview_bufs = picker.new_preview_bufs(),
   }
   table.insert(M.calls, call)
   return call
@@ -68,7 +72,24 @@ function Panel:focus()
   self.call.focus_count = self.call.focus_count + 1
 end
 
+---@param call didymus.picker.test.Call
+local function hide_preview(call)
+  local win = call.preview_win
+  if not win then
+    return
+  end
+  call.preview_win = nil
+  if vim.api.nvim_win_is_valid(win) then
+    vim.api.nvim_win_close(win, true)
+  end
+  if call.opts.on_preview then
+    call.opts.on_preview(nil, nil)
+  end
+  call.preview_bufs:release()
+end
+
 function Panel:close()
+  hide_preview(self.call)
   self.call.open = false
 end
 
@@ -150,6 +171,46 @@ function M.press(key, target)
     end
   end
   error(("no action for %q"):format(key), 2)
+end
+
+--- Show the item in the preview float of the last open panel, as a cursor move in the panel does.
+--- A `location` shows the real buffer of the file. Call `on_preview`.
+---@param target (integer|string)? The index or the text of an item. Nil is the item under the cursor.
+---@return integer win The preview float.
+function M.preview(target)
+  local call = last_open("panel")
+  move(call, target)
+  local item = call.items[call.cursor]
+  local location = item and item.location
+  local buf = location and call.preview_bufs:load(location.path)
+  if not buf then
+    buf = vim.api.nvim_create_buf(false, true)
+    vim.bo[buf].bufhidden = "wipe"
+  end
+  if call.preview_win and vim.api.nvim_win_is_valid(call.preview_win) then
+    vim.api.nvim_win_set_buf(call.preview_win, buf)
+  else
+    call.preview_win = vim.api.nvim_open_win(buf, false, {
+      relative = "editor",
+      row = 0,
+      col = 0,
+      width = 40,
+      height = 10,
+    })
+  end
+  if location and location.line then
+    pcall(vim.api.nvim_win_set_cursor, call.preview_win, { location.line, 0 })
+  end
+  if call.opts.on_preview then
+    call.opts.on_preview(item, call.preview_win)
+  end
+  call.preview_bufs:release(buf)
+  return call.preview_win
+end
+
+--- Close the preview float of the last open panel, as a move of the focus out of the panel does.
+function M.hide_preview()
+  hide_preview(last_open("panel"))
 end
 
 return M

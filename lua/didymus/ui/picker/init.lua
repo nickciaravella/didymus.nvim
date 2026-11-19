@@ -39,6 +39,7 @@
 ---@field actions? didymus.picker.Action[] Keys in the panel, such as `R` for refresh.
 ---@field position? "left"|"right" Default "left".
 ---@field width? number Below 1, a fraction of the editor width. Else columns. Default 40.
+---@field on_preview? fun(item: didymus.picker.Item?, win: integer?) Called after the preview shows `item` in `win`, and with nil when the preview hides. With it, the preview of a `location` shows the real buffer of the file, not a copy.
 
 ---@class didymus.picker.Panel
 ---@field update fun(self) Call `items()` again and show the new items. Keep the cursor on the same item.
@@ -112,6 +113,51 @@ function M.find(items, id)
   for index, item in ipairs(items) do
     if M.id(item) == id then
       return index
+    end
+  end
+end
+
+--- The buffers that a preview loaded. A buffer that only the preview loaded must not stay loaded,
+--- because the load can start an LSP client.
+---@class didymus.picker.PreviewBufs
+---@field private loaded table<integer, { existed: boolean, listed: boolean }> The state of each buffer before the preview loaded it.
+local PreviewBufs = {}
+PreviewBufs.__index = PreviewBufs
+
+---@return didymus.picker.PreviewBufs
+function M.new_preview_bufs()
+  return setmetatable({ loaded = {} }, PreviewBufs)
+end
+
+--- The loaded buffer of `path`.
+---@param path string
+---@return integer
+function PreviewBufs:load(path)
+  local existed = vim.fn.bufexists(path) == 1
+  local buf = vim.fn.bufadd(path)
+  if not vim.api.nvim_buf_is_loaded(buf) then
+    self.loaded[buf] = { existed = existed, listed = vim.bo[buf].buflisted }
+    vim.fn.bufload(buf)
+  end
+  return buf
+end
+
+--- Unload the buffers that the preview loaded, except `keep`. Keep a buffer that a window shows,
+--- or that the user opened after the preview loaded it.
+---@param keep integer?
+function PreviewBufs:release(keep)
+  for buf, before in pairs(self.loaded) do
+    if buf ~= keep then
+      self.loaded[buf] = nil
+      if
+        vim.api.nvim_buf_is_loaded(buf)
+        and vim.bo[buf].buflisted == before.listed
+        and not vim.bo[buf].modified
+        and #vim.fn.win_findbuf(buf) == 0
+      then
+        -- A buffer that the preview made goes away. An older buffer only unloads.
+        vim.api.nvim_buf_delete(buf, { unload = before.existed })
+      end
     end
   end
 end

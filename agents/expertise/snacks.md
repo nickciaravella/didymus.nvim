@@ -45,3 +45,17 @@ With `auto_close = false`, snacks hides the main preview when the focus goes to 
 
 - Proof: the test `the preview hides while the focus is in the code window` in `tests/integration/picker/snacks.test.lua`. It fails without the `WinEnter` handler in `lua/didymus/ui/picker/snacks.lua`. See also [`picker.lua`](https://github.com/folke/snacks.nvim/blob/v2.31.0/lua/snacks/picker/core/picker.lua#L286-L298) at v2.31.0.
 - Checked: snacks.nvim v2.31.0
+
+### The file previewer shows a copy of a file that is not loaded, unless the item has `buf`
+
+`Snacks.picker.preview.file()` reads a file into its scratch buffer if `item.buf` is not a loaded buffer. Marks, such as the gitsigns diff, cannot go on that copy. Set `item.buf` to a loaded buffer before the call, and the preview shows the real buffer. snacks deletes a buffer only if it loaded the buffer itself (`vim.b.snacks_picker_loaded`), and only when the preview window closes. So unload your own buffers.
+
+- Proof: the test `with on_preview, the preview shows the real buffer, and unloads it after` in `tests/integration/picker/snacks.test.lua`. See also [`preview.lua`](https://github.com/folke/snacks.nvim/blob/v2.31.0/lua/snacks/picker/preview.lua#L80-L114) and [`core/preview.lua`](https://github.com/folke/snacks.nvim/blob/v2.31.0/lua/snacks/picker/core/preview.lua#L103-L120) at v2.31.0.
+- Checked: snacks.nvim v2.31.0
+
+### The `WinClosed` of the main preview does not fire when the focus leaves a sidebar
+
+snacks hides the main preview in its `WinEnter` handler. That handler is not `nested`, so the close of the preview window gives no `WinClosed`, also for `picker.preview.win:on("WinClosed", …)`. To know that the preview hid, check `picker.preview.win:valid()` in a scheduled callback of a global `WinEnter` autocmd.
+
+- Proof: the test `with on_preview, the preview shows the real buffer, and unloads it after` in `tests/integration/picker/snacks.test.lua`. It fails with a `WinClosed` handler on the preview window in place of the `WinEnter` check in `lua/didymus/ui/picker/snacks.lua`.
+- Checked: snacks.nvim v2.31.0
