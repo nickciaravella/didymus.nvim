@@ -15,7 +15,7 @@ make test-file FILE=tests/e2e/startup.test.lua   # one file
 make test NVIM=~/neovim/build/bin/nvim           # a different Neovim
 ```
 
-The first run clones mini.nvim and snacks.nvim into `deps/`. snacks.nvim is at the commit of `SNACKS_COMMIT` in the `Makefile`. If you change `SNACKS_COMMIT`, the next run fetches the new commit.
+The first run clones mini.nvim, snacks.nvim and gitsigns.nvim into `deps/`. snacks.nvim and gitsigns.nvim are at the commits of `SNACKS_COMMIT` and `GITSIGNS_COMMIT` in the `Makefile`. If you change a commit, the next run fetches it.
 
 ## Kinds of tests
 
@@ -236,6 +236,13 @@ Integration tests check one provider or external dependency against the real thi
 - Start each test with `helpers.restart(child)` from `tests/integration/helpers.lua`. It puts `deps/snacks.nvim` on the `'runtimepath'` of the child. The end-to-end children do not have snacks.nvim.
 - snacks draws its windows in scheduled callbacks. Poll with `wait_for()` until the text shows.
 - To check that a thing does not happen, such as an auto close, let the child run its callbacks first. Call `vim.wait(50)` in the child.
+
+`tests/integration/diff/gitsigns.test.lua` checks the gitsigns diff provider with the real gitsigns.nvim:
+
+- Start each test with `helpers.restart(child, { "gitsigns.nvim" })`. The second argument lists the plugins of `deps/` for the child.
+- Each test makes a new git repo with three commits. The child changes its directory to the repo.
+- The child loads gitsigns, but does not run `plugin/gitsigns.lua`. So a test calls `require("gitsigns").setup()`, or does not, to test a gitsigns that is not set up.
+- `get_hunks()` gives `{}` also while gitsigns computes the hunks. To wait for the hunks of a base, `settled_hunks()` reads the internal cache of gitsigns.
 
 In the MVP, people test the GitHub provider with the real `gh` by hand. See [#50](https://github.com/nickciaravella/didymus.nvim/issues/50).
 

@@ -38,7 +38,7 @@ flowchart TB
 | Code host in end-to-end tests | The test provider. In the MVP, people test the GitHub provider by hand. See [#50](https://github.com/nickciaravella/didymus.nvim/issues/50). |
 | GitHub provider in unit tests | A mock of `vim.system` gives recorded `gh` output from `tests/fixtures/github/`. |
 | Picker in end-to-end tests | The test picker. Integration tests use the real snacks.nvim. |
-| snacks.nvim in tests | A fixed commit: `SNACKS_COMMIT` in the `Makefile`. `make deps` checks it out. Only the integration tests put it on the `'runtimepath'`. |
+| snacks.nvim and gitsigns in tests | Fixed commits: `SNACKS_COMMIT` and `GITSIGNS_COMMIT` in the `Makefile`. `make deps` checks them out. Only the integration tests put them on the `'runtimepath'`. |
 | Test commands | `make test` runs all kinds of tests. CI runs `make test`. |
 | Work tracking | Four epics: `agent`, `agentic-dev`, `diff`, `review`. Each epic is a GitHub label. See [`TASK_TRACKING.md`](TASK_TRACKING.md). |
 | Infrastructure | Build it only when an epic needs it. |
@@ -49,7 +49,7 @@ flowchart TB
 | Diff target | The review gives the base, the head and the files. In the MVP, the merge-base and the working tree. A later `local` review provider gives local diffs. The diff part does not know about code hosts. See [`architecture/diff.md`](architecture/diff.md#the-diff-target-of-a-review). |
 | Diff scope | Only in the review tabpage, in the code window. gitsigns signs show in all windows of a buffer, so didymus puts the base back when the diff hides. See [`architecture/diff.md`](architecture/diff.md#decisions). |
 | Diff commands | `toggle`, `layout [inline\|split]`, `side [both\|base\|head]`, `next` and `prev`. `diff next` uses the hunks of the diff provider. `review next hunk` keeps the hunks of the patch. See [`architecture/diff.md`](architecture/diff.md#api-and-commands). |
-| Diff dependency | gitsigns is optional. With no gitsigns, the review works with no diff, and the health check reports a warning. An unknown `diff.provider` is an error. |
+| Diff dependency | gitsigns is optional. With no gitsigns, the review works with no diff, and the health check reports a warning. An unknown `diff.provider` is an error. The gitsigns provider calls internal gitsigns modules. See [`architecture/diff.md`](architecture/diff.md#internal-gitsigns-calls). |
 | First integrations | The GitHub provider, through `gh`, and the snacks.nvim picker. |
 | Review workspace | The current checkout in the MVP. didymus asks before it checks out the PR over uncommitted changes. A worktree comes later. See [#48](https://github.com/nickciaravella/didymus.nvim/issues/48). |
 | Review questions | The select role of the picker, because `vim.fn.confirm()` blocks the UI. See [`architecture/review.md`](architecture/review.md#workspace-flow). |
@@ -99,7 +99,7 @@ git fetch origin
 git worktree add --no-track -b <type>/<slug> ../didymus.nvim-worktrees/<issue>-<slug> origin/main
 ```
 
-The first `make test` in a worktree clones mini.nvim and snacks.nvim into its own `deps/`.
+The first `make test` in a worktree clones mini.nvim, snacks.nvim and gitsigns.nvim into its own `deps/`.
 
 After the pull request merges, remove the worktree and the branch:
 
@@ -121,7 +121,7 @@ lua/didymus/ui/              UI parts for all epics, such as the input float and
 lua/didymus/ui/picker/       the picker interface and its adapters: snacks, test
 lua/didymus/review/          the review API, the review session, the files panel, the inline threads, the patch parser, the workspace and the diff target. See architecture/review.md.
 lua/didymus/review/provider/ the review types, the provider interface and its providers: github, test
-lua/didymus/diff/            the diff types, the hunk navigation, the diff provider interface and its providers: test. See architecture/diff.md.
+lua/didymus/diff/            the diff types, the hunk navigation, the diff provider interface and its providers: gitsigns, test. See architecture/diff.md.
 tests/helpers.lua            helpers for all kinds of tests
 tests/unit/didymus/          unit tests, mirror lua/didymus/
 tests/e2e/                   end-to-end tests, by feature

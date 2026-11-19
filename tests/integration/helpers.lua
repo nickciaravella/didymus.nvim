@@ -2,12 +2,15 @@
 
 local M = {}
 
---- Restart `child` with snacks.nvim from `deps/`. `make deps` clones it.
+--- Restart `child` with plugins from `deps/`. `make deps` clones them.
 ---@param child MiniTest.child
-function M.restart(child)
+---@param plugins string[]? The folders in `deps/`. Default `{ "snacks.nvim" }`.
+function M.restart(child, plugins)
   child.restart({ "-u", "tests/minimal_init.lua" })
   child.o.columns, child.o.lines = 120, 40
-  child.lua('vim.opt.runtimepath:append(vim.fn.getcwd() .. "/deps/snacks.nvim")')
+  for _, plugin in ipairs(plugins or { "snacks.nvim" }) do
+    child.lua("vim.opt.runtimepath:append(vim.fn.getcwd() .. '/deps/' .. ...)", { plugin })
+  end
 end
 
 return M

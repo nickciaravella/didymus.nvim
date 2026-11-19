@@ -136,4 +136,27 @@ T["didymus review"]["shows OK if gh is authenticated"] = function()
   MiniTest.expect.equality(text:find("ERROR", 1, true), nil)
 end
 
+T["didymus diff"] = MiniTest.new_set()
+
+T["didymus diff"]["shows a warning, not an error, if gitsigns is not available"] = function()
+  local text = section({}, "didymus diff")
+  expect_text(text, "WARNING gitsigns.nvim is not available (diff.provider)")
+  expect_text(text, "Install gitsigns.nvim, or set `diff.provider`. The review works with no diff.")
+  MiniTest.expect.equality(text:find("ERROR", 1, true), nil)
+end
+
+T["didymus diff"]["shows an error for an unknown provider"] = function()
+  local text = section({ diff = { provider = "unknown" } }, "didymus diff")
+  expect_text(
+    text,
+    'ERROR unknown provider "unknown". Use "gitsigns", "test" or a provider table. (diff.provider)'
+  )
+  expect_text(text, "Set `diff.provider`.")
+end
+
+T["didymus diff"]["shows OK with the test provider"] = function()
+  local text = section({ diff = { provider = "test" } }, "didymus diff")
+  expect_text(text, "OK The test diff provider needs no dependencies.")
+end
+
 return T
