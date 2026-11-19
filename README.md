@@ -3,7 +3,7 @@
 Review pull requests in Neovim. Read the real code with full LSP, comment on the PR, and talk to an AI agent in one place.
 
 > [!WARNING]
-> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation, new comments, replies, resolve, the submit or the discard of the review, the refresh, and the inline diff work now.
+> **Early development.** Only the agent, the start of a review, the files panel, the review threads, the navigation, new comments, replies, resolve, the submit or the discard of the review, the refresh, the inline diff, and the diff navigation work now.
 
 ## Goals
 
@@ -295,10 +295,15 @@ The review tabpage shows the diff of the pull request on the real file, in the c
 | Command | Behavior |
 | --- | --- |
 | `:Didymus diff toggle` | Show or hide the diff in the review tabpage. |
+| `:Didymus diff next`, `:Didymus diff prev` | Go to the next or the previous hunk of the diff, also in a different file. |
 
 The diff shows when the review opens, and follows the code window: after `<CR>` in the files panel, `gd`, `gf` or `:e` to a file of the pull request, the diff shows for that file. Other windows show only the gitsigns signs. A deleted file has no diff.
 
-In a different tabpage, `toggle` goes to the review tabpage first. With no review, a warning shows.
+In a different tabpage, `toggle`, `next` and `prev` go to the review tabpage first. With no review, a warning shows.
+
+`next` and `prev` move the cursor in the code window. At the last hunk of a file, `next` goes to the first hunk of the next file with hunks, in the order of the files panel. `prev` goes to the last hunk of the previous file. They skip a file with no hunks, such as a binary file. The stop of a deletion is the line after the deleted lines. At the last or the first hunk, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. A hidden diff has no hunks, so a message shows.
+
+`:Didymus review next hunk` uses the hunks of GitHub, where you can comment. `:Didymus diff next` uses the hunks of the diff provider, one for each change.
 
 The diff shows your local changes too. If `HEAD` is not the head of the pull request, or a file of the pull request has uncommitted changes, a warning shows one time in each review. Then the diff is not the diff of GitHub.
 
@@ -310,9 +315,11 @@ There are no default keymaps. For example:
 
 ```lua
 vim.keymap.set("n", "<leader>dt", "<Plug>(didymus-diff-toggle)")
+vim.keymap.set("n", "<leader>dn", "<Plug>(didymus-diff-next)")
+vim.keymap.set("n", "<leader>dp", "<Plug>(didymus-diff-prev)")
 ```
 
-`<Plug>(didymus-diff-toggle)` is a normal mode mapping. To check gitsigns.nvim, run `:checkhealth didymus`.
+`<Plug>(didymus-diff-toggle)`, `<Plug>(didymus-diff-next)` and `<Plug>(didymus-diff-prev)` are normal mode mappings. To check gitsigns.nvim, run `:checkhealth didymus`.
 
 The defaults:
 

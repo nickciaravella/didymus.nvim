@@ -123,6 +123,18 @@ With `signcolumn=auto`, the first sign of a buffer makes the sign column show. B
 
 - Checked: Neovim 0.12.5
 
+### `nvim_win_set_buf()` adds the old position to the jumplist, but `:keepjumps buffer` does not
+
+`:h nvim_win_set_buf()` does not tell it. To show a buffer with no jumplist entry, run `:buffer` with the `keepjumps` and `keepalt` modifiers in the window, for example `nvim_cmd({ cmd = "buffer", count = buf, mods = { keepjumps = true, keepalt = true } }, {})`. `:keepjumps edit` also adds no entry. The diff navigation uses both, so that a jump that opens files to get their hunks adds only the start position.
+
+- Proof: the test "the jumplist gets only the start position, also when the jump checks a file with no hunks" in `tests/e2e/diff/navigation.test.lua`. This command prints `{ "a.txt:1" }`:
+
+  ```sh
+  cd "$(mktemp -d)" && echo a > a.txt && echo b > b.txt && nvim --clean --headless -c 'edit a.txt' -c 'clearjumps' -c 'lua vim.api.nvim_win_set_buf(0, vim.fn.bufadd("b.txt"))' -c 'lua print(vim.inspect(vim.tbl_map(function(j) return vim.fn.bufname(j.bufnr) .. ":" .. j.lnum end, vim.fn.getjumplist()[1])))' -c qa
+  ```
+
+- Checked: Neovim 0.12.6
+
 ## Floats
 
 ### The float of `open_floating_preview()` closes when you leave its source buffer, also for a picker

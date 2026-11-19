@@ -71,6 +71,8 @@ vim.keymap.set({ "n", "x" }, "<Plug>(didymus-review-comment)", function()
   require("didymus.review").comment()
 end, { desc = "didymus: review comment" })
 
-vim.keymap.set("n", "<Plug>(didymus-diff-toggle)", function()
-  require("didymus.diff").toggle()
-end, { desc = "didymus: diff toggle" })
+for _, action in ipairs({ "toggle", "next", "prev" }) do
+  vim.keymap.set("n", ("<Plug>(didymus-diff-%s)"):format(action), function()
+    require("didymus.diff")[action]()
+  end, { desc = "didymus: diff " .. action })
+end

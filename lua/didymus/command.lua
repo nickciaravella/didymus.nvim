@@ -19,7 +19,7 @@ local tree = {
     discard = {},
     refresh = {},
   },
-  diff = { toggle = {} },
+  diff = { toggle = {}, next = {}, prev = {} },
 }
 
 ---@param text string
@@ -121,6 +121,12 @@ local diff_actions = {
   toggle = function()
     require("didymus.diff").toggle()
   end,
+  next = function()
+    require("didymus.diff").next()
+  end,
+  prev = function()
+    require("didymus.diff").prev()
+  end,
 }
 
 local groups = {
@@ -135,7 +141,7 @@ local groups = {
   },
   diff = {
     actions = diff_actions,
-    usage = "Use :Didymus diff toggle.",
+    usage = "Use :Didymus diff toggle, next or prev.",
   },
 }
 
