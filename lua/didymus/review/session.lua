@@ -1,10 +1,14 @@
 --- One open review: the change, its threads, its tabpage, the files panel and the state of `HEAD`
 --- before the review.
 
+local DiffView = require("didymus.diff.view")
+local config = require("didymus.config")
+local diff_target = require("didymus.review.diff_target")
 local panel = require("didymus.review.panel")
 local patch = require("didymus.review.patch")
 local picker = require("didymus.ui.picker")
 local threads = require("didymus.review.threads")
+local workspace = require("didymus.review.workspace")
 
 ---@class didymus.review.SessionOpts
 ---@field change didymus.review.Change
@@ -43,6 +47,8 @@ local threads = require("didymus.review.threads")
 ---@field private on_close fun(session: didymus.review.Session)
 ---@field private group integer The autocmds of the review.
 ---@field private thread_paths table<string, string> The path of each file with threads, by its real path.
+---@field diff_view didymus.diff.View The diff of the change in the code window.
+---@field private workspace_checked boolean True after the check for local changes in the diff.
 local Session = {}
 Session.__index = Session
 
@@ -67,6 +73,7 @@ function Session.new(opts)
     thread_filter = "all",
     folds = {},
     draw_scheduled = false,
+    workspace_checked = false,
   }, Session)
   -- An unlisted scratch buffer, so that the close leaves no "[No Name]" buffer.
   local buf = vim.api.nvim_create_buf(false, true)
@@ -85,6 +92,7 @@ function Session.new(opts)
       end
       vim.api.nvim_del_augroup_by_id(self.group)
       vim.api.nvim_set_decoration_provider(threads.namespace, {})
+      self.diff_view:close()
       self:hide_files()
       threads.clear()
       self.on_close(self)
@@ -114,7 +122,81 @@ function Session.new(opts)
   })
   self:scope_threads()
   self:show_files()
+  self:make_diff_view()
   return self
+end
+
+--- Make the diff view of the change. Show the diff if `diff.enabled` is true.
+function Session:make_diff_view()
+  local target, target_err = diff_target.make(self)
+  self.diff_view = DiffView.new({
+    tabpage = self.tabpage,
+    target = target,
+    target_err = target_err,
+    get_code_win = function()
+      if
+        vim.api.nvim_win_is_valid(self.code_win)
+        and vim.api.nvim_win_get_tabpage(self.code_win) == self.tabpage
+      then
+        return self.code_win
+      end
+    end,
+    on_show = function()
+      self:check_workspace()
+    end,
+  })
+  if config.options.diff.enabled then
+    self.diff_view:show()
+  end
+end
+
+--- The reason that the diff is not the diff of the code host, or nil.
+---@param status didymus.review.workspace.Status
+---@return string?
+function Session:get_local_changes(status)
+  if status.head ~= self.change.head_sha then
+    return ("HEAD is not the head of %s"):format(self.label)
+  end
+  local paths = {}
+  for _, file in ipairs(self.change.files) do
+    paths[file.path] = true
+    if file.old_path then
+      paths[file.old_path] = true
+    end
+  end
+  local changed = vim.tbl_filter(function(path)
+    return paths[path]
+  end, status.changed_files)
+  if #changed == 1 then
+    return ("%s has uncommitted changes"):format(changed[1])
+  elseif #changed > 1 then
+    return ("%d files of %s have uncommitted changes"):format(#changed, self.label)
+  end
+end
+
+--- Once for each review, when the diff shows: if `HEAD` is not the change head, or a file of the
+--- change has uncommitted changes, show a warning. The diff then shows these changes too.
+function Session:check_workspace()
+  if self.workspace_checked then
+    return
+  end
+  self.workspace_checked = true
+  workspace.get_status(self.cwd, function(err, status)
+    if not self:is_open() then
+      return
+    end
+    if err then
+      vim.notify("didymus: cannot check the local changes: " .. err, vim.log.levels.WARN)
+      return
+    end
+    local reason = self:get_local_changes(status --[[@as didymus.review.workspace.Status]])
+    if reason then
+      vim.notify(
+        ("didymus: the diff also shows local changes, because %s"):format(reason),
+        vim.log.levels.WARN
+      )
+    end
+  end)
 end
 
 ---@return boolean

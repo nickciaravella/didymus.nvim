@@ -202,7 +202,9 @@ Drive it in the child with `require("didymus.diff.provider.test")`:
 | `errors` | An error for the next call of `attach` or `render`. |
 | `calls` | One record of plain data for each call, such as `{ method = "attach", buf = 3, path = "a.lua" }`. |
 
-`render()` shows `diff <layout> <sides>` at the end of the stop line of each hunk. Check it with a screenshot. See [Test provider](architecture/diff.md#test-provider).
+`render()` shows `diff <layout> <sides>` at the end of the stop line of each hunk. Check it with a screenshot, or read the extmarks of the namespace `didymus.diff.test.<win>`. See [Test provider](architecture/diff.md#test-provider).
+
+The end-to-end tests of the diff are in `tests/e2e/diff/`. They also use the review test provider and the test picker.
 
 ### The GitHub provider
 
@@ -243,6 +245,8 @@ Integration tests check one provider or external dependency against the real thi
 - Each test makes a new git repo with three commits. The child changes its directory to the repo.
 - The child loads gitsigns, but does not run `plugin/gitsigns.lua`. So a test calls `require("gitsigns").setup()`, or does not, to test a gitsigns that is not set up.
 - `get_hunks()` gives `{}` also while gitsigns computes the hunks. To wait for the hunks of a base, `settled_hunks()` reads the internal cache of gitsigns.
+
+`tests/integration/diff/view.test.lua` checks the diff view of a review with the real gitsigns.nvim: the unified view in the code window, `toggle` and the close.
 
 In the MVP, people test the GitHub provider with the real `gh` by hand. See [#50](https://github.com/nickciaravella/didymus.nvim/issues/50).
 

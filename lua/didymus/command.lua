@@ -19,6 +19,7 @@ local tree = {
     discard = {},
     refresh = {},
   },
+  diff = { toggle = {} },
 }
 
 ---@param text string
@@ -116,6 +117,12 @@ local review_actions = {
   end,
 }
 
+local diff_actions = {
+  toggle = function()
+    require("didymus.diff").toggle()
+  end,
+}
+
 local groups = {
   agent = {
     actions = agent_actions,
@@ -126,6 +133,10 @@ local groups = {
     usage = "Use :Didymus review open, close, files, fold, next, prev, comment, reply, resolve, "
       .. "submit, discard or refresh.",
   },
+  diff = {
+    actions = diff_actions,
+    usage = "Use :Didymus diff toggle.",
+  },
 }
 
 ---@param args string
@@ -135,7 +146,7 @@ function M.run(args, range)
   local group = groups[group_name]
   local action
   action, rest = split_word(rest)
-  local usage = group and group.usage or "Use :Didymus agent or :Didymus review."
+  local usage = group and group.usage or "Use :Didymus agent, :Didymus review or :Didymus diff."
   if not group or not group.actions[action] then
     vim.notify("didymus: unknown command. " .. usage, vim.log.levels.ERROR)
     return
