@@ -341,4 +341,61 @@ T["each action calls its own callback, and the footer shows the keys in order"] 
   eq(child.lua_get("_G.calls"), { { "send", "one" }, { "append", "two" } })
 end
 
+T["an insert key puts the lines after the cursor line, and does not submit"] = function()
+  child.lua([[
+    _G.submitted = {}
+    require("didymus.ui.input").open({
+      text = "one",
+      actions = {
+        {
+          key = "<C-s>",
+          name = "send",
+          on_submit = function(text)
+            table.insert(_G.submitted, text)
+          end,
+        },
+      },
+      inserts = {
+        { key = "<M-s>", name = "block", get_lines = function() return { "a", "b", "c" }, 2 end },
+        { key = "<M-t>", name = "line", get_lines = function() return { "x" } end },
+        { key = false, name = "off", get_lines = function() return { "off" } end },
+      },
+    })
+  ]])
+  local footer = child.api.nvim_win_get_config(assert(input_win())).footer
+  eq(footer[1][1], " <C-s> send  <M-s> block  <M-t> line  q cancel ")
+
+  -- In insert mode, the cursor goes to the end of the line of the index.
+  child.type_keys("<M-s>")
+  eq(child.api.nvim_buf_get_lines(0, 0, -1, true), { "one", "a", "b", "c" })
+  eq(child.api.nvim_win_get_cursor(0), { 3, 1 })
+  eq(child.api.nvim_get_mode().mode, "i")
+  eq(input_height(), 4)
+  child.type_keys("2")
+  eq(child.api.nvim_buf_get_lines(0, 0, -1, true), { "one", "a", "b2", "c" })
+
+  -- An empty cursor line gets the first line. With no index, the cursor goes to the last line.
+  child.type_keys("<Esc>", "o", "<Esc>", "<M-t>")
+  eq(child.api.nvim_buf_get_lines(0, 0, -1, true), { "one", "a", "b2", "x", "c" })
+  eq(child.api.nvim_win_get_cursor(0), { 4, 0 })
+  eq(child.lua_get("_G.submitted"), {})
+
+  child.type_keys("<C-s>")
+  eq(child.lua_get("_G.submitted"), { "one\na\nb2\nx\nc" })
+end
+
+T["a long footer loses its last keys, so that it fits"] = function()
+  child.lua([[
+    local function action(key, name)
+      return { key = key, name = name, on_submit = function() end }
+    end
+    require("didymus.ui.input").open({
+      width = 30,
+      actions = { action("<C-s>", "send now"), action("<C-y>", "append") },
+    })
+  ]])
+  local footer = child.api.nvim_win_get_config(assert(input_win())).footer
+  eq(footer[1][1], " <C-s> send now  <C-y> append ")
+end
+
 return T

@@ -26,7 +26,8 @@ M.defaults = {
     input = {
       width = 60,
       max_height = 10,
-      keys = { post = "<C-s>", add = "<C-y>", cancel = "q" }, -- Also for a reply. A submit has only `post`.
+      -- Also for a reply. A submit has only `post`. `suggest` adds a suggestion to a comment.
+      keys = { post = "<C-s>", add = "<C-y>", suggest = "<M-s>", cancel = "q" },
     },
     thread = {
       -- In the thread float of a thread that shows only in the panel. False turns a key off.

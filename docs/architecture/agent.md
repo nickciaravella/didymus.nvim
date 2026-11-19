@@ -160,9 +160,15 @@ The other parts have these interfaces:
 ---@field name string        The name in the footer, for example "send".
 ---@field on_submit fun(text: string)
 
+---@class didymus.ui.input.Insert A key that inserts lines after the cursor line, and does not submit.
+---@field key string|false   In insert and normal mode. False turns off the insert.
+---@field name string        The name in the footer, for example "suggest".
+---@field get_lines fun(): string[], integer? The lines, and the index of the line for the cursor. Default: the last line.
+
 ---@class didymus.ui.input.Opts
 ---@field title string?
 ---@field actions didymus.ui.input.Action[] The keys that submit. The footer shows them in this order.
+---@field inserts didymus.ui.input.Insert[]? The footer shows their keys after the actions. If the footer is too wide, it loses its last keys.
 ---@field on_cancel fun()?
 ---@field width number?      Default 60. A width below 1 is a fraction of the current window width.
 ---@field max_height integer? Default 10.

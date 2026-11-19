@@ -181,6 +181,7 @@ At the last or the first stop, a message shows, and the cursor does not move. `<
 | --- | --- |
 | `<C-s>` | Comment now: post the comment at once. GitHub does this only if you have no pending review. |
 | `<C-y>` | Add to review: add the comment to your pending review. If you have no pending review, didymus starts one. A pending review that you started on github.com also works. |
+| `<M-s>` | Suggest: add a suggestion block with the lines of the comment, after the cursor line. Change the code in the block. Then press `<C-s>` or `<C-y>`. |
 | `q`, in normal mode | Cancel. |
 
 The new thread shows in the panel and at the line. A comment in your pending review has the `[pending]` tag. It stays pending until you submit the review.
@@ -278,8 +279,9 @@ require("didymus").setup({
     input = { -- the float of comment, reply and submit
       width = 60, -- below 1 is a fraction of the window width
       max_height = 10, -- the float grows to this height, then it scrolls
-      -- post: comment or reply now, or submit. add: add to the pending review. cancel is in normal mode.
-      keys = { post = "<C-s>", add = "<C-y>", cancel = "q" },
+      -- post: comment or reply now, or submit. add: add to the pending review.
+      -- suggest: add a suggestion to a comment. cancel is in normal mode. false turns off a key.
+      keys = { post = "<C-s>", add = "<C-y>", suggest = "<M-s>", cancel = "q" },
     },
     thread = { -- the thread float of a thread that shows only in the panel
       keys = { reply = "r", resolve = "x" }, -- false turns a key off

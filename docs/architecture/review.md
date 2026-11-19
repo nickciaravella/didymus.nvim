@@ -237,6 +237,9 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 9. If the first comment of a thread is pending, the thread has the `[pending]` tag, in the panel and at the line. A comment that is posted at once has no tag.
 10. If the provider fails, the error shows on one line, because a longer message makes the user press Enter. The session keeps the draft. The next comment on the same file and lines starts with its text, for both actions.
 11. The session keeps the provider that gave the change, because only that provider knows its own fields of the change.
+12. The key `keys.suggest` (default `<M-s>`) of the comment float adds a suggestion block with the lines of the comment, as on github.com. It does not submit. The block goes after the cursor line. An empty cursor line gets the block. The cursor goes to the end of the last line of code. If the code has a fence of backticks, the fence of the block is longer. `false` turns the key off. `<C-g>` of github.com is a prefix of built-in keys in insert mode, such as `<C-g>u`.
+13. Only a new comment on the head side has `keys.suggest`, because GitHub applies a suggestion only on the head side. A reply has no `keys.suggest`.
+14. The footer shows the keys of the float. A footer that is too wide loses its last keys, because Neovim cuts a long footer from the start. So the comment float shows no `q cancel` at the default width.
 
 ### Replies and resolve
 

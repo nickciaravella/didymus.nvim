@@ -11,9 +11,16 @@ local M = {}
 ---@field name string The name in the footer, for example "send".
 ---@field on_submit fun(text: string)
 
+--- A key that inserts lines, and does not submit.
+---@class didymus.ui.input.Insert
+---@field key string|false In normal and insert mode. False turns off the insert.
+---@field name string The name in the footer, for example "suggest".
+---@field get_lines fun(): string[], integer? The lines, and the index of the line for the cursor. Default: the last line.
+
 ---@class didymus.ui.input.Opts
 ---@field title string?
 ---@field actions didymus.ui.input.Action[] The footer shows the keys in this order.
+---@field inserts didymus.ui.input.Insert[]? The footer shows their keys after the actions.
 ---@field on_cancel fun()?
 ---@field width number? A width below 1 is a fraction of the current window width.
 ---@field max_height integer?
@@ -148,9 +155,12 @@ function M.open(opts)
   vim.validate("opts.text", opts.text, "string", true)
   vim.validate("opts.allow_empty", opts.allow_empty, "boolean", true)
   vim.validate("opts.on_empty", opts.on_empty, "function", true)
-  local actions = vim.tbl_filter(function(action)
-    return action.key
-  end, opts.actions)
+  vim.validate("opts.inserts", opts.inserts, "table", true)
+  local function has_key(item)
+    return item.key
+  end
+  local actions = vim.tbl_filter(has_key, opts.actions)
+  local inserts = vim.tbl_filter(has_key, opts.inserts or {})
   opts = vim.tbl_deep_extend("force", defaults, opts)
   local keys = opts.keys
 
@@ -164,11 +174,10 @@ function M.open(opts)
   local width = resolve_width(opts.width, vim.api.nvim_win_get_width(origin_win))
   local position, max_height = find_position(origin_win, range, width, opts.max_height)
   highlight_context(origin_win, range)
-  local footer_parts = vim.tbl_map(function(action)
-    return ("%s %s"):format(action.key, action.name)
-  end, actions)
+  local footer_parts = vim.tbl_map(function(item)
+    return ("%s %s"):format(item.key, item.name)
+  end, vim.list_extend(vim.list_slice(actions), inserts))
   table.insert(footer_parts, ("%s cancel"):format(keys.cancel))
-  local footer = (" %s "):format(table.concat(footer_parts, "  "))
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].autocomplete = false
@@ -188,9 +197,14 @@ function M.open(opts)
     border = (vim.o.winborder == "" or vim.o.winborder == "none") and "rounded" or nil,
     title = opts.title and (" %s "):format(opts.title),
   })
-  -- Neovim cuts a long footer from the start. Show it only if it fits.
-  if vim.api.nvim_strwidth(footer) <= width then
-    win_config.footer, win_config.footer_pos = footer, "right"
+  -- Neovim cuts a long footer from the start. So remove the last keys until the footer fits.
+  while #footer_parts > 0 do
+    local footer = (" %s "):format(table.concat(footer_parts, "  "))
+    if vim.api.nvim_strwidth(footer) <= width then
+      win_config.footer, win_config.footer_pos = footer, "right"
+      break
+    end
+    table.remove(footer_parts)
   end
   local win = vim.api.nvim_open_win(buf, true, win_config)
   vim.wo[win][0].wrap = true
@@ -248,12 +262,30 @@ function M.open(opts)
     end)
   end
 
+  --- Put the lines after the cursor line. An empty cursor line gets the first line.
+  ---@param insert didymus.ui.input.Insert
+  local function insert_lines(insert)
+    local lines, cursor_index = insert.get_lines()
+    local row = vim.api.nvim_win_get_cursor(win)[1]
+    local first = vim.api.nvim_buf_get_lines(buf, row - 1, row, true)[1] == "" and row - 1 or row
+    vim.api.nvim_buf_set_lines(buf, first, row, true, lines)
+    local cursor_row = first + (cursor_index or #lines)
+    local cursor_line = vim.api.nvim_buf_get_lines(buf, cursor_row - 1, cursor_row, true)[1]
+    vim.api.nvim_win_set_cursor(win, { cursor_row, #cursor_line })
+    update_height(win, max_height)
+  end
+
   local map_opts = { buffer = buf, nowait = true }
   ---@param modes string[]
   local function map_actions(modes)
     for _, action in ipairs(actions) do
       vim.keymap.set(modes, action.key --[[@as string]], function()
         submit(action.on_submit)
+      end, map_opts)
+    end
+    for _, insert in ipairs(inserts) do
+      vim.keymap.set(modes, insert.key --[[@as string]], function()
+        insert_lines(insert)
       end, map_opts)
     end
   end

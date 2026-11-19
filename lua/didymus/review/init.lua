@@ -608,10 +608,29 @@ local function add_comment(session, draft)
   end)
 end
 
+--- A suggestion block with `lines`, as on github.com. The cursor goes to the last line of code.
+--- The fence is longer than each fence in the code.
+---@param lines string[]
+---@return string[] lines
+---@return integer cursor_index
+local function make_suggestion(lines)
+  local fence = "```"
+  for _, line in ipairs(lines) do
+    while line:find(fence, 1, true) do
+      fence = fence .. "`"
+    end
+  end
+  local block = { fence .. "suggestion" }
+  vim.list_extend(block, lines)
+  table.insert(block, fence)
+  return block, #block - 1
+end
+
 ---@param session didymus.review.Session
 ---@param path string
 ---@param range didymus.review.Range
-local function open_comment_input(session, path, range)
+---@param code string[] The lines of the range, for a suggestion.
+local function open_comment_input(session, path, range, code)
   local options = config.options.review.input
   local failed = session.failed_draft
   local text
@@ -626,6 +645,15 @@ local function open_comment_input(session, path, range)
     width = options.width,
     max_height = options.max_height,
     keys = { cancel = options.keys.cancel },
+    inserts = {
+      {
+        key = options.keys.suggest,
+        name = "suggest",
+        get_lines = function()
+          return make_suggestion(code)
+        end,
+      },
+    },
     actions = {
       {
         key = options.keys.post,
@@ -662,6 +690,7 @@ function M.comment(opts)
   if not file then
     return
   end
+  local code = vim.api.nvim_buf_get_lines(buf, range.first - 1, range.last, false)
   local head_sha = session.change.head_sha
   -- After a refresh with a new head, git can have no commit of the new head. Then `git diff` gives
   -- an error that does not tell the reason.
@@ -694,7 +723,7 @@ function M.comment(opts)
         and vim.api.nvim_get_current_win() == win
         and vim.api.nvim_win_get_buf(win) == buf
       then
-        open_comment_input(session, file.path, range)
+        open_comment_input(session, file.path, range, code)
       end
     end)
   end)

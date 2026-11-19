@@ -129,7 +129,8 @@ T["add to review shows the comment as pending in the panel and at the line"] = f
   eq(child.api.nvim_get_mode().mode, "i")
   eq(
     child.api.nvim_win_get_config(assert(float_win())).footer[1][1],
-    " <C-s> comment now  <C-y> add to review  q cancel "
+    -- The full footer is too wide, so it has no cancel key.
+    " <C-s> comment now  <C-y> add to review  <M-s> suggest "
   )
 
   child.type_keys("Looks good.", "<C-y>")
@@ -204,6 +205,33 @@ T["a comment on the selection in visual mode is a range comment"] = function()
   local thread = provider_threads()[2]
   eq({ thread.range, thread.comments[1].body }, { { first = 16, last = 17 }, "Two lines." })
   eq(marks()[1], { 16, { "┌ 💬 @reviewer [pending]", "└ Two lines." } })
+end
+
+T["the suggest key adds a suggestion block with the lines of the comment"] = function()
+  open_review()
+  child.api.nvim_buf_set_lines(0, 15, 17, true, { "line 16", "```lua" })
+  child.cmd("silent write")
+  helpers.git(child.fn.getcwd(), { "commit", "--quiet", "--all", "--message", "fence" })
+  -- The change head is the new commit, so that the file is not different from the head.
+  child.lua(
+    "require('didymus.review').current().change.head_sha = ...",
+    { vim.trim(helpers.git(child.fn.getcwd(), { "rev-parse", "HEAD" })) }
+  )
+  child.cmd("16,17Didymus review comment")
+  wait_for_input()
+  child.type_keys("Use this:", "<M-s>")
+  -- The fence is longer than the fence in the code. The cursor is on the last line of code.
+  eq(child.api.nvim_buf_get_lines(0, 0, -1, true), {
+    "Use this:",
+    "````suggestion",
+    "line 16",
+    "```lua",
+    "````",
+  })
+  eq(child.api.nvim_win_get_cursor(0), { 4, 6 })
+  child.type_keys("<BS><BS><BS>vim", "<C-y>")
+  helpers.wait_for_threads(child, 2)
+  eq(provider_threads()[2].comments[1].body, "Use this:\n````suggestion\nline 16\n```vim\n````")
 end
 
 T["a comment on a command range, and a cancel, add no comment"] = function()
