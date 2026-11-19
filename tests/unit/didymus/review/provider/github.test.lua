@@ -384,7 +384,9 @@ T["get_threads()"]["a deleted author, a pending comment, a thread on the file an
     local nodes = pages[1].data.node.reviewThreads.nodes
     nodes[1].comments.nodes[1].author = vim.NIL
     nodes[1].comments.nodes[2].state = "PENDING"
+    -- GitHub gives line 1 on the head side for a thread on the file.
     nodes[2].isOutdated, nodes[2].subjectType = false, "FILE"
+    nodes[2].line, nodes[2].diffSide = 1, "RIGHT"
     nodes[3].isOutdated, nodes[3].line, nodes[3].startLine = false, 12, 10
     nodes[3].diffSide, nodes[3].startDiffSide = "RIGHT", "LEFT"
     nodes[4].isOutdated, nodes[4].line, nodes[4].startLine = false, 12, 10
@@ -522,6 +524,10 @@ T["add_comment()"]["starts a pending review if there is none, and adds a thread 
       "path=lua/didymus/init.lua",
       "-f",
       "body=Recorded for the unit tests of didymus: lines 25-25.",
+      "-f",
+      "subjectType=LINE",
+      "-f",
+      "side=RIGHT",
       "-F",
       "line=25",
     },
@@ -573,6 +579,10 @@ T["add_comment()"]["adds a range to the pending review of the viewer, on the hos
     "path=lua/didymus/init.lua",
     "-f",
     "body=Recorded for the unit tests of didymus: lines 2-4.",
+    "-f",
+    "subjectType=LINE",
+    "-f",
+    "side=RIGHT",
     "-F",
     "line=4",
     "-F",
@@ -583,6 +593,32 @@ T["add_comment()"]["adds a range to the pending review of the viewer, on the hos
     "github.com",
   })
   eq(reply.result.range, { first = 2, last = 4 })
+end
+
+T["add_comment()"]["adds a thread on the file, with no range"] = function()
+  mock_comment({
+    pending_reviews = fixture_reply("comment_pending_review_graphql"),
+    add_thread = fixture_reply("comment_file_thread_graphql"),
+  })
+  local draft = vim.tbl_extend("force", make_draft(1, 1), {
+    body = "Recorded for the unit tests of didymus: a comment on the file.",
+  })
+  draft.range = nil
+  local reply = call("add_comment", make_comment_change(), draft)
+
+  eq(vim.list_slice(commands[2], 6), {
+    "-f",
+    "reviewId=PRR_kwDOVmiVUM8AAAABWyIVtw",
+    "-f",
+    "path=lua/didymus/init.lua",
+    "-f",
+    "body=Recorded for the unit tests of didymus: a comment on the file.",
+    "-f",
+    "subjectType=FILE",
+  })
+  -- GitHub gives line 1 on the head side for a thread on the file.
+  eq({ reply.result.side, reply.result.range, reply.result.outdated }, { "head", nil, false })
+  eq(reply.result.comments[1].pending, true)
 end
 
 T["add_comment()"]["gives an error if GitHub adds no thread"] = function()

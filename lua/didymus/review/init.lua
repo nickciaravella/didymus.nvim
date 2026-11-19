@@ -498,11 +498,14 @@ function M.refresh()
   end)
 end
 
---- `path:3` for one line, `path:3-5` for more lines.
+--- `path:3` for one line, `path:3-5` for more lines, `path` for the file.
 ---@param path string
----@param range didymus.review.Range
+---@param range didymus.review.Range?
 ---@return string
 local function format_location(path, range)
+  if not range then
+    return path
+  end
   if range.first == range.last then
     return ("%s:%d"):format(path, range.first)
   end
@@ -529,6 +532,7 @@ end
 ---@param buf integer
 ---@param range didymus.review.Range
 ---@return didymus.review.ChangedFile?
+---@return string? out_of_hunks The reason if the lines are not in one commentable range. Then the file can get a comment.
 local function check_comment(session, buf, range)
   local base_file = session.diff_view:find_base_file(buf)
   if base_file then
@@ -555,21 +559,22 @@ local function check_comment(session, buf, range)
     return
   end
   if not patch.is_commentable(patch.parse(file.patch), "head", range) then
+    local reason
     if range.first == range.last then
-      show_warning(
-        ("line %d of %s is not in a hunk of %s"):format(range.first, file.path, session.label)
+      reason = ("Line %d of %s is not in a hunk of %s"):format(
+        range.first,
+        file.path,
+        session.label
       )
     else
-      show_warning(
-        ("lines %d-%d of %s are not in one hunk of %s"):format(
-          range.first,
-          range.last,
-          file.path,
-          session.label
-        )
+      reason = ("Lines %d-%d of %s are not in one hunk of %s"):format(
+        range.first,
+        range.last,
+        file.path,
+        session.label
       )
     end
-    return
+    return file, reason
   end
   return file
 end
@@ -626,10 +631,11 @@ local function make_suggestion(lines)
   return block, #block - 1
 end
 
+--- Open the input float for a comment on `range` of `path`, or on the file with no range.
 ---@param session didymus.review.Session
 ---@param path string
----@param range didymus.review.Range
----@param code string[] The lines of the range, for a suggestion.
+---@param range didymus.review.Range?
+---@param code string[]? The lines of the range, for a suggestion.
 local function open_comment_input(session, path, range, code)
   local options = config.options.review.input
   local failed = session.failed_draft
@@ -638,22 +644,24 @@ local function open_comment_input(session, path, range, code)
     text = failed.body
     session.failed_draft = nil
   end
+  local inserts = {}
+  if code then
+    table.insert(inserts, {
+      key = options.keys.suggest,
+      name = "suggest",
+      get_lines = function()
+        return make_suggestion(code)
+      end,
+    })
+  end
   input.open({
     title = format_location(path, range),
-    range = { range.first, range.last },
+    range = range and { range.first, range.last },
     text = text,
     width = options.width,
     max_height = options.max_height,
     keys = { cancel = options.keys.cancel },
-    inserts = {
-      {
-        key = options.keys.suggest,
-        name = "suggest",
-        get_lines = function()
-          return make_suggestion(code)
-        end,
-      },
-    },
+    inserts = inserts,
     actions = {
       {
         key = options.keys.post,
@@ -673,22 +681,74 @@ local function open_comment_input(session, path, range, code)
   })
 end
 
+--- Ask to comment on the file, because the lines are not in one commentable range.
+---@param session didymus.review.Session
+---@param path string
+---@param reason string
+local function offer_file_comment(session, path, reason)
+  call_picker(picker.confirm, session.adapter, {
+    title = ("%s. Comment on the file?"):format(reason),
+    choice = "Comment on the file",
+    cb = function(confirmed)
+      if confirmed and session:is_open() then
+        open_comment_input(session, path)
+      end
+    end,
+  })
+end
+
+--- Open the input float for a comment on the file of the current window, or on `path`. A comment
+--- on the file has no lines, so it needs no check of the lines.
+---@param session didymus.review.Session
+---@param path string?
+local function comment_on_file(session, path)
+  if not path then
+    local index = session:find_file_index(vim.api.nvim_get_current_buf())
+    if not index then
+      return show_warning(("the current window does not show a file of %s"):format(session.label))
+    end
+    path = session.change.files[index].path
+  end
+  threads.close_float()
+  open_comment_input(session, path)
+end
+
+---@alias didymus.review.CommentKind "line"|"file"
+
+---@class didymus.review.CommentOpts
+---@field kind didymus.review.CommentKind? Default "line".
+---@field range integer[]? The first and the last line, for a comment on lines.
+---@field path string? The file of a comment on the file. Default: the file of the current window.
+
 --- Add a comment on the current line, the selection or `range`. Post it at once, or add it to the
---- pending review. Check the
---- lines first. Then open the input float above them.
----@param opts { range: integer[]? }? The first and the last line.
+--- pending review. Check the lines first. Then open the input float above them. With the kind
+--- "file", add a comment on the file.
+---@param opts didymus.review.CommentOpts?
 function M.comment(opts)
   opts = opts or {}
-  local range = opts.range and { first = opts.range[1], last = opts.range[2] } or get_cursor_range()
+  local kind = opts.kind or "line"
+  if kind ~= "line" and kind ~= "file" then
+    return show_error(("cannot comment on %q. Use line or file."):format(kind))
+  end
+  local range
+  if kind == "line" then
+    range = opts.range and { first = opts.range[1], last = opts.range[2] } or get_cursor_range()
+  end
   local session = get_open_review()
   if not session then
     return
   end
+  if kind == "file" then
+    return comment_on_file(session, opts.path)
+  end
   local win = vim.api.nvim_get_current_win()
   local buf = vim.api.nvim_win_get_buf(win)
-  local file = check_comment(session, buf, range)
+  local file, out_of_hunks = check_comment(session, buf, range)
   if not file then
     return
+  end
+  if out_of_hunks then
+    return offer_file_comment(session, file.path, out_of_hunks)
   end
   local code = vim.api.nvim_buf_get_lines(buf, range.first - 1, range.last, false)
   local head_sha = session.change.head_sha

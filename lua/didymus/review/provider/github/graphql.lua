@@ -158,14 +158,16 @@ mutation($reviewId: ID!) {
 }
 ]]
 
---- Add a thread on the head side to a pending review. `startLine` and `startSide` are null for a
---- comment on one line.
+--- Add a thread to a pending review. `startLine` and `startSide` are null for a comment on one
+--- line. `line` and `side` are null for a comment on the file.
 M.add_thread = [[
 mutation(
   $reviewId: ID!
   $path: String!
   $body: String!
-  $line: Int!
+  $subjectType: PullRequestReviewThreadSubjectType!
+  $side: DiffSide
+  $line: Int
   $startLine: Int
   $startSide: DiffSide
 ) {
@@ -173,8 +175,8 @@ mutation(
     pullRequestReviewId: $reviewId
     path: $path
     body: $body
-    subjectType: LINE
-    side: RIGHT
+    subjectType: $subjectType
+    side: $side
     line: $line
     startLine: $startLine
     startSide: $startSide

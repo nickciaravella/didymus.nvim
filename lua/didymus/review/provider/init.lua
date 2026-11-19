@@ -61,7 +61,7 @@
 --- A new comment on the head side.
 ---@class didymus.review.CommentDraft
 ---@field path string
----@field range didymus.review.Range
+---@field range didymus.review.Range? Nil for a comment on the file.
 ---@field body string
 ---@field pending boolean True adds the comment to the pending review. False posts it at once.
 

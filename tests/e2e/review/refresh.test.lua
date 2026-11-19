@@ -268,12 +268,12 @@ end
 T["review.panel.keys.refresh = false turns off the key"] = function()
   setup({ panel = { keys = { refresh = false } } })
   open_review()
-  -- The key of the thread filter stays.
+  -- The other keys stay.
   eq(
     child.lua_get([[vim.tbl_map(function(action)
       return action.key
     end, require("didymus.ui.picker.test").calls[1].opts.actions)]]),
-    { "a" }
+    { "a", "c" }
   )
 end
 

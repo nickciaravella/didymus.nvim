@@ -251,11 +251,11 @@ end
 ---@return didymus.review.Thread
 local function to_thread(thread, comments)
   local range
-  -- GitHub gives no line for an outdated thread or a thread on the file.
-  if thread.line and not thread.isOutdated then
+  -- GitHub gives no line for an outdated thread. A thread on the file has line 1.
+  if thread.line and not thread.isOutdated and thread.subjectType ~= "FILE" then
     local first = thread.startLine or thread.line
-    -- A range can start on the other side. Only the last line is on the side of the thread.
     if thread.startDiffSide and thread.startDiffSide ~= thread.diffSide then
+      -- A range can start on the other side. Only the last line is on the side of the thread.
       first = thread.line
     end
     range = { first = first, last = thread.line }
@@ -406,7 +406,8 @@ local function get_pending_review(change, cb)
   end)
 end
 
---- Add a thread on the head side to the pending review `review_id`.
+--- Add a thread on the head side to the pending review `review_id`. A draft with no range
+--- gives a thread on the file.
 ---@param change didymus.review.provider.github.Change
 ---@param review_id string
 ---@param draft didymus.review.CommentDraft
@@ -414,9 +415,16 @@ end
 local function add_thread(change, review_id, draft, cb)
   local label = "gh api graphql"
   local fields = { "-f", "reviewId=" .. review_id, "-f", "path=" .. draft.path }
-  vim.list_extend(fields, { "-f", "body=" .. draft.body, "-F", "line=" .. draft.range.last })
-  if draft.range.first ~= draft.range.last then
-    vim.list_extend(fields, { "-F", "startLine=" .. draft.range.first, "-f", "startSide=RIGHT" })
+  vim.list_extend(fields, { "-f", "body=" .. draft.body })
+  local range = draft.range
+  if not range then
+    vim.list_extend(fields, { "-f", "subjectType=FILE" })
+  else
+    vim.list_extend(fields, { "-f", "subjectType=LINE", "-f", "side=RIGHT" })
+    vim.list_extend(fields, { "-F", "line=" .. range.last })
+    if range.first ~= range.last then
+      vim.list_extend(fields, { "-F", "startLine=" .. range.first, "-f", "startSide=RIGHT" })
+    end
   end
   local args = get_graphql_args(change.github, graphql.add_thread, fields)
   run_json(label, args, function(err, result)

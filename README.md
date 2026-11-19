@@ -123,6 +123,7 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review fold [all]` | Fold or unfold the threads at the cursor line. With `all`, fold or unfold all threads. |
 | `:Didymus review next [thread\|file\|hunk]`, `:Didymus review prev [thread\|file\|hunk]` | Go to the next or the previous thread, changed file or hunk, also in a different file. The default is `thread`. |
 | `:[range]Didymus review comment` | Add a comment on the current line, the selection or the range. Post it at once, or add it to your pending review. |
+| `:Didymus review comment file` | Add a comment on the file of the current window. `c` in the files panel does the same for the file of the row. |
 | `:Didymus review reply` | Reply to the thread at the cursor. Post the reply at once, or add it to your pending review. |
 | `:Didymus review resolve` | Resolve the thread at the cursor. On a resolved thread, unresolve it. |
 | `:Didymus review submit [approve\|comment\|request_changes]` | Submit your pending review with a verdict and a body. With no verdict, choose one in the picker. |
@@ -191,9 +192,11 @@ didymus refuses a comment, and shows the reason, in these cases:
 - The current window does not show a file of the pull request.
 - `HEAD` is not the head of the pull request, for example after a refresh with a new head, or after a local commit.
 - The buffer is modified, or the file is different from the head of the pull request. A comment needs the line numbers of the head.
-- The lines are not in a hunk of the pull request. A range must be in one hunk. If the hunks of a file are unknown, for example in a large file, GitHub decides.
+- The lines are not in a hunk of the pull request. A range must be in one hunk. If the hunks of a file are unknown, for example in a large file, GitHub decides. The picker asks if you want to comment on the file.
 
 If GitHub does not add the comment, the error shows. The next `comment` on the same lines starts with your text.
+
+`comment file` adds a comment on the file, with no lines. It needs no checks of the lines, so it also works on a modified file. `c` on a file row or a thread row of the files panel also adds a comment on the file, also for a deleted file. A thread on the file shows only in the panel, after the threads with a line.
 
 `reply` and `resolve` use the thread at the cursor line. If more than one thread is at the line, the picker asks which one. If the thread float is open, they use the thread of the float, also from the window under the float, such as the panel. In the thread float, `r` replies and `x` resolves or unresolves. The footer of the float shows these keys if it is wide enough.
 
@@ -228,6 +231,7 @@ vim.keymap.set("n", "<leader>rpf", "<Plug>(didymus-review-prev-file)")
 vim.keymap.set("n", "<leader>rnh", "<Plug>(didymus-review-next-hunk)")
 vim.keymap.set("n", "<leader>rph", "<Plug>(didymus-review-prev-hunk)")
 vim.keymap.set({ "n", "x" }, "<leader>rm", "<Plug>(didymus-review-comment)")
+vim.keymap.set("n", "<leader>rM", "<Plug>(didymus-review-comment-file)")
 vim.keymap.set("n", "<leader>rr", "<Plug>(didymus-review-reply)")
 vim.keymap.set("n", "<leader>rx", "<Plug>(didymus-review-resolve)")
 vim.keymap.set("n", "<leader>rs", "<Plug>(didymus-review-submit)")
@@ -237,7 +241,7 @@ vim.keymap.set("n", "<leader>rR", "<Plug>(didymus-review-refresh)")
 
 | Mapping | Modes |
 | --- | --- |
-| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-fold)`, `<Plug>(didymus-review-fold-all)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-submit)`, `<Plug>(didymus-review-discard)`, `<Plug>(didymus-review-refresh)` | Normal |
+| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-fold)`, `<Plug>(didymus-review-fold-all)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-submit)`, `<Plug>(didymus-review-discard)`, `<Plug>(didymus-review-refresh)`, `<Plug>(didymus-review-comment-file)` | Normal |
 | `<Plug>(didymus-review-next-thread)`, `<Plug>(didymus-review-next-file)`, `<Plug>(didymus-review-next-hunk)`, `<Plug>(didymus-review-prev-thread)`, `<Plug>(didymus-review-prev-file)`, `<Plug>(didymus-review-prev-hunk)` | Normal |
 | `<Plug>(didymus-review-comment)` | Normal, visual |
 
@@ -275,7 +279,7 @@ require("didymus").setup({
     picker_config = {}, -- the options of each kind of list, for each adapter
     provider = "github", -- "github", "test" for tests, or a provider table
     icons = { active = "💬", resolved = "✅" }, -- the state of a thread. "" shows no icon.
-    panel = { keys = { toggle_active = "a", refresh = "R" } }, -- the files panel. false turns off a key
+    panel = { keys = { toggle_active = "a", refresh = "R", comment = "c" } }, -- the files panel. false turns off a key
     input = { -- the float of comment, reply and submit
       width = 60, -- below 1 is a fraction of the window width
       max_height = 10, -- the float grows to this height, then it scrolls

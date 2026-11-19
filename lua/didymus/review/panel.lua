@@ -161,6 +161,20 @@ local function get_actions(session)
       end,
     })
   end
+  if keys.comment then
+    table.insert(actions, {
+      key = keys.comment,
+      name = "comment on the file",
+      fn = function(item)
+        ---@type didymus.review.panel.Value?
+        local value = item and item.value
+        local file = value and (value.file or value.thread)
+        if file then
+          require("didymus.review").comment({ kind = "file", path = file.path })
+        end
+      end,
+    })
+  end
   if keys.refresh then
     table.insert(actions, {
       key = keys.refresh,

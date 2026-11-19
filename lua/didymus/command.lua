@@ -12,7 +12,7 @@ local tree = {
     fold = { all = {} },
     next = stop_kinds,
     prev = stop_kinds,
-    comment = {},
+    comment = { file = {} },
     reply = {},
     resolve = {},
     submit = { approve = {}, comment = {}, request_changes = {} },
@@ -103,8 +103,8 @@ local review_actions = {
   prev = function(rest)
     require("didymus.review").prev({ kind = non_empty(rest) })
   end,
-  comment = function(_, range)
-    require("didymus.review").comment({ range = range })
+  comment = function(rest, range)
+    require("didymus.review").comment({ kind = non_empty(rest), range = range })
   end,
   reply = function()
     require("didymus.review").reply()

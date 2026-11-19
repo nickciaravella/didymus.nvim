@@ -22,7 +22,8 @@ M.defaults = {
     picker_config = {},
     provider = "github", -- "github", "test" or a provider table. See lua/didymus/review/provider/.
     icons = { active = "💬", resolved = "✅" }, -- The state of a thread. "" shows no icon.
-    panel = { keys = { toggle_active = "a", refresh = "R" } }, -- In the files panel. False turns off a key.
+    -- In the files panel. False turns off a key. `comment` adds a comment on the file of the row.
+    panel = { keys = { toggle_active = "a", refresh = "R", comment = "c" } },
     input = {
       width = 60,
       max_height = 10,

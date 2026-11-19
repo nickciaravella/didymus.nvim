@@ -54,6 +54,13 @@ The exit code is 0, and the reply has no `errors`. So check that `thread` is not
 - Proof: on nickciaravella/didymus.nvim#64, `addPullRequestReviewThread` with `line: 12` (between the two hunks) gives `{"data":{"addPullRequestReviewThread":{"thread":null}}}` and exit code 0.
 - Checked: gh 2.103.2
 
+### A thread on the file has `line: 1` and `diffSide: RIGHT`
+
+`addPullRequestReviewThread` with `subjectType: FILE` and no line gives a thread with `line: 1`, `originalLine: 1` and `diffSide: RIGHT`. `reviewThreads` gives the same. Its comment has an empty `diffHunk`. So read `subjectType`, not `line`, to find a thread on the file.
+
+- Proof: on nickciaravella/didymus.nvim#64, in a pending review, `addPullRequestReviewThread` with `path`, `body` and `subjectType: FILE`. See `tests/fixtures/github/comment_file_thread_graphql.json`.
+- Checked: gh 2.104.0
+
 ### `addPullRequestReviewThread` accepts a range across two hunks, but keeps only the hunk of `line`
 
 The thread has the `startLine` and the `line` of the input. But its `diff_hunk` has only the lines of the hunk of `line`, up to `line`. github.com does not let you select across two hunks. didymus refuses such a range.

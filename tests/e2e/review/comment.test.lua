@@ -246,17 +246,93 @@ T["a comment on a command range, and a cancel, add no comment"] = function()
   eq(child.lua_get("#require('didymus.review').current().threads"), 1)
 end
 
-T["a line or a range out of the commentable ranges shows the reason"] = function()
+--- The title of the last select of the test picker, and the texts of its items.
+---@return { title: string, items: string[] }
+local function last_select()
+  local calls = helpers.picker_calls(child, "select")
+  local call = calls[#calls]
+  return {
+    title = call.title,
+    items = vim.tbl_map(function(item)
+      return item.text
+    end, call.items),
+  }
+end
+
+T["a line or a range out of the commentable ranges asks to comment on the file"] = function()
   open_review()
   child.api.nvim_win_set_cursor(0, { 10, 0 })
   child.cmd("Didymus review comment")
-  eq(has_message("didymus: line 10 of file.txt is not in a hunk of #1"), true)
+  eq(last_select(), {
+    title = "Line 10 of file.txt is not in a hunk of #1. Comment on the file?",
+    items = { "Comment on the file", "Cancel" },
+  })
+  child.lua("require('didymus.ui.picker.test').cancel()")
+  child.lua("vim.wait(50)")
+  eq(float_win(), nil)
 
   -- GitHub does not show a range across two hunks well.
   child.cmd("4,16Didymus review comment")
-  eq(has_message("didymus: lines 4-16 of file.txt are not in one hunk of #1"), true)
+  eq(last_select().title, "Lines 4-16 of file.txt are not in one hunk of #1. Comment on the file?")
+  child.lua("require('didymus.ui.picker.test').choose('Comment on the file')")
+  local float = wait_for_input()
+  eq(float.title, " file.txt ")
+  -- A comment on the file has no suggestion.
+  eq(
+    child.api.nvim_win_get_config(assert(float_win())).footer[1][1],
+    " <C-s> comment now  <C-y> add to review  q cancel "
+  )
+  child.type_keys("About the file.", "<C-y>")
+  helpers.wait_for_threads(child, 2)
+  local thread = provider_threads()[2]
+  eq({ thread.path, thread.side, thread.range }, { "file.txt", "head", nil })
+  eq(thread.comments[1].body, "About the file.")
+  -- A thread on the file shows only in the panel, after the threads with a line.
+  eq(panel_rows(), {
+    "M file.txt +2 -2 2 threads",
+    "💬 @octocat A comment.",
+    "💬 @reviewer About the file. [pending]",
+  })
+  eq(#marks(), 1)
+  eq(has_message("didymus: added a pending comment at file.txt"), true)
+end
+
+T["comment file adds a comment on the file of the current window"] = function()
+  open_review()
+  child.api.nvim_win_set_cursor(0, { 10, 0 })
+  child.cmd("Didymus review comment file")
+  eq(wait_for_input().title, " file.txt ")
+  child.type_keys("Posted.", "<C-s>")
+  helpers.wait_for_threads(child, 2)
+  eq(provider_threads()[2].range, nil)
+  eq(provider_threads()[2].comments[1].pending, false)
+  eq(has_message("didymus: posted a comment at file.txt"), true)
+
+  child.cmd("enew")
+  child.cmd("Didymus review comment file")
+  eq(has_message("didymus: the current window does not show a file of #1"), true)
+end
+
+T["c in the panel adds a comment on the file of the row"] = function()
+  open_review()
+  local picker = "require('didymus.ui.picker.test')"
+  -- A header row has no file.
+  child.lua(picker .. ".press('c', 1)")
   child.lua("vim.wait(50)")
   eq(float_win(), nil)
+
+  child.lua(picker .. ".press('c', '💬 @octocat A comment.')")
+  eq(wait_for_input().title, " file.txt ")
+  child.type_keys("<Esc>", "q")
+  child.lua(picker .. ".press('c', 'M file.txt +2 -2 1 thread')")
+  eq(wait_for_input().title, " file.txt ")
+end
+
+T["an unknown kind of comment shows an error"] = function()
+  open_review()
+  -- An error message in a command is an error of `child.cmd()`.
+  child.lua("require('didymus.command').run('review comment other')")
+  eq(has_message('didymus: cannot comment on "other". Use line or file.'), true)
 end
 
 T["with unknown commentable ranges, the code host decides"] = function()

@@ -129,6 +129,7 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 13. The icons of the state come from `review.icons`: `active` (default 💬) and `resolved` (default ✅). An active thread is not resolved. An empty icon shows no icon. The threads in the files use the same icons.
 14. The key `review.panel.keys.toggle_active` (default `a`, false turns it off) shows only the active threads, or all threads again. The default is all threads. The session keeps the filter, also when the panel opens again. The filter does not change the marks in the files.
 15. A thread row with a line has a `location` with the full path, as rule 4, and the line of the thread. A thread with no line has no `location`.
+16. The key `review.panel.keys.comment` (default `c`) adds a comment on the file of the row. See [Comments](#comments), rule 15. snacks has no default list key `c`. Its explorer has one, but the panel does not use the explorer source.
 
 ### Patch parser
 
@@ -240,6 +241,10 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 12. The key `keys.suggest` (default `<M-s>`) of the comment float adds a suggestion block with the lines of the comment, as on github.com. It does not submit. The block goes after the cursor line. An empty cursor line gets the block. The cursor goes to the end of the last line of code. If the code has a fence of backticks, the fence of the block is longer. `false` turns the key off. `<C-g>` of github.com is a prefix of built-in keys in insert mode, such as `<C-g>u`.
 13. Only a new comment on the head side has `keys.suggest`, because GitHub applies a suggestion only on the head side. A reply has no `keys.suggest`.
 14. The footer shows the keys of the float. A footer that is too wide loses its last keys, because Neovim cuts a long footer from the start. So the comment float shows no `q cancel` at the default width.
+15. `:Didymus review comment file` adds a thread on the file of the current window. The panel key `review.panel.keys.comment` (default `c`) adds a thread on the file of the file row or the thread row under the cursor. On a header row, it does nothing. The key also works for a deleted file or a file with no patch.
+16. A comment on the file has no lines. So it needs no check of the buffer, of `HEAD` or of the file on disk. The draft has no `range`. The title of the float is the path, and the float has no `keys.suggest`. The float opens at the cursor line of the current window, such as the panel.
+17. If the lines are not in one commentable range, `picker.confirm()` asks `Line 10 of a.lua is not in a hunk of #12. Comment on the file?`. "Comment on the file" opens the float of a comment on the file. The checks of rule 3 for a modified buffer come first.
+18. A thread on the file shows only in the panel and in the thread float, after the threads with a line. See [Inline threads](#inline-threads), rule 3.
 
 ### Replies and resolve
 
@@ -477,7 +482,7 @@ The types come from the [reference file](../reference/design-prompt.md#data-mode
 
 ---@class didymus.review.CommentDraft A new comment on the head side.
 ---@field path string
----@field range didymus.review.Range
+---@field range didymus.review.Range? Nil for a comment on the file.
 ---@field body string
 ---@field pending boolean            True adds the comment to the pending review. False posts it at once.
 
@@ -503,7 +508,8 @@ The MVP does not use these fields of the reference file:
 | `viewed` | [Mark as viewed](https://github.com/nickciaravella/didymus.nvim/issues/49) is after the MVP. |
 | `original_line` | Outdated threads show only in the panel. |
 | `Comment.id`, `created_at` | No MVP feature uses them. |
-| `CommentDraft.side`, `file_level` | [More comment kinds](https://github.com/nickciaravella/didymus.nvim/issues/53) is after the MVP. |
+| `CommentDraft.file_level` | A draft with no `range` is a comment on the file. |
+| `CommentDraft.side` | [More comment kinds](https://github.com/nickciaravella/didymus.nvim/issues/53) is after the MVP. |
 
 ### GitHub provider
 
@@ -519,9 +525,9 @@ The `github` provider is in `lua/didymus/review/provider/github/`. It runs the [
 8. An error is `<command>: <the stderr of gh>`, for example `gh pr list: …`. The GraphQL error comes before the REST error, because it is clearer.
 9. `health()` runs `gh auth status --active`, and waits for 10 seconds at most. `:checkhealth` is synchronous.
 10. `get_threads` uses the GraphQL `node_id` of the PR. A thread with more comments than the first page gets all its comments from a second query. These queries run at the same time.
-11. `diffSide` `RIGHT` is `head`, and `LEFT` is `base`. The range is `startLine` (or `line`) to `line`. If the range starts on the other side, the range is only `line`. The range is nil if GitHub gives no `line`, or if the thread is outdated. `pending` is `state == PENDING`.
+11. `diffSide` `RIGHT` is `head`, and `LEFT` is `base`. The range is `startLine` (or `line`) to `line`. If the range starts on the other side, the range is only `line`. The range is nil if GitHub gives no `line`, if the thread is outdated, or if `subjectType` is `FILE`. A thread on the file has `line: 1` on `RIGHT`. `pending` is `state == PENDING`.
 12. `add_comment` gets the pending review of the viewer before each comment. It does not use `change.pending_review_id`, because the user can start, submit or discard a review on github.com after the open. If there is no pending review, `addPullRequestReview` with `commitOID` of `head_sha` and no `event` starts one. Then `change.pending_review_id` is its id.
-13. `addPullRequestReviewThread` gets `side: RIGHT` and `line`. A range also gets `startLine` and `startSide: RIGHT`. The reply has the new thread with the fields of `get_threads`.
+13. `addPullRequestReviewThread` gets `subjectType: LINE`, `side: RIGHT` and `line`. A range also gets `startLine` and `startSide: RIGHT`. A draft with no range gets only `subjectType: FILE`. The reply has the new thread with the fields of `get_threads`.
 14. For a line out of the diff, GitHub gives `thread: null` and no error. Then `add_comment` gives an error.
 15. GitHub posts a comment at once only if the viewer has no pending review. So for a draft that is not pending, `add_comment` first gets the pending review. If there is one, it gives an error and writes nothing. Else it starts a review, adds the thread, and submits the review with `event: COMMENT`. Only this order gives the id of the thread, which a reply and a resolve need. REST and `addPullRequestReview` with `threads` do not give it. After the submit, `add_comment` gets the thread again, because the viewer can then resolve it. If this get fails, it gives the thread of the add, because the comment is posted.
 16. If GitHub does not add the thread to post, `add_comment` deletes the new review, because an empty pending review blocks the next post. If the submit fails, the comment stays in the pending review, and the error says so.

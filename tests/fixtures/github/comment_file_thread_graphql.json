@@ -1,0 +1,36 @@
+{
+  "data": {
+    "addPullRequestReviewThread": {
+      "thread": {
+        "id": "PRRT_kwDOVmiVUM65Ufig",
+        "path": "lua/didymus/init.lua",
+        "line": 1,
+        "startLine": null,
+        "originalLine": 1,
+        "originalStartLine": null,
+        "diffSide": "RIGHT",
+        "startDiffSide": null,
+        "isResolved": false,
+        "isOutdated": false,
+        "subjectType": "FILE",
+        "viewerCanReply": true,
+        "viewerCanResolve": false,
+        "viewerCanUnresolve": false,
+        "comments": {
+          "pageInfo": {
+            "hasNextPage": false
+          },
+          "nodes": [
+            {
+              "author": {
+                "login": "nickciaravella"
+              },
+              "body": "Recorded for the unit tests of didymus: a comment on the file.",
+              "state": "PENDING"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
