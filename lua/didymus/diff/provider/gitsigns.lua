@@ -4,6 +4,8 @@
 --- the base buffer.
 --- See docs/architecture/diff.md#gitsigns-provider and agents/expertise/gitsigns.md.
 
+local hunks = require("didymus.diff.hunks")
+
 --- The calls to internal gitsigns modules. gitsigns has no public API for them. If gitsigns
 --- changes, fix them here. Each one gives nil and an error if the call fails.
 local internal = {}
@@ -522,8 +524,12 @@ local function check_render(display)
   if not M.capabilities.sides[display.sides] then
     return ("the gitsigns provider does not have the %q sides yet"):format(display.sides)
   end
+  local deleted = display.file.status == "deleted"
+  if deleted and display.sides ~= "base" then
+    return ("%s is deleted, so it has only the base side"):format(display.file.path)
+  end
   local state = display.head_buf and attached[display.head_buf]
-  if not (state and state.ready) then
+  if not deleted and not (state and state.ready) then
     return ("%s is not attached"):format(display.file.path)
   end
   ---@param side didymus.diff.Side
@@ -601,8 +607,15 @@ function M:render(display, cb)
     display.head_win, --[[@as integer]]
     display.head_buf --[[@as integer]]
   if display.sides == "base" then
-    local base_win = display.base_win --[[@as integer]]
-    put_base_marks(base_win, display.base_buf --[[@as integer]], M:hunks(buf) or {})
+    local base_win, base_buf =
+      display.base_win, --[[@as integer]]
+      display.base_buf --[[@as integer]]
+    -- A deleted file has no head buffer.
+    local file_hunks = display.file.status == "deleted"
+        and hunks.get_deleted_file_hunks(vim.api.nvim_buf_line_count(base_buf))
+      or M:hunks(buf)
+      or {}
+    put_base_marks(base_win, base_buf, file_hunks)
     done(nil)
     return
   end

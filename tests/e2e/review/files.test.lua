@@ -187,8 +187,9 @@ T["to choose a header row does nothing"] = function()
   eq(child.api.nvim_get_current_buf(), buf)
 end
 
-T["to choose a deleted file shows a message and opens nothing"] = function()
+T["with no diff, to choose a deleted file shows a message and opens nothing"] = function()
   open_review()
+  child.cmd("Didymus diff toggle")
   local buf = child.api.nvim_get_current_buf()
   choose("D old.txt +0 -1")
   eq(child.api.nvim_get_current_buf(), buf)

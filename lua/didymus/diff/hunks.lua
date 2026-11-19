@@ -17,6 +17,16 @@ function M.stop(hunk, side, line_count)
   return math.max(1, math.min(line, line_count))
 end
 
+--- The hunks of a deleted file: one deletion of all base lines. A deleted file has no head buffer,
+--- so the provider cannot give them.
+---@param line_count integer The number of lines of the base buffer.
+---@return didymus.diff.Hunk[]
+function M.get_deleted_file_hunks(line_count)
+  return {
+    { kind = "delete", base = { start = 1, count = line_count }, head = { start = 0, count = 0 } },
+  }
+end
+
 ---@class didymus.diff.FindOpts
 ---@field line integer The cursor line.
 ---@field side didymus.diff.Side

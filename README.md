@@ -133,7 +133,7 @@ If `HEAD` is not the head of the pull request, `open` checks out the pull reques
 
 Only one review is open at a time. `open` of the same pull request goes to its tabpage. `open` of a different pull request asks to close the open review first.
 
-The files panel opens on the left of the review tabpage. It shows the title, the author and `base ← head` of the pull request. Then it shows a row for each changed file: the status (`A`, `M`, `D` or `R`), the path, and the `+` and `-` counts. `<CR>` on a file opens the real file in the code window, with the cursor on the first change of the pull request, and moves the focus there. The panel stays open. A deleted file does not open.
+The files panel opens on the left of the review tabpage. It shows the title, the author and `base ← head` of the pull request. Then it shows a row for each changed file: the status (`A`, `M`, `D` or `R`), the path, and the `+` and `-` counts. `<CR>` on a file opens the real file in the code window, with the cursor on the first change of the pull request, and moves the focus there. The panel stays open. A deleted file is not in your checkout. With the diff shown, `<CR>` on it shows its base. See [Diff](#diff).
 
 `files` in a different tabpage goes to the review tabpage and shows the panel.
 
@@ -299,7 +299,9 @@ The review tabpage shows the diff of the pull request on the real file, in the c
 | `:Didymus diff side [both\|base\|head]` | Show both sides, only the base side, or only the head side. With no argument, go to the next sides: `both`, `head`, `base`. |
 | `:Didymus diff next`, `:Didymus diff prev` | Go to the next or the previous hunk of the diff, also in a different file. |
 
-The diff shows when the review opens, and follows the code window: after `<CR>` in the files panel, `gd`, `gf` or `:e` to a file of the pull request, the diff shows for that file. Other windows show only the gitsigns signs. A deleted file has no diff.
+The diff shows when the review opens, and follows the code window: after `<CR>` in the files panel, `gd`, `gf` or `:e` to a file of the pull request, the diff shows for that file. Other windows show only the gitsigns signs.
+
+A deleted file always shows its base in the code window, with all lines in the `DiffDelete` highlight. `side` and `layout` on it apply to the next file. When the diff hides, the base stays in the code window until it shows a different buffer.
 
 In a different tabpage, `toggle`, `layout`, `side`, `next` and `prev` go to the review tabpage first. With no review, a warning shows.
 
@@ -311,7 +313,7 @@ The `base` side is temporary. `next` and `prev` keep it, and show the base of th
 
 In the `split` layout, Neovim computes the diff of the two windows with your `'diffopt'`. So the diff mode can show a hunk a little differently from the gitsigns signs. When the diff hides or the layout changes, didymus puts back the window options that the diff mode changed, such as `'foldmethod'` and `'wrap'`.
 
-`next` and `prev` move the cursor in the code window. In the base window, they move the cursor of the base window, to the base lines of the hunks. With the `base` side, they use the base lines in the code window. At the last hunk of a file, `next` goes to the first hunk of the next file with hunks, in the order of the files panel. `prev` goes to the last hunk of the previous file. They skip a file with no hunks, such as a binary file. The stop of a deletion is the line after the deleted lines. At the last or the first hunk, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. A hidden diff has no hunks, so a message shows.
+`next` and `prev` move the cursor in the code window. In the base window, they move the cursor of the base window, to the base lines of the hunks. With the `base` side, they use the base lines in the code window. At the last hunk of a file, `next` goes to the first hunk of the next file with hunks, in the order of the files panel. `prev` goes to the last hunk of the previous file. They skip a file with no hunks, such as a binary file. They stop at the first line of a deleted file. The stop of a deletion is the line after the deleted lines. At the last or the first hunk, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. A hidden diff has no hunks, so a message shows.
 
 `:Didymus review next hunk` uses the hunks of GitHub, where you can comment. `:Didymus diff next` uses the hunks of the diff provider, one for each change.
 

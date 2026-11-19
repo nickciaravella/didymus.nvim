@@ -16,7 +16,7 @@ local progress_delay = 500
 ---@field target didymus.diff.Target? Nil if the diff is not available.
 ---@field target_err string? Why the diff is not available, with no "didymus:" prefix.
 ---@field get_code_win fun(): integer? The code window, or nil if it is closed.
----@field open_file fun(path: string, line: integer, opts: { keepjumps: boolean? }?): boolean Open a file of the target in the code window at `line`, and focus that window. False if it did not open. Then the error shows.
+---@field open_file fun(path: string, line: integer, opts: { keepjumps: boolean?, buf: integer? }?): boolean Open a file of the target in the code window at `line`, and focus that window. With `opts.buf`, show that buffer in place of the file. False if it did not open. Then the error shows.
 ---@field on_show fun() Called each time the diff shows.
 
 ---@class didymus.diff.view.Attached
@@ -33,7 +33,7 @@ local progress_delay = 500
 ---@field buf integer
 ---@field layout didymus.diff.Layout
 ---@field sides didymus.diff.Sides
----@field head_buf integer The head buffer. With the "base" sides, the code window shows the base buffer.
+---@field head_buf integer? The head buffer. With the "base" sides, the code window shows the base buffer. Nil for a deleted file.
 ---@field base_win integer? The base window that has the diff of the split layout.
 ---@field number integer Only the callbacks of the newest display apply.
 
@@ -42,6 +42,10 @@ local progress_delay = 500
 
 ---@class didymus.diff.view.BaseRequest The newest change to the "base" sides. Only its callbacks apply.
 ---@field buf integer The head buffer whose `attach()` the request waits for. The request shows its error.
+
+---@class didymus.diff.view.OpenRequest The newest open of a deleted file. Only its callback applies.
+---@field win integer? The code window at the start.
+---@field buf integer? The buffer of the code window at the start.
 
 ---@class didymus.diff.view.Start The code window before a jump to a different file.
 ---@field win integer
@@ -65,6 +69,7 @@ local progress_delay = 500
 ---@field private warned table<string, boolean> The provider errors that showed. Each one shows once.
 ---@field private jump didymus.diff.view.Jump?
 ---@field private base_request didymus.diff.view.BaseRequest?
+---@field private open_request didymus.diff.view.OpenRequest?
 ---@field private update_scheduled boolean
 ---@field private group integer
 local View = {}
@@ -226,6 +231,16 @@ function View:find_base_file(buf)
     if state.buf == buf then
       return file
     end
+  end
+end
+
+--- The deleted file of the target whose base buffer is `buf`, or nil.
+---@param buf integer
+---@return didymus.diff.File?
+function View:find_deleted_file(buf)
+  local file = self:find_base_file(buf)
+  if file and file.status == "deleted" then
+    return file
   end
 end
 
@@ -427,7 +442,8 @@ function View:leave_base(sides)
   self.sides, self.sides_before_base = sides or self.sides_before_base or "both", nil
   local win = self.opts.get_code_win()
   local file = win and self:find_base_file(vim.api.nvim_win_get_buf(win))
-  if not (win and file) then
+  -- A deleted file has no head buffer, so its base buffer stays.
+  if not (win and file) or file.status == "deleted" then
     return
   end
   local line = vim.api.nvim_win_get_cursor(win)[1]
@@ -450,6 +466,11 @@ end
 function View:enter_base()
   local win = self.opts.get_code_win()
   local buf = win and vim.api.nvim_win_get_buf(win)
+  -- The base buffer of a deleted file already shows.
+  if buf and self:find_deleted_file(buf) then
+    self.sides_before_base, self.sides = self.sides, "base"
+    return self:update()
+  end
   local file = buf and self:find_file(buf)
   if not (win and buf and file) then
     return warn("the code window does not show a file of the diff")
@@ -495,7 +516,8 @@ end
 
 --- Show the diff of the buffer of the code window, if it is a file of the target. Clear the old
 --- display first. The split layout with both sides also shows the base buffer in the base window.
---- With the "base" sides, the code window shows the base buffer.
+--- With the "base" sides, the code window shows the base buffer. A deleted file always shows the
+--- "base" sides, because it has no head buffer.
 function View:update()
   if not self.shown or vim.api.nvim_get_current_tabpage() ~= self.opts.tabpage then
     return
@@ -503,7 +525,11 @@ function View:update()
   self:check_base_win()
   local win = self.opts.get_code_win()
   local buf = win and vim.api.nvim_win_get_buf(win)
-  local base_file = self.sides == "base" and buf and self:find_base_file(buf) or nil
+  local base_file = buf and self:find_base_file(buf) or nil
+  local deleted = base_file ~= nil and base_file.status == "deleted"
+  if self.sides ~= "base" and not deleted then
+    base_file = nil
+  end
   if self.sides == "base" and not base_file then
     -- A jump with the "base" sides opens head files on the way.
     if self.jump then
@@ -511,7 +537,7 @@ function View:update()
     end
     self.sides, self.sides_before_base = self.sides_before_base or "both", nil
   end
-  local layout, sides = self.layout, self.sides
+  local layout, sides = self.layout, deleted and "base" or self.sides
   local display = self.display
   if
     display
@@ -533,7 +559,9 @@ function View:update()
   end
   -- The hunks are in the head buffer. With the "base" sides, it is hidden.
   local head_buf = buf
-  if base_file then
+  if deleted then
+    head_buf = nil
+  elseif base_file then
     local attached_buf = self:find_attached_buf(base_file)
     if not attached_buf then
       self:leave_base()
@@ -554,7 +582,7 @@ function View:update()
   local function is_current()
     return self.shown and self.display ~= nil and self.display.number == number
   end
-  local attached, base_buf = false, nil
+  local attached, base_buf = deleted, nil
   local function render()
     if not attached or (split and not base_buf) then
       return
@@ -574,6 +602,10 @@ function View:update()
       end
     end)
   end
+  if deleted then
+    return render()
+  end
+  ---@cast head_buf integer
   self:attach(head_buf, file, function(err)
     if not is_current() then
       return
@@ -628,14 +660,14 @@ function View:forget(buf)
       self.revisions[file] = nil
     end
   end
-  if not self.attached[buf] then
-    return
-  end
-  self.attached[buf] = nil
   if self.display and (self.display.buf == buf or self.display.head_buf == buf) then
     self:clear_display()
     self:schedule_update()
   end
+  if not self.attached[buf] then
+    return
+  end
+  self.attached[buf] = nil
   -- The provider must not change the buffer while it unloads.
   vim.schedule(function()
     self.provider:detach(buf)
@@ -681,8 +713,7 @@ function View:find_ready_buf(file)
   end
 end
 
---- The files of the target after `file` in `direction`. With no file, all files. A deleted file is
---- not in the checkout, so it has no hunks.
+--- The files of the target after `file` in `direction`. With no file, all files.
 ---@param file didymus.diff.File?
 ---@param direction 1|-1
 ---@return didymus.diff.File[]
@@ -697,7 +728,7 @@ function View:get_next_files(file, direction)
     local target_file = target_files[index]
     if target_file == file then
       files = {}
-    elseif target_file.status ~= "deleted" then
+    else
       table.insert(files, target_file)
     end
   end
@@ -745,8 +776,11 @@ function View:go_to(direction)
   local start_win = self.opts.get_code_win()
   local start_buf = start_win and vim.api.nvim_win_get_buf(start_win)
   local base_sides = self.sides == "base"
+  local start_deleted = start_buf and self:find_deleted_file(start_buf)
   local start_file, start_head_buf
-  if base_sides then
+  if start_deleted then
+    start_file = start_deleted
+  elseif base_sides then
     start_file = start_buf and self:find_base_file(start_buf)
     start_head_buf = start_file and self:find_attached_buf(start_file)
     if not start_head_buf then
@@ -867,6 +901,26 @@ function View:go_to(direction)
     end
   end
 
+  --- The stop of the deleted file whose base buffer is `buf`, after `line`. Nil if there is none.
+  ---@param buf integer
+  ---@param line integer
+  ---@return integer?
+  local function get_deleted_stop(buf, line)
+    local line_count = vim.api.nvim_buf_line_count(buf)
+    return find_stop(hunks.get_deleted_file_hunks(line_count), buf, "base", line, direction)
+  end
+
+  --- Show the base buffer of the deleted file at `line`. Only the start position goes into the
+  --- jumplist of the code window.
+  ---@param file didymus.diff.File
+  ---@param buf integer
+  ---@param line integer
+  local function land_deleted(file, buf, line)
+    self.jump = nil
+    local restored = opened and start ~= nil and restore(start, base_sides)
+    self.opts.open_file(file.path, line, { keepjumps = opened and not restored, buf = buf })
+  end
+
   local name = direction > 0 and "next" or "previous"
   local files = self:get_next_files(start_file, direction)
   local function check(index)
@@ -882,6 +936,23 @@ function View:go_to(direction)
       return warn(("no %s hunk"):format(name))
     end
     local from = direction > 0 and 0 or math.huge
+    if file.status == "deleted" then
+      -- A deleted file has no head buffer. Its one hunk has all base lines, so it has a stop.
+      return self:get_base_buf(file, function(base_buf, err)
+        if not is_current() then
+          return
+        end
+        if err then
+          self.jump = nil
+          if opened and start then
+            restore(start, base_sides)
+          end
+          return self:warn_error(file.path, err)
+        end
+        ---@cast base_buf integer
+        land_deleted(file, base_buf, get_deleted_stop(base_buf, from) or 1)
+      end)
+    end
     local ready_buf = self:find_ready_buf(file)
     if ready_buf then
       local function check_ready(base_buf)
@@ -934,6 +1005,17 @@ function View:go_to(direction)
   end
   ---@cast start_win integer
   ---@cast start_buf integer
+  if start_deleted then
+    local line = get_deleted_stop(start_buf, vim.api.nvim_win_get_cursor(start_win)[1])
+    if not line then
+      start = { win = start_win, buf = start_buf, cursor = vim.api.nvim_win_get_cursor(start_win) }
+      return check(1)
+    end
+    self.jump = nil
+    vim.api.nvim_set_current_win(start_win)
+    vim.cmd("normal! m'")
+    return set_cursor(start_win, line)
+  end
   ---@cast start_head_buf integer
   wait_for_hunks(start_head_buf, start_file, function(file_hunks, base_buf)
     if not file_hunks then
@@ -975,6 +1057,45 @@ local function get_sides_err(sides)
   return ("the diff provider does not have the %s sides"):format(sides)
 end
 
+--- Show the base buffer of the deleted file `path` in the code window at line 1, as `<CR>` in the
+--- panel opens a head file. Wait for `git show` first. A newer buffer in the code window wins.
+---@param path string
+---@return boolean opened False if the diff is hidden, or `path` is not a deleted file of the target.
+function View:open_deleted_file(path)
+  local target = self.opts.target
+  if not (self.shown and target) then
+    return false
+  end
+  local file = vim.iter(target.files):find(function(target_file)
+    return target_file.path == path and target_file.status == "deleted"
+  end)
+  if not file then
+    return false
+  end
+  local win = self.opts.get_code_win()
+  ---@type didymus.diff.view.OpenRequest
+  local request = { win = win, buf = win and vim.api.nvim_win_get_buf(win) }
+  self.open_request = request
+  self:get_base_buf(file, function(buf, err)
+    local code_win = self.opts.get_code_win()
+    local code_buf = code_win and vim.api.nvim_win_get_buf(code_win)
+    if
+      not self.shown
+      or self.open_request ~= request
+      or code_win ~= request.win
+      or code_buf ~= request.buf
+    then
+      return
+    end
+    self.open_request = nil
+    if err then
+      return self:warn_error(file.path, err)
+    end
+    self.opts.open_file(file.path, 1, { buf = buf })
+  end)
+  return true
+end
+
 --- Show the diff in the code window. If the provider or the target is not available, show why.
 function View:show()
   if self.shown then
@@ -1003,6 +1124,13 @@ function View:show()
     end
     self.sides = "both"
   end
+  -- `hide()` can keep the base buffer of a deleted file in the code window. It is a base buffer
+  -- of the view again.
+  for _, state in pairs(self.revisions) do
+    if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
+      vim.bo[state.buf].bufhidden = "hide"
+    end
+  end
   self.shown = true
   self.opts.on_show()
   self:update()
@@ -1017,7 +1145,7 @@ function View:hide()
   if self.sides == "base" then
     self:leave_base()
   end
-  self.base_request = nil
+  self.base_request, self.open_request = nil, nil
   self.shown = false
   self:clear_display()
   self:close_base_win()
@@ -1028,8 +1156,15 @@ function View:hide()
   end
   local revisions = self.revisions
   self.revisions = {}
-  for _, state in pairs(revisions) do
-    if state.buf and vim.api.nvim_buf_is_valid(state.buf) then
+  local code_win = self.opts.get_code_win()
+  local code_buf = code_win and vim.api.nvim_win_get_buf(code_win)
+  for file, state in pairs(revisions) do
+    if code_buf and state.buf == code_buf and file.status == "deleted" then
+      -- A deleted file has no head buffer to show in its place. The buffer goes when the code
+      -- window shows a different buffer, or the review closes.
+      self.revisions[file] = state
+      vim.bo[state.buf].bufhidden = "wipe"
+    elseif state.buf and vim.api.nvim_buf_is_valid(state.buf) then
       vim.api.nvim_buf_delete(state.buf, { force = true })
     end
   end
@@ -1072,6 +1207,14 @@ function View:set_sides(sides)
       self:update()
     else
       self:show()
+    end
+    local win = self.opts.get_code_win()
+    local deleted = win and self:find_deleted_file(vim.api.nvim_win_get_buf(win))
+    if self.shown and deleted then
+      vim.notify(
+        ("didymus: %s is deleted, so only its base side shows"):format(deleted.path),
+        vim.log.levels.INFO
+      )
     end
     return
   end

@@ -629,6 +629,7 @@ end
 
 ---@class didymus.review.OpenFileOpts
 ---@field keepjumps boolean? Do not change the jumplist and the alternate file.
+---@field buf integer? Show this buffer in place of the file, such as the base buffer of a deleted file.
 
 --- Open a file of the change in the code window at `line`, and focus that window. If the user
 --- closed the code window, open a new one on the right.
@@ -644,20 +645,21 @@ function Session:open_file(path, line, opts)
   local previous_win = vim.api.nvim_get_current_win()
   self:focus()
   local full_path = self:get_full_path(path)
+  local buf = opts and opts.buf
   ---@type vim.api.keyset.cmd?
-  local command = {
-    cmd = "edit",
-    args = { full_path },
-    magic = { file = false },
-    mods = { keepjumps = keepjumps, keepalt = keepjumps },
-  }
+  local command = buf and { cmd = "buffer", count = buf }
+    or { cmd = "edit", args = { full_path }, magic = { file = false } }
+  command.mods = { keepjumps = keepjumps, keepalt = keepjumps }
   if
     vim.api.nvim_win_is_valid(self.code_win)
     and vim.api.nvim_win_get_tabpage(self.code_win) == self.tabpage
   then
     vim.api.nvim_set_current_win(self.code_win)
     -- `:edit` of the file in the window gives E37 if the buffer is modified.
-    if shows_file(self.code_win, full_path) then
+    if
+      buf and vim.api.nvim_win_get_buf(self.code_win) == buf
+      or not buf and shows_file(self.code_win, full_path)
+    then
       command = nil
       -- `:edit` of a different file adds the old position to the jumplist. A move in the same file
       -- does not.
@@ -667,7 +669,8 @@ function Session:open_file(path, line, opts)
     end
   else
     command.mods.split = "botright"
-    command.cmd = "vsplit"
+    command.mods.vertical = buf ~= nil
+    command.cmd = buf and "sbuffer" or "vsplit"
   end
   if command then
     local ok, err = pcall(vim.api.nvim_cmd, command, {})

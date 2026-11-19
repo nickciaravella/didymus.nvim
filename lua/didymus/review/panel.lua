@@ -140,7 +140,10 @@ local function choose(session, item)
     return
   end
   if value.file.status == "deleted" then
-    vim.notify(("didymus: %s is deleted in %s"):format(value.file.path, session.label))
+    -- The diff shows the base buffer of a deleted file. With no diff, there is nothing to open.
+    if not session.diff_view:open_deleted_file(value.file.path) then
+      vim.notify(("didymus: %s is deleted in %s"):format(value.file.path, session.label))
+    end
     return
   end
   session:open_file(value.file.path, get_first_change(value.file) or 1)
