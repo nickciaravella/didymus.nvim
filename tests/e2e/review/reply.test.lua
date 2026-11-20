@@ -43,15 +43,26 @@ local function open_review(threads)
   child.api.nvim_win_set_cursor(0, { 19, 0 })
 end
 
+--- Put the cursor in the thread under `line`.
+---@param line integer? Default 19.
+local function enter(line)
+  helpers.enter_thread(child, line or 19)
+end
+
 ---@param target integer|string
 local function choose(target)
   child.lua("require('didymus.ui.picker.test').choose(...)", { target })
 end
 
+--- The thread float or the input float. A window on a thread in the file does not count.
 ---@return integer?
 local function float_win()
   for _, win in ipairs(child.api.nvim_tabpage_list_wins(0)) do
-    if child.api.nvim_win_get_config(win).relative ~= "" then
+    local buf = child.api.nvim_win_get_buf(win)
+    if
+      child.api.nvim_win_get_config(win).relative ~= ""
+      and child.api.nvim_get_option_value("filetype", { buf = buf }) ~= "didymus_thread"
+    then
       return win
     end
   end
@@ -137,13 +148,14 @@ local function panel_item(id)
   error("no panel row of " .. id)
 end
 
---- The sign and its highlight of the mark on line 19 of the current buffer.
+--- The sign and its highlight of the mark on line 19 of the code window.
 ---@return [string, string]
 local function sign()
   return child.lua_get([[
     (function()
       local namespace = require("didymus.review.threads").namespace
-      local mark = vim.api.nvim_buf_get_extmarks(0, namespace, { 18, 0 }, { 18, -1 }, {
+      local buf = vim.api.nvim_win_get_buf(require("didymus.review").current().code_win)
+      local mark = vim.api.nvim_buf_get_extmarks(buf, namespace, { 18, 0 }, { 18, -1 }, {
         details = true,
       })[1]
       return { vim.trim(mark[4].sign_text), mark[4].sign_hl_group }
@@ -154,6 +166,7 @@ end
 T["a reply adds a pending comment to the thread"] = function()
   open_review()
   local code_win = child.api.nvim_get_current_win()
+  enter()
   child.cmd("Didymus review reply")
   eq(wait_for_input(), {
     title = "Reply to file.txt:19",
@@ -182,6 +195,7 @@ end
 
 T["reply now posts the reply at once, with no pending tag"] = function()
   open_review()
+  enter()
   child.cmd("Didymus review reply")
   wait_for_input()
   child.type_keys("Posted.", "<C-s>")
@@ -199,6 +213,7 @@ T["if the code host refuses a reply now, the message shows, and the text stays"]
   open_review()
   -- The GitHub provider gives this error if the viewer has a pending review.
   child.lua("require('didymus.review.provider.test').errors.reply = 'you have a pending review'")
+  enter()
   child.cmd("Didymus review reply")
   wait_for_input()
   child.type_keys("Not yet.")
@@ -210,6 +225,7 @@ T["if the code host refuses a reply now, the message shows, and the text stays"]
   )
   eq(#session_thread("old").comments, 1)
 
+  enter()
   child.cmd("Didymus review reply")
   eq(wait_for_input().lines, { "Not yet." })
   child.type_keys("<C-y>")
@@ -222,6 +238,7 @@ end
 T["reply and resolve work on an unfolded thread. A resolve folds it, and an unresolve unfolds it"] = function()
   open_review()
   eq(mark_lines(), { "┌ 💬 @octocat", "└ A comment." })
+  enter()
   child.cmd("Didymus review reply")
   eq(wait_for_input().title, "Reply to file.txt:19")
   child.type_keys("Thanks.", "<C-y>")
@@ -233,6 +250,8 @@ T["reply and resolve work on an unfolded thread. A resolve folds it, and an unre
     { "┌ 💬 @octocat", "│ A comment.", "├ @reviewer [pending]", "└ Thanks." }
   )
 
+  -- The cursor stays in the thread after a resolve.
+  enter()
   child.cmd("Didymus review resolve")
   wait_for(function()
     return session_thread("old").resolved
@@ -247,6 +266,7 @@ end
 
 T["resolve resolves the thread, and the panel shows it dim. resolve again unresolves it"] = function()
   open_review()
+  enter()
   child.cmd("Didymus review resolve")
   wait_for(function()
     return session_thread("old").resolved
@@ -286,11 +306,12 @@ T["with no permission, the message shows"] = function()
       can_unresolve = false,
     }),
   })
+  enter()
   child.cmd("Didymus review reply")
   eq(has_message("didymus: you cannot reply to the thread at file.txt:19"), true)
   child.cmd("Didymus review resolve")
   eq(has_message("didymus: you cannot resolve the thread at file.txt:19"), true)
-  child.api.nvim_win_set_cursor(0, { 3, 0 })
+  enter(3)
   child.cmd("Didymus review resolve")
   eq(has_message("didymus: you cannot unresolve the thread at file.txt:3"), true)
 
@@ -371,7 +392,7 @@ T["a thread with no line gets a reply from its float"] = function()
   eq(#provider_threads()[1].comments, 2)
 end
 
-T["with two threads at the line, the picker asks which one"] = function()
+T["with two threads at the line, the commands use the thread with the cursor"] = function()
   open_review({
     make_thread("first", "file.txt", { range = { first = 19, last = 19 } }),
     make_thread("second", "file.txt", {
@@ -379,18 +400,28 @@ T["with two threads at the line, the picker asks which one"] = function()
       comments = { { author = "hubot", body = "Second.", pending = false } },
     }),
   })
+  enter()
+  -- `j` goes down in the first thread, then into the second thread.
+  child.type_keys("j", "j")
+  eq(child.fn.getline(1), "┌ 💬 @hubot")
   child.cmd("Didymus review resolve")
-  local select = helpers.picker_calls(child, "select")[1]
-  eq(select.title, "Threads at line 19")
-  choose("💬 @hubot Second.")
   wait_for(function()
     return session_thread("second").resolved
   end, "the resolved thread")
   eq(session_thread("first").resolved, false)
+  eq(helpers.picker_calls(child, "select"), {})
 
+  -- `k` goes back into the first thread, on its last line.
+  child.type_keys("k")
+  eq(child.fn.getline("."), "└ A comment.")
   child.cmd("Didymus review reply")
-  choose("💬 @octocat A comment.")
   eq(wait_for_input().title, "Reply to file.txt:19")
+  -- The input shows under the first thread, before the second thread.
+  local lines = mark_lines()
+  eq(
+    { lines[1], lines[3], lines[#lines] },
+    { "┌ 💬 @octocat", "┌ Reply to file.txt:19", "✅ @hubot Second." }
+  )
   child.type_keys("To the first.", "<C-y>")
   wait_for(function()
     return #session_thread("first").comments == 2
@@ -420,6 +451,7 @@ end
 T["after an error, the message shows, and the next reply to the thread starts with the text"] = function()
   open_review()
   child.lua("require('didymus.review.provider.test').errors.reply = 'no network'")
+  enter()
   child.cmd("Didymus review reply")
   wait_for_input()
   child.type_keys("First try.")
@@ -431,6 +463,7 @@ T["after an error, the message shows, and the next reply to the thread starts wi
   )
   eq(#session_thread("old").comments, 1)
 
+  enter()
   child.cmd("Didymus review reply")
   eq(wait_for_input().lines, { "First try." })
   child.type_keys(" Again.", "<C-y>")
@@ -440,6 +473,7 @@ T["after an error, the message shows, and the next reply to the thread starts wi
   eq(provider_threads()[1].comments[2].body, "First try. Again.")
 
   child.lua("require('didymus.review.provider.test').errors.set_resolved = 'no network'")
+  enter()
   child.cmd("Didymus review resolve")
   wait_for_message("didymus: cannot resolve the thread at file.txt:19: no network")
   eq(session_thread("old").resolved, false)
@@ -450,21 +484,36 @@ T["with no thread at the cursor, or no open review, a warning shows"] = function
   child.cmd("Didymus review resolve")
   eq(select(2, child.cmd_capture("messages"):gsub("didymus: no review is open", "")), 2)
 
+  -- A line with a thread is not in the thread, so the command has no thread.
   open_review()
-  child.api.nvim_win_set_cursor(0, { 3, 0 })
   child.cmd("messages clear")
   child.cmd("Didymus review reply")
   child.cmd("Didymus review resolve")
-  eq(select(2, child.cmd_capture("messages"):gsub("didymus: no thread at line 3", "")), 2)
+  local messages = child.cmd_capture("messages")
+  eq(
+    messages:find("the cursor is not in a thread. To reply, put the cursor in the thread", 1, true)
+      ~= nil,
+    true
+  )
+  eq(
+    messages:find(
+      "the cursor is not in a thread. To resolve, put the cursor in the thread",
+      1,
+      true
+    ) ~= nil,
+    true
+  )
 end
 
 T["the mappings reply and resolve"] = function()
   open_review()
   child.lua("vim.keymap.set('n', 'gR', '<Plug>(didymus-review-reply)')")
   child.lua("vim.keymap.set('n', 'gX', '<Plug>(didymus-review-resolve)')")
+  enter()
   child.type_keys("gR")
   eq(wait_for_input().title, "Reply to file.txt:19")
   child.type_keys("<Esc>", "q")
+  enter()
   child.type_keys("gX")
   wait_for(function()
     return session_thread("old").resolved

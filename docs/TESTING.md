@@ -163,6 +163,9 @@ The helpers in `tests/e2e/review/helpers.lua` run in the test process:
 | `set_threads(child, id, threads)` | Give the threads of the change `id` to the test provider in the child. |
 | `make_thread(id, path, fields)` | Make a thread with one comment on the head side. `fields` changes fields, such as `range`. With no `range`, the thread is on the file, and shows above line 1. The viewer can reply, and resolve or unresolve the thread. |
 | `wait_for_threads(child, count)` | Wait until the open review has `count` threads. The review gets its threads after the tabpage opens. |
+| `enter_thread(child, line)` | Put the cursor on `line` of the code window, then press `j`. Wait until the cursor is in the window on the thread under the line. |
+| `get_input(child)`, `wait_for_input(child)` | Get the open input, or wait for it: its `title`, `footer`, `lines`, and `inline` (true for the input in a file). |
+| `kept_inputs(child)` | Get the virtual lines of each text that waits for the provider after a submit. |
 | `call(child, method, ...)` | Call a method of the configured provider in the child. Wait for its `cb`, and return `{ err, result }`. |
 | `review(child)`, `wait_for_review(child, id)` | Get the open review in the child, or wait for it. |
 | `picker_calls(child, role)` | Get the calls of the test picker, with no functions: `role`, `kind`, `config`, `title`, `items`, `cursor`, `open` and `focus_count`. `role` is `"select"` or `"panel"`. Nil gives all calls. `kind` is the kind of list, such as `"files"`. |

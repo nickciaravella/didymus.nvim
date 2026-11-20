@@ -2,6 +2,7 @@
 --- See docs/architecture/review.md#workspace-flow.
 
 local config = require("didymus.config")
+local blocks = require("didymus.review.blocks")
 local input = require("didymus.ui.input")
 local patch = require("didymus.review.patch")
 local picker = require("didymus.ui.picker")
@@ -684,12 +685,28 @@ local function make_suggestion(lines)
   return block, #block - 1
 end
 
---- The inline input under `line` of `win`, in the frame of a thread. Line 0 is above line 1.
----@param win integer
----@param line integer
----@return didymus.ui.input.Inline
-local function make_inline(win, line)
-  return { win = win, line = line, hl = "DidymusThread" }
+--- The place of an input in the virtual lines of a file window.
+---@class didymus.review.InputPlace
+---@field win integer
+---@field row integer The 0-based row of the line. The input shows under the line.
+---@field above boolean? True above line 1, for a comment on the file.
+---@field reply_to string? The input shows under this thread.
+
+--- Open the input at `place` in the file, or the input float at the cursor line with no place.
+---@param session didymus.review.Session
+---@param place didymus.review.InputPlace?
+---@param opts didymus.ui.input.Opts
+local function open_input(session, place, opts)
+  if not place then
+    return input.open(opts)
+  end
+  blocks.open_draft(session, {
+    win = place.win,
+    row = place.row,
+    above = place.above or false,
+    reply_to = place.reply_to,
+    input = opts,
+  })
 end
 
 --- Open the input for a comment on `range` of `path`, or on the file with no range.
@@ -698,8 +715,8 @@ end
 ---@param side didymus.review.Side
 ---@param range didymus.review.Range?
 ---@param code string[]? The lines of the range, for a suggestion. GitHub applies a suggestion only on the head side.
----@param inline didymus.ui.input.Inline? Else the input float opens at the cursor line.
-local function open_comment_input(session, path, side, range, code, inline)
+---@param place didymus.review.InputPlace? Else the input float opens at the cursor line.
+local function open_comment_input(session, path, side, range, code, place)
   local options = config.options.review.input
   local failed = session.failed_draft
   local text
@@ -722,9 +739,8 @@ local function open_comment_input(session, path, side, range, code, inline)
       end,
     })
   end
-  input.open({
+  open_input(session, place, {
     title = format_location(path, range, side),
-    inline = inline,
     range = range and { range.first, range.last },
     text = text,
     width = options.width,
@@ -774,7 +790,7 @@ local function comment_on_file(session, path)
   if shown and shown.path == path then
     -- The input shows above line 1, and the cursor line stays in the window.
     vim.api.nvim_win_set_cursor(win, { 1, 0 })
-    return open_comment_input(session, path, "head", nil, nil, make_inline(win, 0))
+    return open_comment_input(session, path, "head", nil, nil, { win = win, row = 0, above = true })
   end
   local file = session:get_file(path)
   if file and file.status ~= "deleted" then
@@ -785,7 +801,7 @@ local function comment_on_file(session, path)
         "head",
         nil,
         nil,
-        make_inline(vim.api.nvim_get_current_win(), 0)
+        { win = vim.api.nvim_get_current_win(), row = 0, above = true }
       )
     end
     return
@@ -927,7 +943,14 @@ function M.comment(opts)
         and vim.api.nvim_get_current_win() == win
         and vim.api.nvim_win_get_buf(win) == buf
       then
-        open_comment_input(session, file.path, side, range, code, make_inline(win, range.last))
+        open_comment_input(
+          session,
+          file.path,
+          side,
+          range,
+          code,
+          { win = win, row = range.last - 1 }
+        )
       end
     end
     -- The base buffer has the text of a commit, so only the head file can change.
@@ -1029,12 +1052,12 @@ function M.viewed(opts)
   end)
 end
 
---- Open the input for a reply to `thread`: inline under the threads of the line, or the input
---- float at the cursor line.
+--- Open the input for a reply to `thread`: in the file under the thread, or the input float at the
+--- cursor line.
 ---@param session didymus.review.Session
 ---@param thread didymus.review.Thread
----@param inline didymus.ui.input.Inline?
-local function open_reply_input(session, thread, inline)
+---@param place didymus.review.InputPlace?
+local function open_reply_input(session, thread, place)
   local options = config.options.review.input
   local failed = session.failed_reply
   local text
@@ -1042,9 +1065,8 @@ local function open_reply_input(session, thread, inline)
     text = failed.body
     session.failed_reply = nil
   end
-  input.open({
+  open_input(session, place, {
     title = "Reply to " .. threads.get_location(thread),
-    inline = inline,
     text = text,
     width = options.width,
     max_height = options.max_height,
@@ -1079,62 +1101,81 @@ local function open_reply_input(session, thread, inline)
   })
 end
 
---- Reply to the thread at the cursor, or to the thread of the open thread float. Post the reply at
---- once, or add it to the pending review. For the thread at the cursor, the input shows under the
---- threads of the line. For the thread float, the input float opens at the cursor line of the
---- window under it, such as the panel.
+--- The warning for a command on a thread when the cursor is not in a thread.
+---@param action string
+local function warn_no_thread(action)
+  show_warning(
+    ("the cursor is not in a thread. To %s, put the cursor in the thread with j or k."):format(
+      action
+    )
+  )
+end
+
+--- Reply to the thread with the cursor, or to the thread of the open thread float. Post the reply
+--- at once, or add it to the pending review. In a file, the input shows under the thread. For the
+--- thread float, the input float opens at the cursor line of the window under it, such as the
+--- panel.
 function M.reply()
   local session = get_open_review()
   if not session then
     return
   end
-  local win = vim.api.nvim_get_current_win()
-  local in_file = threads.get_float_thread_id() == nil
-  local line = vim.api.nvim_win_get_cursor(win)[1]
-  session:pick_thread_at_cursor(function(thread)
-    if not thread.can_reply then
-      return show_warning(
-        ("you cannot reply to the thread at %s"):format(threads.get_location(thread))
-      )
+  local thread = session:get_cursor_thread()
+  if not thread then
+    return warn_no_thread("reply")
+  end
+  if not thread.can_reply then
+    return show_warning(
+      ("you cannot reply to the thread at %s"):format(threads.get_location(thread))
+    )
+  end
+  local cursor = session.block_cursor
+  local place
+  if cursor and blocks.get_cursor_key(session) == "thread:" .. thread.id then
+    local mark_id, group = threads.find_block(cursor.buf, cursor.key)
+    if mark_id and group then
+      place = {
+        win = cursor.win,
+        row = threads.get_mark_row(cursor.buf, mark_id) or group.row,
+        above = group.above,
+        reply_to = thread.id,
+      }
     end
-    threads.close_float()
-    local inline
-    if in_file and vim.api.nvim_win_is_valid(win) then
-      vim.api.nvim_set_current_win(win)
-      inline = make_inline(win, session:is_at_top(thread) and 0 or line)
-    end
-    open_reply_input(session, thread, inline)
-  end)
+  end
+  threads.close_float()
+  open_reply_input(session, thread, place)
 end
 
---- Resolve the thread at the cursor. On a resolved thread, unresolve it. In the thread float, use
---- its thread.
+--- Resolve the thread with the cursor, or the thread of the open thread float. On a resolved
+--- thread, unresolve it.
 function M.resolve()
   local session = get_open_review()
   if not session then
     return
   end
-  session:pick_thread_at_cursor(function(thread)
-    local resolved = not thread.resolved
-    local action = resolved and "resolve" or "unresolve"
-    local location = threads.get_location(thread)
-    if not (resolved and thread.can_resolve or not resolved and thread.can_unresolve) then
-      return show_warning(("you cannot %s the thread at %s"):format(action, location))
+  local thread = session:get_cursor_thread()
+  if not thread then
+    return warn_no_thread("resolve")
+  end
+  local resolved = not thread.resolved
+  local action = resolved and "resolve" or "unresolve"
+  local location = threads.get_location(thread)
+  if not (resolved and thread.can_resolve or not resolved and thread.can_unresolve) then
+    return show_warning(("you cannot %s the thread at %s"):format(action, location))
+  end
+  threads.close_float()
+  track(("%s the thread at %s"):format(action, location), function(done)
+    session.provider:set_resolved(session.change, thread.id, resolved, done)
+  end, function(err, new_thread)
+    if err then
+      return show_error(("cannot %s the thread at %s: %s"):format(action, location, err))
     end
-    threads.close_float()
-    track(("%s the thread at %s"):format(action, location), function(done)
-      session.provider:set_resolved(session.change, thread.id, resolved, done)
-    end, function(err, new_thread)
-      if err then
-        return show_error(("cannot %s the thread at %s: %s"):format(action, location, err))
-      end
-      if session:is_open() then
-        -- As on github.com, a resolve folds the thread, and an unresolve unfolds it.
-        session:reset_fold(new_thread.id)
-        session:update_thread(new_thread)
-      end
-      vim.notify(("didymus: %sd the thread at %s"):format(action, location))
-    end)
+    if session:is_open() then
+      -- As on github.com, a resolve folds the thread, and an unresolve unfolds it.
+      session:reset_fold(new_thread.id)
+      session:update_thread(new_thread)
+    end
+    vim.notify(("didymus: %sd the thread at %s"):format(action, location))
   end)
 end
 

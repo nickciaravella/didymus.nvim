@@ -169,7 +169,8 @@ end
 ---@field row integer 0-based.
 ---@field lines string[] The text of the `virt_lines` of the mark.
 
---- The thread marks in the current buffer of the child, in the order of the rows.
+--- The thread marks in the current buffer of the child, in the order of the rows. In a window on a
+--- thread, the marks of the code window.
 ---@param child MiniTest.child
 ---@return didymus.test.ThreadMark[]
 function M.thread_marks(child)
@@ -184,7 +185,13 @@ function M.thread_marks(child)
         end, mark[4].virt_lines),
       }
     end, vim.api.nvim_buf_get_extmarks(
-      0,
+      (function()
+        -- In a window on a thread or in the input, use the buffer of the code window.
+        if vim.api.nvim_win_get_config(0).relative == "" then
+          return 0
+        end
+        return vim.api.nvim_win_get_buf(require("didymus.review").current().code_win)
+      end)(),
       require("didymus.review.threads").namespace,
       0,
       -1,
@@ -199,34 +206,39 @@ end
 ---@field lines string[]
 ---@field inline boolean True if the input shows in the text, under a line.
 
---- The open input of the review. Nil if no input is open.
----@param child MiniTest.child
----@return didymus.test.Input?
-function M.get_input(child)
-  local input = child.lua_get([[(function()
-    local function to_text(line)
+--- The text of the virtual lines of the block `key` in `buf`, in the child.
+local get_block_lines = [[
+  local function get_block_lines(buf, key)
+    local threads = require("didymus.review.threads")
+    local mark_id, group, index = threads.find_block(buf, key)
+    if not index then
+      return
+    end
+    return vim.tbl_map(function(line)
       return table.concat(vim.tbl_map(function(chunk)
         return chunk[1]
       end, line))
-    end
+    end, group.blocks[index].lines)
+  end
+]]
+
+--- The open input of the review: the input float, or the input in a file while its window shows.
+--- Nil if no input shows.
+---@param child MiniTest.child
+---@return didymus.test.Input?
+function M.get_input(child)
+  local input = child.lua(get_block_lines .. [[return (function()
     for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
       local buf = vim.api.nvim_win_get_buf(win)
       if vim.bo[buf].filetype == "didymus_input" then
         local config = vim.api.nvim_win_get_config(win)
         local result = { lines = vim.api.nvim_buf_get_lines(buf, 0, -1, true), inline = false }
-        if config.border == "none" then
-          local ns = vim.api.nvim_get_namespaces()["didymus.ui.input.inline"]
-          local row = config.bufpos[1]
-          local code_buf = vim.api.nvim_win_get_buf(config.win)
-          local marks = vim.api.nvim_buf_get_extmarks(code_buf, ns, { row, 0 }, { row, -1 }, { details = true })
-          for _, mark in ipairs(marks) do
-            local virt_lines = mark[4].virt_lines
-            if #virt_lines == config.height + 2 then
-              result.inline = true
-              result.title = to_text(virt_lines[1]):gsub("^%s*┌ ", "")
-              result.footer = to_text(virt_lines[#virt_lines]):gsub("^%s*└ ", "")
-            end
-          end
+        local draft = require("didymus.review").current() and require("didymus.review").current().draft
+        if config.border == "none" and draft then
+          local lines = get_block_lines(draft.buf, "draft") or {}
+          result.inline = true
+          result.title = (lines[1] or ""):gsub("^%s*┌ ", "")
+          result.footer = (lines[#lines] or ""):gsub("^%s*└ ", "")
         else
           result.title = config.title and config.title[1][1]
           result.footer = config.footer and config.footer[1][1]
@@ -252,22 +264,32 @@ function M.wait_for_input(child)
   return input
 end
 
---- The text of each inline frame in the current buffer that waits for the reply of the provider.
+--- The virtual lines of each text that waits for the code host, in the current buffer.
 ---@param child MiniTest.child
 ---@return string[][]
 function M.kept_inputs(child)
-  return child.lua_get([[(function()
-    local ns = vim.api.nvim_get_namespaces()["didymus.ui.input.inline"]
+  return child.lua(get_block_lines .. [[return (function()
+    local session = require("didymus.review").current()
     local result = {}
-    for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(0, ns, 0, -1, { details = true })) do
-      table.insert(result, vim.tbl_map(function(line)
-        return table.concat(vim.tbl_map(function(chunk)
-          return chunk[1]
-        end, line))
-      end, mark[4].virt_lines))
+    for _, sent in ipairs(session and session.sent or {}) do
+      table.insert(result, get_block_lines(sent.buf, sent.key))
     end
     return result
   end)()]])
+end
+
+--- Put the cursor in the thread under `line`: on the line, then `j`. Wait for the window on the
+--- thread.
+---@param child MiniTest.child
+---@param line integer
+function M.enter_thread(child, line)
+  -- Start in the code window, also if the cursor is in a thread.
+  child.lua("vim.api.nvim_set_current_win(require('didymus.review').current().code_win)")
+  child.api.nvim_win_set_cursor(0, { line, 0 })
+  child.type_keys("j")
+  wait_for(function()
+    return child.lua_get("vim.bo.filetype") == "didymus_thread"
+  end, "the cursor in the thread")
 end
 
 --- Redraw the child, and wait until the unfolded threads of the current buffer wrap at the text

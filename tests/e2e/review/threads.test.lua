@@ -389,12 +389,12 @@ T["fold on a line with two threads folds or unfolds both, with no question"] = f
   choose("M file.txt +3 -3 2 threads")
   child.api.nvim_win_set_cursor(0, { 2, 0 })
   -- One of the two threads is unfolded, so fold folds both.
+  -- One mark has the threads of a line.
   child.cmd("Didymus review fold")
-  eq(marks(), { { 1, { "💬 @octocat A comment." } }, { 1, { "✅ @hubot Second." } } })
+  eq(marks(), { { 1, { "💬 @octocat A comment.", "✅ @hubot Second." } } })
   child.cmd("Didymus review fold")
   eq(marks(), {
-    { 1, { "┌ 💬 @octocat", "└ A comment." } },
-    { 1, { "┌ ✅ @hubot", "└ Second." } },
+    { 1, { "┌ 💬 @octocat", "└ A comment.", "┌ ✅ @hubot", "└ Second." } },
   })
   eq(helpers.picker_calls(child, "select"), {})
 end

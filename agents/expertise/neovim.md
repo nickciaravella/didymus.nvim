@@ -201,6 +201,23 @@ Neovim keeps the window options of each buffer in each window. If the window sho
 
 ## Floats
 
+### A float with `bufpos` does not hide when its line scrolls out of the window
+
+A float with `relative = "win"` and `bufpos` moves with its line while the line shows. When the line goes above the top of the window, the float stays at the top rows, over other text. So to keep a window on virtual lines, compute its row yourself, and move or close it on `WinScrolled`. The virtual lines under a line above the top line show as the `topfill` of the next line, and they scroll one row at a time.
+
+- Proof: this command prints `top line 1, float row 5`, then `top line 11, float row 1`. Line 5 does not show, but the float does.
+
+  ```sh
+  nvim --clean --headless -n -c 'lua local api = vim.api vim.o.lines = 12
+  local lines = {} for i = 1, 30 do lines[i] = "line " .. i end api.nvim_buf_set_lines(0, 0, -1, true, lines)
+  local buf = api.nvim_create_buf(false, true)
+  local float = api.nvim_open_win(buf, false, { relative = "win", bufpos = { 4, 0 }, row = 1, col = 0, width = 10, height = 2 })
+  local function show() io.write(("top line %d, float row %d\n"):format(vim.fn.line("w0"), api.nvim_win_get_position(float)[1])) end
+  vim.cmd("redraw") show() vim.cmd("normal! 10\5") vim.cmd("redraw") show()' -c 'qa!'
+  ```
+
+- Checked: Neovim 0.12.6
+
 ### The float of `open_floating_preview()` closes when you leave its source buffer, also for a picker
 
 The float has a `BufLeave` autocmd on the buffer where it opened. A picker, such as snacks, opens its own windows, so the float closes. Then a second call with the same `focus_id` cannot focus the float, and opens a new float with no focus. So when the float is open, do not open a picker before the second call.

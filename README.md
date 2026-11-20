@@ -167,11 +167,13 @@ A thread is folded or unfolded:
 - An unfolded thread shows all its comments. A long line wraps at the width of the window.
 - As on github.com, an active thread starts unfolded, and a resolved thread starts folded. A resolve folds the thread, and an unresolve unfolds it.
 
-`fold` folds the threads at the cursor line, or unfolds them. With two threads at the line, it folds both if one of them is unfolded. `fold all` folds all threads if one of them is unfolded. Else, it unfolds all threads. A refresh keeps the folds.
+You can put the cursor in a thread, as if its lines were lines of the file. `j` or `<Down>` on the line above a thread goes into the thread. `k` or `<Up>` on the line under it goes into its last line. In the thread, `j` and `k` move in its lines, and at its edge they go to the next thread or the next line of the file. `k` on line 1 goes into the threads on the file. A count, a jump such as `3G`, and visual mode do not go into threads. The thread has a highlight on the line of the cursor. You can yank its text. A scroll that hides the thread puts the cursor back in the file.
+
+`fold` in a thread folds or unfolds that thread. On a line of the file, `fold` folds the threads at the line, or unfolds them. With two threads at the line, it folds both if one of them is unfolded. `fold all` folds all threads if one of them is unfolded. Else, it unfolds all threads. A refresh keeps the folds.
 
 The last line of an unfolded thread shows your keys for `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)` and `<Plug>(didymus-review-fold)`, if the line fits.
 
-A thread on deleted lines shows under the first line after the deleted lines, with the `[base]` tag. A thread on the file shows above line 1, with no sign. It shows when the window shows line 1 at the top, for example after `gg`. `fold`, `reply` and `resolve` on line 1 use it. Outdated threads and threads on a deleted file show only in the panel. `<CR>` on one of them opens its float next to the panel. The float closes when the cursor moves. A second `<CR>` moves the focus into the float, and `q` closes it.
+A thread on deleted lines shows under the first line after the deleted lines, with the `[base]` tag. A thread on the file shows above line 1, with no sign. It shows when the window shows line 1 at the top, for example after `gg`. `fold` on line 1 uses it, and `k` on line 1 goes into it. Outdated threads and threads on a deleted file show only in the panel. `<CR>` on one of them opens its float next to the panel. The float closes when the cursor moves. A second `<CR>` moves the focus into the float, and `q` closes it.
 
 `next` and `prev` go in the order of the panel, from the cursor. If the current window does not show a file of the pull request, they start at the cursor of the code window.
 
@@ -182,14 +184,14 @@ A thread on deleted lines shows under the first line after the deleted lines, wi
 
 At the last or the first stop, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. In a different tabpage, `next` and `prev` go to the review tabpage first.
 
-`comment` opens the input in the file, under the lines, after the threads of the last line. The input has the frame of a thread, with the location as the title, and the keys on the last line. It grows with the text. Type the comment, then press a key:
+`comment` opens the input in the file, under the lines, after the threads of the last line. The input has the frame of a thread, with the location as the title, and the keys on the last line. It is a part of the file: it scrolls with the file, and it grows with the text. In normal mode, `k` on its first line and `j` on its last line leave it, as in a thread. The input stays open, with your text, and `j` or `k` goes back into it. One input is open at a time. Type the comment, then press a key:
 
 | Key | Action |
 | --- | --- |
 | `<C-s>` | Comment now: post the comment at once. GitHub does this only if you have no pending review. |
 | `<C-y>` | Add to review: add the comment to your pending review. If you have no pending review, didymus starts one. A pending review that you started on github.com also works. |
 | `<M-s>` | Suggest: add a suggestion block with the lines of the comment, after the cursor line. Change the code in the block. Then press `<C-s>` or `<C-y>`. |
-| `q`, in normal mode | Cancel. |
+| `q`, in normal mode | Cancel. `<Esc>` does not cancel. |
 
 Your text stays in the frame until GitHub replies. Then the new thread shows in the same place, and in the panel. A comment in your pending review has the `[pending]` tag. It stays pending until you submit the review.
 
@@ -208,9 +210,9 @@ To comment on deleted lines, show the base of the file with `:Didymus diff side 
 
 `comment file` adds a comment on the file, with no lines. The input shows above line 1, and the window scrolls to the top. It needs no checks of the lines, so it also works on a modified file. `c` on a file row or a thread row of the files panel opens the file at the top for a comment on the file. A deleted file is not in the checkout, so it gets a float. In the panel, a thread on the file comes after the threads with a line.
 
-`reply` and `resolve` use the thread at the cursor line. If more than one thread is at the line, the picker asks which one. If the thread float is open, they use the thread of the float, also from the window under the float, such as the panel. In the thread float, `r` replies and `x` resolves or unresolves. The footer of the float shows these keys if it is wide enough.
+`reply` and `resolve` use the thread with the cursor. Put the cursor in the thread first, with `j` or `k`. On a line of the file, they show a warning, also if the line has threads. So with two threads at a line, the command acts on the thread with the cursor. If the thread float is open, they use the thread of the float, also from the window under the float, such as the panel. In the thread float, `r` replies and `x` resolves or unresolves. The footer of the float shows these keys if it is wide enough.
 
-`reply` opens the input under the threads of the cursor line, or above line 1 for a thread on the file. From the thread float, it opens a float at the cursor line. It has the keys of `comment`: `<C-s>` (reply now) posts the reply at once, and `<C-y>` (add to review) adds it to your pending review. `q` in normal mode cancels. GitHub posts a reply at once only if you have no pending review. A reply in your pending review has the `[pending]` tag, until you submit the review. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
+`reply` opens the input under the thread with the cursor. From the thread float, it opens a float at the cursor line. It has the keys of `comment`: `<C-s>` (reply now) posts the reply at once, and `<C-y>` (add to review) adds it to your pending review. `q` in normal mode cancels. GitHub posts a reply at once only if you have no pending review. A reply in your pending review has the `[pending]` tag, until you submit the review. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
 
 After a resolve, the thread is dim in the panel and at its line, and it is folded. If GitHub does not let you do the action, a message shows. For example, GitHub does not let you resolve a thread of your pending review.
 

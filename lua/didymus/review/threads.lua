@@ -287,36 +287,84 @@ local function get_unfolded_lines(thread, opts)
   return lines
 end
 
+--- A draft of a comment or a reply: the input, or a text that waits for the code host. It shows in
+--- the virtual lines of its line, as a thread.
+---@class didymus.review.threads.Draft
+---@field row integer The 0-based row of its line.
+---@field above boolean True above line 1, for a comment on the file.
+---@field reply_to string? The id of the thread of a reply. The draft shows after the thread.
+---@field key string `draft` for the open input, or `sent:<n>` for a text that waits.
+---@field indent integer
+---@field lines [string, string?][][] Its virtual lines.
+
+--- One thread or one draft in the virtual lines of a line.
+---@class didymus.review.threads.Block
+---@field key string `thread:<id>`, or `draft` for the open input, or `sent:<n>` for a text that waits.
+---@field thread_index integer? The index of the thread in the list of `draw()`.
+---@field offset integer The rows of the blocks before it in the mark.
+---@field lines [string, string?][][]
+---@field indent integer The indent of the frame.
+
+--- The blocks of one mark. A mark has all virtual lines under a line, or above it.
+---@class didymus.review.threads.Group
+---@field row integer
+---@field above boolean
+---@field blocks didymus.review.threads.Block[]
+
+--- The groups of each buffer at the last `draw()`, by mark id.
+---@type table<integer, table<integer, didymus.review.threads.Group>>
+local groups = {}
+
 ---@class didymus.review.threads.DrawOpts
 ---@field width integer The width of the text area. The comments of an unfolded thread wrap at it.
 ---@field is_folded fun(thread: didymus.review.Thread): boolean
 ---@field get_line fun(thread: didymus.review.Thread): integer? The line of the thread in the file. Nil shows no mark.
 ---@field is_at_top fun(thread: didymus.review.Thread): boolean True shows the thread above line 1, with no sign.
+---@field drafts didymus.review.threads.Draft[]? The drafts in the buffer.
 
---- Draw the threads of `path` in `buf`. The id of each mark is the index of its thread in
---- `threads`, so that `at_cursor()` finds the thread. A folded thread is one line: its summary. An
---- unfolded thread shows all its comments. A thread on the file shows above line 1, so its mark is
---- on line 1.
+--- The indent of `line` in `buf`.
 ---@param buf integer
----@param path string
+---@param line integer
+---@return integer
+function M.get_indent(buf, line)
+  return vim.api.nvim_buf_call(buf, function()
+    return vim.fn.indent(line)
+  end)
+end
+
+--- Draw the threads of `path` and the drafts in `buf`. One mark has all threads and drafts under a
+--- line, in the order of `threads`, so that the place of each block is known. A draft of a reply
+--- comes after its thread. A folded thread is one line: its summary. An unfolded thread shows all
+--- its comments. A thread on the file shows above line 1, so its mark is on line 1.
+---@param buf integer
+---@param path string? Nil if the buffer has no file with threads.
 ---@param threads didymus.review.Thread[]
 ---@param opts didymus.review.threads.DrawOpts
 function M.draw(buf, path, threads, opts)
   vim.api.nvim_buf_clear_namespace(buf, M.namespace, 0, -1)
   drawn_widths[buf] = nil
+  groups[buf] = {}
   local line_count = vim.api.nvim_buf_line_count(buf)
   ---@type table<string, string>?
   local keys
+  ---@type table<string, { row: integer, above: boolean, blocks: didymus.review.threads.Block[], comments: integer, resolved: boolean }>
+  local by_place = {}
+  local order = {}
+  local function get_place(row, above)
+    local key = ("%d:%s"):format(row, above)
+    if not by_place[key] then
+      by_place[key] = { row = row, above = above, blocks = {}, comments = 0, resolved = true }
+      table.insert(order, key)
+    end
+    return by_place[key]
+  end
   for index, thread in ipairs(threads) do
-    local at_top = thread.path == path and opts.is_at_top(thread)
-    local line = thread.path == path and (opts.get_line(thread) or at_top and 1)
+    local at_top = path ~= nil and thread.path == path and opts.is_at_top(thread)
+    local line = path ~= nil and thread.path == path and (opts.get_line(thread) or at_top and 1)
     if line then
       -- The file in the checkout can be shorter than the change head.
       line = math.min(line, line_count)
-      local indent = at_top and 0
-        or vim.api.nvim_buf_call(buf, function()
-          return vim.fn.indent(line)
-        end)
+      local indent = at_top and 0 or M.get_indent(buf, line)
       local virt_lines
       if opts.is_folded(thread) or #thread.comments == 0 then
         local summary = M.get_summary(thread, "DidymusThread")
@@ -332,18 +380,180 @@ function M.draw(buf, path, threads, opts)
         })
         drawn_widths[buf] = opts.width
       end
-      -- A sign on line 1 is for a thread on line 1.
-      vim.api.nvim_buf_set_extmark(buf, M.namespace, line - 1, 0, {
-        id = index,
-        sign_text = not at_top and get_sign_text(#thread.comments) or nil,
-        sign_hl_group = not at_top
-            and (thread.resolved and "DidymusThreadResolved" or "DidymusThread")
-          or nil,
-        virt_lines = virt_lines,
-        virt_lines_above = at_top,
+      local place = get_place(line - 1, at_top)
+      place.comments = place.comments + #thread.comments
+      place.resolved = place.resolved and thread.resolved
+      table.insert(place.blocks, {
+        key = "thread:" .. thread.id,
+        thread_index = index,
+        lines = virt_lines,
+        indent = indent,
       })
     end
   end
+  for _, draft in ipairs(opts.drafts or {}) do
+    local place = get_place(math.min(draft.row, line_count - 1), draft.above)
+    local block = {
+      key = draft.key,
+      lines = draft.lines,
+      indent = draft.indent,
+    }
+    local position = #place.blocks + 1
+    for index, other in ipairs(place.blocks) do
+      if draft.reply_to and other.key == "thread:" .. draft.reply_to then
+        position = index + 1
+      end
+    end
+    table.insert(place.blocks, position, block)
+  end
+  for _, key in ipairs(order) do
+    local place = by_place[key]
+    local virt_lines, offset = {}, 0
+    for _, block in ipairs(place.blocks) do
+      block.offset = offset
+      offset = offset + #block.lines
+      vim.list_extend(virt_lines, block.lines)
+    end
+    -- A sign on line 1 is for a thread on line 1. A place with only drafts has no sign.
+    local has_sign = not place.above and place.comments > 0
+    local id = vim.api.nvim_buf_set_extmark(buf, M.namespace, place.row, 0, {
+      sign_text = has_sign and get_sign_text(place.comments) or nil,
+      sign_hl_group = has_sign and (place.resolved and "DidymusThreadResolved" or "DidymusThread")
+        or nil,
+      virt_lines = virt_lines,
+      virt_lines_above = place.above,
+    })
+    groups[buf][id] = { row = place.row, above = place.above, blocks = place.blocks }
+  end
+end
+
+--- The groups of the marks of `buf` at `row`, with their mark ids: the group above the line first.
+---@param buf integer
+---@param row integer 0-based.
+---@return { id: integer, group: didymus.review.threads.Group }[]
+function M.get_groups_at(buf, row)
+  local result = {}
+  local marks = vim.api.nvim_buf_get_extmarks(buf, M.namespace, { row, 0 }, { row, -1 }, {})
+  for _, mark in ipairs(marks) do
+    local group = (groups[buf] or {})[mark[1]]
+    if group then
+      table.insert(result, { id = mark[1], group = group })
+    end
+  end
+  table.sort(result, function(a, b)
+    return a.group.above and not b.group.above
+  end)
+  return result
+end
+
+--- The group of the mark `mark_id` of `buf`, at the last `draw()`.
+---@param buf integer
+---@param mark_id integer
+---@return didymus.review.threads.Group?
+function M.get_group(buf, mark_id)
+  return (groups[buf] or {})[mark_id]
+end
+
+--- The group and the index of the block with `key` in `buf`.
+---@param buf integer
+---@param key string
+---@return integer? mark_id
+---@return didymus.review.threads.Group?
+---@return integer? index
+function M.find_block(buf, key)
+  for id, group in pairs(groups[buf] or {}) do
+    for index, block in ipairs(group.blocks) do
+      if block.key == key then
+        return id, group, index
+      end
+    end
+  end
+end
+
+--- The current row of the mark of a group. The marks move with the text.
+---@param buf integer
+---@param mark_id integer
+---@return integer?
+function M.get_mark_row(buf, mark_id)
+  local mark = vim.api.nvim_buf_get_extmark_by_id(buf, M.namespace, mark_id, {})
+  return mark[1]
+end
+
+--- The text and the highlights of the virtual lines of a block, for a window on the block.
+---@param block didymus.review.threads.Block
+---@return string[] lines
+---@return { row: integer, col: integer, end_col: integer, hl: string }[] highlights 0-based, in bytes.
+function M.get_block_text(block)
+  local lines, highlights = {}, {}
+  for row, chunks in ipairs(block.lines) do
+    local line = ""
+    for _, chunk in ipairs(chunks) do
+      if chunk[2] then
+        table.insert(highlights, {
+          row = row - 1,
+          col = #line,
+          end_col = #line + #chunk[1],
+          hl = chunk[2],
+        })
+      end
+      line = line .. chunk[1]
+    end
+    table.insert(lines, line)
+  end
+  return lines, highlights
+end
+
+---@class didymus.review.threads.DraftLinesOpts
+---@field indent integer
+---@field title string
+---@field body string[]? The text lines, wrapped at the width. Nil for an input with a window on it.
+---@field height integer The rows of the body.
+---@field keys { key: string, name: string }[]? The keys of the input. Nil for a text that waits.
+---@field width integer The width of the text area.
+
+--- The virtual lines of a draft, in the frame of a thread: the title, the body and the keys. A text
+--- that waits for the code host has no keys, and its body is dim.
+---@param opts didymus.review.threads.DraftLinesOpts
+---@return [string, string?][][]
+function M.get_draft_lines(opts)
+  local indent = (" "):rep(opts.indent)
+  local hl = "DidymusThread"
+  local function make_line(frame, chunks)
+    return vim.list_extend({ { indent }, { frame .. " ", hl } }, chunks or {})
+  end
+  local lines = { make_line("┌", { { opts.title, hl } }) }
+  local text_width = opts.width - opts.indent - vim.fn.strdisplaywidth("│ ")
+  for row = 1, opts.height do
+    local text = opts.body and opts.body[row]
+    local last = row == opts.height and not opts.keys
+    table.insert(
+      lines,
+      make_line(
+        last and "└" or "│",
+        text and { { text, not opts.keys and "Comment" or nil } } or nil
+      )
+    )
+  end
+  if opts.keys then
+    -- Remove the last keys until they fit.
+    local chunks = {}
+    for count = #opts.keys, 1, -1 do
+      chunks = {}
+      local width = 0
+      for index = 1, count do
+        local key = (index > 1 and "  " or "") .. opts.keys[index].key
+        local name = " " .. opts.keys[index].name
+        vim.list_extend(chunks, { { key, hl }, { name, "Comment" } })
+        width = width + vim.fn.strdisplaywidth(key .. name)
+      end
+      if width <= text_width then
+        break
+      end
+      chunks = {}
+    end
+    table.insert(lines, make_line("└", chunks))
+  end
+  return lines
 end
 
 --- The text width of the last `draw()` in `buf`. Nil if `buf` has no unfolded thread.
@@ -356,6 +566,7 @@ end
 --- Remove the marks from all buffers.
 function M.clear()
   drawn_widths = {}
+  groups = {}
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(buf) then
       vim.api.nvim_buf_clear_namespace(buf, M.namespace, 0, -1)
@@ -363,15 +574,18 @@ function M.clear()
   end
 end
 
---- The threads with a mark on the cursor line. The marks move with the text.
+--- The threads at the cursor line: under it, and above line 1. The marks move with the text.
 ---@param threads didymus.review.Thread[] The list that `draw()` used.
 ---@return didymus.review.Thread[]
 function M.at_cursor(threads)
   local row = vim.api.nvim_win_get_cursor(0)[1] - 1
-  local marks = vim.api.nvim_buf_get_extmarks(0, M.namespace, { row, 0 }, { row, -1 }, {})
   local result = {}
-  for _, mark in ipairs(marks) do
-    table.insert(result, threads[mark[1]])
+  for _, item in ipairs(M.get_groups_at(vim.api.nvim_get_current_buf(), row)) do
+    for _, block in ipairs(item.group.blocks) do
+      if block.thread_index then
+        table.insert(result, threads[block.thread_index])
+      end
+    end
   end
   return result
 end

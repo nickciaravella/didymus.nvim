@@ -2,12 +2,12 @@
 --- before the review.
 
 local DiffView = require("didymus.diff.view")
+local blocks = require("didymus.review.blocks")
 local config = require("didymus.config")
 local diff_target = require("didymus.review.diff_target")
 local layout = require("didymus.ui.layout")
 local panel = require("didymus.review.panel")
 local patch = require("didymus.review.patch")
-local picker = require("didymus.ui.picker")
 local threads = require("didymus.review.threads")
 local workspace = require("didymus.review.workspace")
 
@@ -53,6 +53,13 @@ local workspace = require("didymus.review.workspace")
 ---@field private thread_lines table<string, integer> The line of each thread in its file, by thread id. A thread with no line has none.
 ---@field private top_threads table<string, true> The ids of the threads that show above line 1 of their file.
 ---@field private toplines table<integer, integer> The top line of each window of the tabpage, at the last scroll.
+---@field draft didymus.review.blocks.Draft? The open input of a comment or a reply in a file.
+---@field sent didymus.review.blocks.Sent[] The texts that wait for the code host.
+---@field sent_count integer
+---@field block_cursor didymus.review.blocks.Cursor? The window on the thread that has the cursor.
+---@field cursors table<integer, { buf: integer, line: integer, tick: integer }> The cursor of each window, at the last CursorMoved.
+---@field private key_namespace integer The namespace of `vim.on_key()`.
+---@field last_key string? The last typed key, for the next CursorMoved.
 ---@field diff_view didymus.diff.View The diff of the change in the code window.
 ---@field private workspace_checked boolean True after the check for local changes in the diff.
 local Session = {}
@@ -80,6 +87,10 @@ function Session.new(opts)
     thread_lines = {},
     top_threads = {},
     toplines = {},
+    sent = {},
+    sent_count = 0,
+    cursors = {},
+    key_namespace = vim.api.nvim_create_namespace("didymus.review.keys"),
     thread_filter = "all",
     folds = {},
     draw_scheduled = false,
@@ -101,6 +112,8 @@ function Session.new(opts)
         return
       end
       vim.api.nvim_del_augroup_by_id(self.group)
+      vim.on_key(nil, self.key_namespace)
+      blocks.clear(self)
       vim.api.nvim_set_decoration_provider(threads.namespace, {})
       self.diff_view:close()
       self:hide_files()
@@ -121,6 +134,12 @@ function Session.new(opts)
   vim.api.nvim_create_autocmd("WinScrolled", {
     group = self.group,
     callback = function()
+      -- The window on the block of the cursor moves with the file.
+      vim.schedule(function()
+        if self:is_open() then
+          blocks.on_scroll(self)
+        end
+      end)
       for key in pairs(vim.v.event) do
         local win = tonumber(key)
         if
@@ -137,6 +156,16 @@ function Session.new(opts)
       end
     end,
   })
+  -- `j` and `k` go into the threads, as if they were lines of the file.
+  vim.api.nvim_create_autocmd("CursorMoved", {
+    group = self.group,
+    callback = function()
+      blocks.on_cursor_moved(self)
+    end,
+  })
+  vim.on_key(function(key, typed)
+    blocks.on_key(self, typed ~= "" and typed or key)
+  end, self.key_namespace)
   -- Also after `:checktime` or `:edit!`, which load the file again.
   vim.api.nvim_create_autocmd("BufReadPost", {
     group = self.group,
@@ -358,18 +387,22 @@ function Session:check_text_widths()
   end
 end
 
---- Draw the threads in `buf`, if it shows a file with threads. In the windows of the review that
---- show line 1 at the top, show the threads above line 1.
+--- Draw the threads and the drafts in `buf`, if it shows a file with threads or has a draft. In the
+--- windows of the review that show line 1 at the top, show the threads above line 1.
 ---@param buf integer
 function Session:draw_threads(buf)
   local name = vim.api.nvim_buf_get_name(buf)
   local real_path = name ~= "" and vim.uv.fs_realpath(name)
-  local path = real_path and self.thread_paths[real_path]
-  if not path then
+  local path = real_path and self.thread_paths[real_path] or nil
+  local width = self:get_text_width(buf)
+  local drafts = blocks.get_drafts(self, buf, width)
+  if not path and #drafts == 0 then
+    -- A draft that is gone can have marks in a buffer with no threads, such as a base buffer.
+    vim.api.nvim_buf_clear_namespace(buf, threads.namespace, 0, -1)
     return
   end
   threads.draw(buf, path, self.threads, {
-    width = self:get_text_width(buf),
+    width = width,
     is_folded = function(thread)
       return self:is_folded(thread)
     end,
@@ -379,7 +412,9 @@ function Session:draw_threads(buf)
     is_at_top = function(thread)
       return self:is_at_top(thread)
     end,
+    drafts = drafts,
   })
+  blocks.refresh(self, buf)
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(self.tabpage)) do
     if vim.api.nvim_win_get_buf(win) == buf then
       self:show_top_threads(win)
@@ -627,37 +662,14 @@ function Session:get_pending_comments()
   return result
 end
 
---- Call `cb` with the thread at the cursor: the thread of the open thread float, else the thread
---- with a mark on the cursor line. If more than one thread is at the line, ask which one.
----@param cb fun(thread: didymus.review.Thread)
-function Session:pick_thread_at_cursor(cb)
-  local float_thread_id = threads.get_float_thread_id()
-  local float_thread = float_thread_id and self:get_thread(float_thread_id)
-  -- The select closes the float. So with the float open, a second `thread` must focus the float,
-  -- and not ask again.
-  local found = float_thread and { float_thread } or threads.at_cursor(self.threads)
-  local line = vim.api.nvim_win_get_cursor(0)[1]
-  if #found == 0 then
-    vim.notify(("didymus: no thread at line %d"):format(line), vim.log.levels.WARN)
-  elseif #found == 1 then
-    cb(found[1])
-  else
-    local ok, err = pcall(self.adapter.select, {
-      title = ("Threads at line %d"):format(line),
-      kind = "choice",
-      items = vim.tbl_map(function(thread)
-        local segments = threads.get_summary(thread)
-        return { text = picker.join_segments(segments), segments = segments, value = thread }
-      end, found),
-      on_choose = function(item)
-        cb(item.value)
-      end,
-    })
-    if not ok then
-      -- The snacks adapter gives an error if snacks.nvim is not available.
-      vim.notify(tostring(err), vim.log.levels.ERROR)
-    end
-  end
+--- The thread of the cursor: the thread of the window on a block, or of the open thread float, if
+--- the current window is the float or the window where it opened. Nil if the cursor is not in a
+--- thread. The cursor on a line of a file is not in a thread, also if the line has threads.
+---@return didymus.review.Thread?
+function Session:get_cursor_thread()
+  local key = blocks.get_cursor_key(self)
+  local id = key and key:match("^thread:(.*)$") or threads.get_float_thread_id()
+  return id and self:get_thread(id) or nil
 end
 
 --- Scroll `win` so that the threads under `line` show, if they fit. On line 1, also show the
@@ -671,9 +683,14 @@ local function show_threads_under(win, line)
   end
 end
 
---- Fold or unfold the threads at the cursor line, with no question. If one of them is unfolded,
---- fold all of them.
+--- In a thread, fold or unfold it. On a line, fold or unfold the threads at the line, with no
+--- question. If one of them is unfolded, fold all of them.
 function Session:toggle_fold()
+  local key = blocks.get_cursor_key(self)
+  local cursor_thread = key and self:get_thread(key:match("^thread:(.*)$") or "")
+  if cursor_thread then
+    return self:set_folded({ cursor_thread }, not self:is_folded(cursor_thread))
+  end
   local found = threads.at_cursor(self.threads)
   local line = vim.api.nvim_win_get_cursor(0)[1]
   if #found == 0 then
