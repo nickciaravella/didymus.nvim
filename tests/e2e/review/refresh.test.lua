@@ -254,10 +254,7 @@ T["a comment after a new head shows the reason, but a reply works"] = function()
   -- A reply has no line numbers, so it does not need the head.
   child.api.nvim_win_set_cursor(0, { 3, 0 })
   child.cmd("Didymus review reply")
-  wait_for(function()
-    return float_win() ~= nil
-  end, "the input float")
-  eq(child.api.nvim_win_get_config(float_win()).title[1][1], " Reply to file.txt:3 ")
+  eq(helpers.wait_for_input(child).title, "Reply to file.txt:3")
 end
 
 T["R in the panel refreshes"] = function()

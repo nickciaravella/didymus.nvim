@@ -278,14 +278,38 @@ T["an active thread is unfolded with all its comments, and a resolved thread is 
   expect_screenshot(child.get_screenshot())
 end
 
-T["outdated threads, threads on the file and base lines out of the hunks have no mark"] = function()
+T["outdated threads and base lines out of the hunks have no mark"] = function()
   open_review({
     make_thread("outdated", "file.txt", { outdated = true }),
     make_thread("base", "file.txt", { side = "base", range = { first = 9, last = 9 } }),
-    make_thread("file", "file.txt"),
   })
-  choose("M file.txt +3 -3 3 threads")
+  choose("M file.txt +3 -3 2 threads")
   eq(mark_rows(), {})
+end
+
+T["a thread on the file shows above line 1, with no sign, when the window is at the top"] = function()
+  open_review({
+    make_thread("file", "file.txt", { comments = { { author = "octocat", body = "About it." } } }),
+  })
+  choose("M file.txt +3 -3 1 thread")
+  local win = child.api.nvim_get_current_win()
+  eq(marks(), { { 0, { "┌ 💬 @octocat", "└ About it." } } })
+  local namespace = child.lua_get("require('didymus.review.threads').namespace")
+  local mark = child.api.nvim_buf_get_extmarks(0, namespace, 0, -1, { details = true })[1][4]
+  eq({ mark.virt_lines_above, mark.sign_text }, { true, nil })
+  -- Neovim shows the lines above line 1 only with `topfill`. The file fits in the window, so the
+  -- window shows line 1 at the top.
+  eq(child.lua_get("vim.fn.winsaveview().topfill"), 2)
+  eq(has_text(screen_lines(), "┌ 💬 @octocat"), true)
+  child.cmd("normal! \5")
+  eq(child.lua_get("vim.fn.winsaveview().topfill"), 1)
+
+  -- `<CR>` on the thread row goes to line 1 and shows the thread.
+  choose("💬 @octocat About it.")
+  eq(child.api.nvim_get_current_win(), win)
+  eq(child.api.nvim_win_get_cursor(0)[1], 1)
+  eq(child.lua_get("vim.fn.winsaveview().topfill"), 2)
+  eq(float_win(), nil)
 end
 
 T["a thread on the base side shows at the head line of its hunk, with the base tag"] = function()

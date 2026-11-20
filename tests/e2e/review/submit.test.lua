@@ -74,22 +74,11 @@ local function float_win()
   end
 end
 
---- Wait for the input float, and give its title, its footer and its lines.
+--- Wait for the input, and give its title, its footer and its lines.
 ---@return { title: string, footer: string?, lines: string[] }
 local function wait_for_input()
-  wait_for(function()
-    local win = float_win()
-    local buf = win and child.api.nvim_win_get_buf(win)
-    return buf ~= nil
-      and child.api.nvim_get_option_value("filetype", { buf = buf }) == "didymus_input"
-  end, "the input float")
-  local win = assert(float_win())
-  local config = child.api.nvim_win_get_config(win)
-  return {
-    title = config.title[1][1],
-    footer = config.footer and config.footer[1][1],
-    lines = child.api.nvim_buf_get_lines(child.api.nvim_win_get_buf(win), 0, -1, true),
-  }
+  local input = helpers.wait_for_input(child)
+  return { title = input.title, footer = input.footer, lines = input.lines }
 end
 
 ---@param text string

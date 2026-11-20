@@ -323,6 +323,7 @@ On `<C-y>`, do steps 2 to 4 of Append, with the text in the prompt. The user can
 | Second float | `open()` cancels the open float first. |
 | Completion | Off. The float sets `'autocomplete'` off and `b:completion = false`, which blink.cmp reads. nvim-cmp has no buffer variable. Users of nvim-cmp exclude the `didymus_input` filetype. |
 | Submit mapping | Some completion plugins set a buffer `<C-y>` mapping on `InsertEnter` with no fallback. So the float sets its submit mappings again after `InsertEnter`. |
+| Inline | With `opts.inline`, the input shows in the text, under a line, in a frame of virtual lines. The review uses it for comments and replies. See [Inline input](review.md#inline-input). |
 
 ## Text format
 

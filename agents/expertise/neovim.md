@@ -103,6 +103,31 @@ The `virt_lines` under row `r` count as the filler lines of row `r + 1`. The fil
 
 - Checked: Neovim 0.12.5
 
+### The `virt_lines` above line 1 show only with `topfill`, also after `gg`
+
+A mark on row 0 with `virt_lines_above` does not show at the top of the window, also after `gg` or a new buffer in the window. Only `topfill` of `winrestview()`, or `<C-y>` at the top, shows these lines. So to show them, set `topfill` when the window shows line 1 at the top. The cursor line must stay in the window, else Neovim scrolls again.
+
+- Proof: `tests/e2e/review/threads.test.lua`, "a thread on the file shows above line 1, with no sign, when the window is at the top". Without the `topfill` of the session, `topfill` stays 0.
+- Checked: Neovim 0.12.6
+
+### The `virt_lines` of the marks on one line show in the order of `nvim_buf_get_extmarks(buf, -1, …)`
+
+The order is not the order of the creation, and not the order of the namespaces. Marks at a larger column come later. To find the screen row of one mark between the others, add the `virt_lines` of the marks before it in the list of `nvim_buf_get_extmarks()` with `ns_id = -1` and `details = true`. A namespace with a scope of other windows does not show in the window, so do not count it.
+
+- Proof: this command prints `{ "B7", "B2", "A3", "A2" }`. A screenshot of the same marks in a child Neovim shows the lines in this order under line 1.
+
+  ```sh
+  nvim --clean --headless -n -c 'lua local api = vim.api api.nvim_buf_set_lines(0, 0, -1, true, { "line 1", "line 2" })
+  local a, b = api.nvim_create_namespace("a"), api.nvim_create_namespace("b")
+  for _, m in ipairs({ { b, 7 }, { a, 2 }, { a, 3 }, { b, 2 } }) do
+    api.nvim_buf_set_extmark(0, m[1], 0, 0, { id = m[2], virt_lines = { { { (m[1] == a and "A" or "B") .. m[2] } } } })
+  end
+  io.write(vim.inspect(vim.tbl_map(function(m) return (m[4].ns_id == a and "A" or "B") .. m[1] end,
+    api.nvim_buf_get_extmarks(0, -1, 0, -1, { details = true }))), "\n")' -c 'qa!'
+  ```
+
+- Checked: Neovim 0.12.6
+
 ## Windows
 
 ### The `textoff` of a window changes only at the next redraw after a new sign column

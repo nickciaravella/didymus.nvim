@@ -69,7 +69,7 @@ The MVP is a full review of a GitHub PR, from the pick to the submit, in the cur
 | 5 | **Real file at the first change.** The file opens at the first hunk of its patch. | No hunk display. |
 | 6 | **Read threads.** A sign at the line of each thread, and the thread under the line, folded or unfolded. `:Didymus review fold` folds or unfolds it. | Outdated threads show only in the panel, and in a float. [#69](https://github.com/nickciaravella/didymus.nvim/issues/69) replaced the float for the threads with a line. |
 | 7 | **Navigation.** `:Didymus review next` and `prev` go to the next and the previous thread, changed file or hunk, also in other files. | |
-| 8 | **Comment.** Add a line or range comment from the input float. The comment goes into your pending review. didymus finds a pending review that you started on github.com. | Reuse `ui/input.lua`. |
+| 8 | **Comment.** Add a line or range comment from the input in the file. The comment goes into your pending review. didymus finds a pending review that you started on github.com. | Reuse `ui/input.lua`. |
 | 9 | **Reply, resolve and unresolve** a thread. | |
 | 10 | **Submit or discard** the review: approve, comment or request changes, with an optional body. | |
 | 11 | **Refresh.** Get the PR and the threads again. | |
@@ -128,10 +128,10 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 9. If the code window already shows the file, `<CR>` only moves the cursor. `:edit` of a modified buffer gives E37. The move goes into the jumplist, as the `:edit` of a different file does.
 10. If Neovim cannot open the file, the error shows, and the focus goes back to the panel. For example, with 'nohidden', a modified buffer in the code window gives E37.
 11. The thread count counts the threads of the file that show, also the outdated threads.
-12. `<CR>` on a thread with a line opens its file at that line, as rule 5, and unfolds the thread. `<CR>` on a thread that shows only in the panel opens the thread float next to the panel. See [Inline threads](#inline-threads).
+12. `<CR>` on a thread with a line opens its file at that line, as rule 5, and unfolds the thread. `<CR>` on a thread on the file opens its file at line 1, and shows the thread above line 1. `<CR>` on a thread that shows only in the panel opens the thread float next to the panel. See [Inline threads](#inline-threads).
 13. The icons of the state come from `review.icons`: `active` (default 💬) and `resolved` (default ✅). An active thread is not resolved. An empty icon shows no icon. The threads in the files use the same icons.
 14. The key `review.panel.keys.toggle_active` (default `a`, false turns it off) shows only the active threads, or all threads again. The default is all threads. The session keeps the filter, also when the panel opens again. The filter does not change the marks in the files.
-15. A thread row with a line has a `location` with the full path, as rule 4, and the line of the thread. A thread with no line has no `location`.
+15. A thread row with a line has a `location` with the full path, as rule 4, and the line of the thread. A thread on the file has line 1. A thread that shows only in the panel has no `location`.
 16. A viewed file has the `[viewed]` tag, and the row is dim. A file with new changes since the view (`changed`) has the `[changed]` tag, and the row is not dim. A file with no viewed state has no tag.
 17. The key `review.panel.keys.viewed` (default `v`, false turns it off) marks the file at the cursor as viewed, or unmarks it. On a thread row, it uses the file of the thread. On a header row or a conversation row, it does nothing. A deleted file can be marked, as on github.com. No snacks or test picker default uses `v`. The key hides visual mode in the panel list, but the panel does not use a multi-select.
 18. `:Didymus review viewed` and `<Plug>(didymus-review-viewed)` use the file of the current window, else the file of the code window, as `next` and `prev` do. If no window shows a file of the change, a warning shows.
@@ -139,7 +139,7 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 20. If the provider has no `set_viewed`, a warning shows.
 21. The key `review.panel.keys.comment` (default `c`) adds a comment on the file of the row. See [Comments](#comments), rule 15. snacks has no default list key `c`. Its explorer has one, but the panel does not use the explorer source.
 22. The conversation rows come after the files, so that the files stay at the top. The rows of the general comments are in the order of the provider. Their preview shows the body as markdown, with `preview` of the item.
-23. `<CR>` on the conversation row or on a comment row opens all general comments in a float, as the thread float. The title is `Conversation of #12`. The float has no keys. `c` on these rows posts a general comment. See [Comments](#comments), rule 23.
+23. `<CR>` on the conversation row or on a comment row opens all general comments in a float, as the thread float. The title is `Conversation of #12`. The float has no keys. `c` on these rows posts a general comment. See [Comments](#comments), rule 24.
 
 ### Patch parser
 
@@ -171,7 +171,7 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 
 1. The review gets the threads and the general comments after the review tabpage opens, at the same time, with one progress message. If one get fails, its error shows, and the result of the other get shows. Then the session updates the panel and the marks. On an error, the message shows and the review stays open. A close, a newer review or a newer get of the threads ignores the result. See [Refresh](#refresh).
 2. A thread shows in the file at the last line of its range, as on GitHub. The `<CR>` of the panel, `next` and `prev` use this line.
-3. Outdated threads and threads on the file show only in the panel, and in the thread float.
+3. Outdated threads show only in the panel, and in the thread float. A thread on the file shows above line 1. See rule 12.
 4. Each thread has one extmark in the namespace `didymus.review`. It has a sign with the comment count (`9+` above 9), and the thread in `virt_lines` under the line, with the indent of the line. So the thread does not cover the code.
 5. The id of an extmark is the index of its thread in the session. `fold`, `reply` and `resolve` read the extmarks at the cursor line, so they follow edits of the text.
 6. The session draws the marks in all loaded buffers of files with threads, and again on `BufReadPost`, also after `:checktime` or `:edit!`. The close of the review removes all marks.
@@ -180,6 +180,8 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 9. With `signcolumn=auto`, a window outside the review tabpage that shows a review buffer has an empty sign column. The sign column counts the signs of the buffer, not of the window.
 10. A thread on the base side shows at the head line of its hunk: `patch.get_head_line()` of the last line of its range. The first comment has the `[base]` tag, folded or unfolded. A thread on a deleted file, or on base lines out of the patch, shows only in the panel. [#82](https://github.com/nickciaravella/didymus.nvim/issues/82) also shows the threads on the base buffer.
 11. The session keeps the line of each thread, by thread id. `set_threads()` makes it, because the line of a base thread needs the patch of its file.
+12. A thread on the file shows above line 1, so that the user sees it at the top of the file. Its mark is on line 1, with `virt_lines_above` and no sign, because a sign on line 1 is for a thread on line 1. So `fold`, `reply` and `resolve` on line 1 use it. A thread on a deleted file shows only in the panel.
+13. Neovim shows the virtual lines above line 1 only with `topfill`, also after `gg`. So when a window of the review shows line 1 at the top, the session sets `topfill`: on `WinScrolled`, after a draw of the threads, and when a file opens. The cursor line stays in the window. `next thread` does not stop at a thread on the file.
 
 #### Folds
 
@@ -238,32 +240,51 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 
 ### Comments
 
-`:[range]Didymus review comment` adds a thread on the head side. `M.comment()` in `lua/didymus/review/init.lua` does the checks and opens the input float.
+`:[range]Didymus review comment` adds a thread on the head side. `M.comment()` in `lua/didymus/review/init.lua` does the checks and opens the input in the file. See [Inline input](#inline-input).
 
 1. The lines are the range of the command, the selection in visual mode, or the cursor line. The `<Plug>` mapping leaves visual mode, as a `:` command does.
 2. The current window must show a file of the change, in any tabpage. If a check fails, the reason shows as a warning, and no float opens.
 3. The buffer must not be modified, and all lines must be in one commentable range. If the commentable ranges are unknown, the code host decides.
 4. didymus refuses a range across two hunks. GitHub accepts it, but keeps only the hunk of the last line. github.com does not let you select it.
 5. Then `HEAD` must be the change head. After a [refresh](#refresh) with a new head, git can have no commit of the new head, and `git diff` gives an error that does not tell the reason. A local commit also moves `HEAD`. Then `git diff --quiet <head_sha> -- <path>` checks the file on disk. A file that is different from the change head has different line numbers.
-6. The input float opens above the lines. Its title is `path:3` or `path:3-5`. `review.input` sets its size and its keys.
-7. The float has two actions, as the float of the agent. "comment now" (`keys.post`, `<C-s>`) posts the comment at once. "add to review" (`keys.add`, `<C-y>`) adds it to the pending review. The reply and the submit of the review use the same keys.
-8. On an action, `provider:add_comment()` runs with a progress message. `draft.pending` is false for "comment now". The session adds the new thread, and updates the panel and the marks. If the review closed, only the message shows.
+6. The input opens in the file, under the last line of the range. Its title is `path:3` or `path:3-5`. `review.input` sets its max height and its keys.
+7. The input has two actions, as the float of the agent. "comment now" (`keys.post`, `<C-s>`) posts the comment at once. "add to review" (`keys.add`, `<C-y>`) adds it to the pending review. The reply and the submit of the review use the same keys.
+8. On an action, `provider:add_comment()` runs with a progress message. The text stays in the frame until the provider replies. `draft.pending` is false for "comment now". The session adds the new thread, and updates the panel and the marks. If the review closed, only the message shows.
 9. If the first comment of a thread is pending, the thread has the `[pending]` tag, in the panel and at the line. A comment that is posted at once has no tag.
 10. If the provider fails, the error shows on one line, because a longer message makes the user press Enter. The session keeps the draft. The next comment on the same file and lines starts with its text, for both actions.
 11. The session keeps the provider that gave the change, because only that provider knows its own fields of the change.
-12. The key `keys.suggest` (default `<M-s>`) of the comment float adds a suggestion block with the lines of the comment, as on github.com. It does not submit. The block goes after the cursor line. An empty cursor line gets the block. The cursor goes to the end of the last line of code. If the code has a fence of backticks, the fence of the block is longer. `false` turns the key off. `<C-g>` of github.com is a prefix of built-in keys in insert mode, such as `<C-g>u`.
+12. The key `keys.suggest` (default `<M-s>`) of the comment input adds a suggestion block with the lines of the comment, as on github.com. It does not submit. The block goes after the cursor line. An empty cursor line gets the block. The cursor goes to the end of the last line of code. If the code has a fence of backticks, the fence of the block is longer. `false` turns the key off. `<C-g>` of github.com is a prefix of built-in keys in insert mode, such as `<C-g>u`.
 13. Only a new comment on the head side has `keys.suggest`, because GitHub applies a suggestion only on the head side. A reply has no `keys.suggest`.
-14. The footer shows the keys of the float. A footer that is too wide loses its last keys, because Neovim cuts a long footer from the start. So the comment float shows no `q cancel` at the default width.
+14. The last line of the frame shows the keys of the input. If they are wider than the text width, the last keys do not show. The footer of a float does the same, because Neovim cuts a long footer from the start.
 15. `:Didymus review comment file` adds a thread on the file of the current window. The panel key `review.panel.keys.comment` (default `c`) adds a thread on the file of the file row or the thread row under the cursor. On a header row, it does nothing. The key also works for a deleted file or a file with no patch.
-16. A comment on the file has no lines. So it needs no check of the buffer, of `HEAD` or of the file on disk. The draft has no `range`. The title of the float is the path, and the float has no `keys.suggest`. The float opens at the cursor line of the current window, such as the panel.
-17. If the lines are not in one commentable range, `picker.confirm()` asks `Line 10 of a.lua is not in a hunk of #12. Comment on the file?`. "Comment on the file" opens the float of a comment on the file. The checks of rule 3 for a modified buffer come first.
-18. A thread on the file shows only in the panel and in the thread float, after the threads with a line. See [Inline threads](#inline-threads), rule 3.
-19. `comment` in a base buffer of the diff adds a thread on the base side, with the base lines. A base buffer is in the base window of the split layout, or in the code window with the `base` sides. The checks use the base commentable ranges.
-20. A base buffer has the text of the merge-base. So a comment on the base side needs no check of the file on disk. `HEAD` must still be the change head, because the patch is of the change head.
-21. The title of the float is `path:3 (base)`, and the messages use the same location. The float has no `keys.suggest`. `comment file` in a base buffer adds a comment on its file.
-22. The draft has `side = "base"`. A comment on the file has `side = "head"`.
-23. `:Didymus review comment change` posts a general comment on the change, with `provider:post_change_comment()`. A general comment is not in a review. So the float has only "comment now" (`keys.post`). Its title is `Comment on #12`. It opens at the cursor line of the current window.
-24. The new comment shows in the panel. If the provider fails, the session keeps the body, and the next general comment starts with it.
+16. A comment on the file has no lines. So it needs no check of the buffer, of `HEAD` or of the file on disk. The draft has no `range`. The title is the path, and the input has no `keys.suggest`.
+17. The input of a comment on the file shows above line 1, as the thread. The cursor goes to line 1, so that the window can show the top. If the current window does not show the file, the file opens in the code window first, as `<CR>` of the panel. A deleted file is not in the checkout, so it gets the input float at the cursor line.
+18. If the lines are not in one commentable range, `picker.confirm()` asks `Line 10 of a.lua is not in a hunk of #12. Comment on the file?`. "Comment on the file" opens the input of a comment on the file. The checks of rule 3 for a modified buffer come first.
+19. In the panel, a thread on the file comes after the threads with a line. In the file, it shows above line 1. See [Inline threads](#inline-threads), rule 12.
+20. `comment` in a base buffer of the diff adds a thread on the base side, with the base lines. A base buffer is in the base window of the split layout, or in the code window with the `base` sides. The checks use the base commentable ranges.
+21. A base buffer has the text of the merge-base. So a comment on the base side needs no check of the file on disk. `HEAD` must still be the change head, because the patch is of the change head.
+22. The input shows in the base buffer. Its title is `path:3 (base)`, and the messages use the same location. It has no `keys.suggest`. After the provider replies, the thread shows at its head line. `comment file` in a base buffer adds a comment on its file. Its input shows above line 1 of the base buffer.
+23. The draft has `side = "base"`. A comment on the file has `side = "head"`.
+24. `:Didymus review comment change` posts a general comment on the change, with `provider:post_change_comment()`. A general comment has no place in a file, so it uses the input float. It is not in a review, so the float has only "comment now" (`keys.post`). Its title is `Comment on #12`. It opens at the cursor line of the current window.
+25. The new comment shows in the panel. If the provider fails, the session keeps the body, and the next general comment starts with it.
+
+### Inline input
+
+`ui/input.lua` shows the input of a comment or a reply in the file, with `opts.inline`. The submit, the general comment and the agent use the float.
+
+| Behavior | Decision |
+| --- | --- |
+| Holder | A scratch buffer in a float with no border, as the input float. The float has `relative = "win"` and `bufpos`, so it moves with the text when the window scrolls. The file buffer does not change. |
+| Space | An extmark in the namespace `didymus.ui.input.inline` has `virt_lines` under the line: the title row, a row for each line of the float, and the keys row. The float covers the rows of the body. The namespace has the scope of the window, with `nvim__ns_set()`. |
+| Frame | The frame of a thread: `┌ title`, `│` before each line, and `└` before the keys. `opts.inline.hl` is the highlight of the frame, the title and the keys. The review gives `DidymusThread`. The names of the keys are `Comment`. The float has `NormalFloat:Normal`, so it has the background of the text. |
+| Place | Under the last line of the range, after the other virtual lines of that line, such as the threads. Line 0 is above line 1, with `virt_lines_above`, after the threads on the file. |
+| Row | Neovim draws the virtual lines of a line in the order of `nvim_buf_get_extmarks()`. So the row of the float is the height of the line, plus the rows of the marks before the input mark, plus the title row. Above line 1, the row is negative: the rows of the marks after the input mark, the keys row and the body. |
+| Check | Other marks at the line can change, for example when the threads draw again. So a decoration provider checks the place at the end of each redraw. A change waits for `vim.schedule()`, because a decoration provider must not change extmarks or windows. An extmark with the same lines does not change, so the check does not loop. |
+| Size | The width is the text width of the window, minus the indent of the line and the frame. The height grows with the text, up to `max_height`, and not above the window height minus 3. Then the float scrolls. |
+| Scroll | At the start, when the height changes, and on `WinResized`, the window scrolls so that the full frame shows, as the unfold of a thread. Above line 1, the window goes to the top and sets `topfill`. |
+| Submit | The float closes, and the frame keeps the text in `Comment`, with no keys. `on_submit(text, release)` gets a function that removes the frame. The review calls it when the provider replies, before it draws the new thread. So the new thread replaces the text in the same redraw. |
+| Cancel | `q`, `<Esc>`, a move to a different window, or a close of the window of the text. The frame goes away. |
+| Reply | A reply from a window of a file shows under the threads of the cursor line, or above line 1 for a thread on the file. A reply from the thread float uses the input float, because the thread has no place in the file. |
 
 ### Replies and resolve
 
@@ -275,7 +296,7 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 4. The thread float has the keys of `review.thread.keys`: `r` replies, and `x` resolves or unresolves. They call the same functions as the commands. `false` turns a key off. The footer shows the keys only if it fits, because Neovim cuts a long footer from the start.
 5. Before an action, didymus checks `can_reply`, `can_resolve` or `can_unresolve` of the thread. If the viewer cannot do the action, a warning shows, and the provider gets no call. On a resolved thread, `resolve` unresolves it. The description of `<Plug>(didymus-review-resolve)` is "resolve or unresolve".
 6. Each action closes the thread float first. If the float is the current window, the focus goes back to the window where the float opened.
-7. `reply` opens the input float at the cursor line of that window: the code window or the panel. The title is `Reply to path:19`, or `Reply to path` for a thread with no line. It uses `review.input`. A reply is a comment, so the float has the two actions of the comment float: "reply now" (`keys.post`, `<C-s>`) posts the reply at once, and "add to review" (`keys.add`, `<C-y>`) adds it to the pending review.
+7. `reply` on the thread at the cursor shows the input under the threads of the cursor line. See [Inline input](#inline-input). `reply` from the thread float opens the input float at the cursor line of the window under it, such as the panel. The title is `Reply to path:19`, or `Reply to path` for a thread with no line. It uses `review.input`. A reply is a comment, so the input has the two actions of the comment input: "reply now" (`keys.post`, `<C-s>`) posts the reply at once, and "add to review" (`keys.add`, `<C-y>`) adds it to the pending review.
 8. A reply has no line numbers, so didymus does not check the file on disk. Replies also work on outdated threads and on threads on the base side.
 9. On submit, `provider:reply()` runs with a progress message. The session adds the comment to the thread, and updates the panel and the marks. A reply that is posted at once is not pending, so it has no `[pending]` tag. If the provider fails, the session keeps the draft. The next reply to the same thread starts with its text, as for a comment that GitHub refuses.
 10. `provider:set_resolved()` gives the thread with its new state, because the `can_…` fields change. The session replaces the thread, and updates the panel and the marks. A resolved thread is dim and folded. See [Folds](#folds), rule 3.
@@ -301,7 +322,7 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 2. `get_change()` gets the id that `open` used: a PR number or a PR URL. The `change.id` of a URL is only the number, and the GitHub provider looks for a number in the current repo.
 3. If all calls work, `Session:set_change()` replaces the change and the threads, `Session:set_comments()` replaces the general comments, and updates the panel and the marks. Then `didymus: refreshed #12` shows. If one call fails, the error shows, and the session keeps its data.
 4. The panel stays open and keeps its thread filter, because the filter is in the session. The rows get the new icons and preview locations.
-5. If `head_sha` is new, a warning names the new head, and didymus does not check it out. `open` of the open change only goes to its tabpage. So the warning tells the user to close the review and open it again. Until then, a new comment shows a warning before the input float opens, because `HEAD` is not the change head. So both actions of the float need the head. A reply works, because it has no line numbers.
+5. If `head_sha` is new, a warning names the new head, and didymus does not check it out. `open` of the open change only goes to its tabpage. So the warning tells the user to close the review and open it again. Until then, a new comment shows a warning before the input opens, because `HEAD` is not the change head. So both actions of the input need the head. A reply works, because it has no line numbers.
 6. Each get of the threads has a number: at the open, after a submit or a discard, and at a refresh. Only the result of the newest get applies. A close ignores all results.
 7. For 10 seconds after a discard, the session removes the pending comments and the empty threads from each threads result, also from a refresh. A new comment or reply that goes into the pending review ends this time, because then the pending comments are new. A comment or reply that is posted at once does not end it.
 8. `review.panel.keys.refresh` sets the key of the panel, next to `toggle_active`. `false` turns it off.
@@ -330,6 +351,7 @@ flowchart LR
 | Files panel | Make picker items from the review session, and the actions on them. | Draw a buffer. The picker adapter draws it. |
 | Patch parser | Make the hunks and the commentable ranges from the patch of a file. | Use editor state. |
 | Inline threads | Extmarks for the threads, folded or unfolded, their window scope, the wrap, and the thread float. | Call the provider. |
+| Inline input | `ui/input.lua` with `opts.inline`: the input in the text, in the frame of a thread. | Know about reviews. |
 
 The picker adapter goes in `lua/didymus/ui/picker/`, because it does not know about reviews.
 

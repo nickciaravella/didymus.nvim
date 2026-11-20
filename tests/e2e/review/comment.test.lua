@@ -3,6 +3,7 @@ local wait_for = dofile("tests/helpers.lua").wait_for
 
 local child = MiniTest.new_child_neovim()
 local eq = MiniTest.expect.equality
+local expect_screenshot = MiniTest.expect.reference_screenshot
 
 local T = MiniTest.new_set({
   hooks = {
@@ -60,26 +61,12 @@ local function open_review(opts)
   return repo
 end
 
----@return integer?
-local function float_win()
-  for _, win in ipairs(child.api.nvim_tabpage_list_wins(0)) do
-    if child.api.nvim_win_get_config(win).relative ~= "" then
-      return win
-    end
-  end
-end
-
---- Wait for the input float, and give its title and its lines.
+--- Wait for the input, and give its title and its lines.
 ---@return { title: string, lines: string[] }
 local function wait_for_input()
-  wait_for(function()
-    return float_win() ~= nil
-  end, "the input float")
-  local win = assert(float_win())
-  return {
-    title = child.api.nvim_win_get_config(win).title[1][1],
-    lines = child.api.nvim_buf_get_lines(child.api.nvim_win_get_buf(win), 0, -1, true),
-  }
+  local input = helpers.wait_for_input(child)
+  eq(input.inline, true)
+  return { title = input.title, lines = input.lines }
 end
 
 ---@param text string
@@ -130,18 +117,17 @@ T["add to review shows the comment as pending in the panel and at the line"] = f
   local code_win = child.api.nvim_get_current_win()
   child.api.nvim_win_set_cursor(0, { 3, 0 })
   child.cmd("Didymus review comment")
-  eq(wait_for_input(), { title = " file.txt:3 ", lines = { "" } })
+  eq(wait_for_input(), { title = "file.txt:3", lines = { "" } })
   eq(child.api.nvim_get_mode().mode, "i")
   eq(
-    child.api.nvim_win_get_config(assert(float_win())).footer[1][1],
-    -- The full footer is too wide, so it has no cancel key.
-    " <C-s> comment now  <C-y> add to review  <M-s> suggest "
+    helpers.get_input(child).footer,
+    "<C-s> comment now  <C-y> add to review  <M-s> suggest  q cancel"
   )
 
   child.type_keys("Looks good.", "<C-y>")
   helpers.wait_for_threads(child, 2)
   eq(child.api.nvim_get_current_win(), code_win)
-  eq(float_win(), nil)
+  eq(helpers.get_input(child), nil)
   eq(provider_threads()[2], {
     id = "added-1",
     path = "file.txt",
@@ -198,7 +184,7 @@ T["a comment on the selection in visual mode is a range comment"] = function()
   local code_buf = child.api.nvim_get_current_buf()
   child.api.nvim_win_set_cursor(0, { 17, 0 })
   child.type_keys("V", "k", "gC")
-  eq(wait_for_input().title, " file.txt:16-17 ")
+  eq(wait_for_input().title, "file.txt:16-17")
   -- The command leaves visual mode, and `gv` selects the lines again.
   eq(
     { child.api.nvim_buf_get_mark(code_buf, "<")[1], child.api.nvim_buf_get_mark(code_buf, ">")[1] },
@@ -242,9 +228,9 @@ end
 T["a comment on a command range, and a cancel, add no comment"] = function()
   open_review()
   child.cmd("2,4Didymus review comment")
-  eq(wait_for_input().title, " file.txt:2-4 ")
+  eq(wait_for_input().title, "file.txt:2-4")
   child.type_keys("Not sent.", "<Esc>", "q")
-  eq(float_win(), nil)
+  eq(helpers.get_input(child), nil)
   -- The provider calls `cb` in `vim.schedule()`. Give it a chance to run.
   child.lua("vim.wait(50)")
   eq(#provider_threads(), 1)
@@ -274,31 +260,32 @@ T["a line or a range out of the commentable ranges asks to comment on the file"]
   })
   child.lua("require('didymus.ui.picker.test').cancel()")
   child.lua("vim.wait(50)")
-  eq(float_win(), nil)
+  eq(helpers.get_input(child), nil)
 
   -- GitHub does not show a range across two hunks well.
   child.cmd("4,16Didymus review comment")
   eq(last_select().title, "Lines 4-16 of file.txt are not in one hunk of #1. Comment on the file?")
   child.lua("require('didymus.ui.picker.test').choose('Comment on the file')")
   local float = wait_for_input()
-  eq(float.title, " file.txt ")
+  eq(float.title, "file.txt")
   -- A comment on the file has no suggestion.
-  eq(
-    child.api.nvim_win_get_config(assert(float_win())).footer[1][1],
-    " <C-s> comment now  <C-y> add to review  q cancel "
-  )
+  eq(helpers.get_input(child).footer, "<C-s> comment now  <C-y> add to review  q cancel")
   child.type_keys("About the file.", "<C-y>")
   helpers.wait_for_threads(child, 2)
   local thread = provider_threads()[2]
   eq({ thread.path, thread.side, thread.range }, { "file.txt", "head", nil })
   eq(thread.comments[1].body, "About the file.")
-  -- A thread on the file shows only in the panel, after the threads with a line.
+  -- In the panel, a thread on the file comes after the threads with a line. In the file, it shows
+  -- above line 1.
   eq(panel_rows(), {
     "M file.txt +2 -2 2 threads",
     "💬 @octocat A comment.",
     "💬 @reviewer About the file. [pending]",
   })
-  eq(#marks(), 1)
+  eq(marks(), {
+    { 0, { "┌ 💬 @reviewer [pending]", "└ About the file." } },
+    { 18, { "┌ 💬 @octocat", "└ A comment." } },
+  })
   eq(has_message("didymus: added a pending comment at file.txt"), true)
 end
 
@@ -306,7 +293,7 @@ T["comment file adds a comment on the file of the current window"] = function()
   open_review()
   child.api.nvim_win_set_cursor(0, { 10, 0 })
   child.cmd("Didymus review comment file")
-  eq(wait_for_input().title, " file.txt ")
+  eq(wait_for_input().title, "file.txt")
   child.type_keys("Posted.", "<C-s>")
   helpers.wait_for_threads(child, 2)
   eq(provider_threads()[2].range, nil)
@@ -324,13 +311,13 @@ T["c in the panel adds a comment on the file of the row"] = function()
   -- A header row has no file.
   child.lua(picker .. ".press('c', 1)")
   child.lua("vim.wait(50)")
-  eq(float_win(), nil)
+  eq(helpers.get_input(child), nil)
 
   child.lua(picker .. ".press('c', '💬 @octocat A comment.')")
-  eq(wait_for_input().title, " file.txt ")
+  eq(wait_for_input().title, "file.txt")
   child.type_keys("<Esc>", "q")
   child.lua(picker .. ".press('c', 'M file.txt +2 -2 1 thread')")
-  eq(wait_for_input().title, " file.txt ")
+  eq(wait_for_input().title, "file.txt")
 end
 
 T["an unknown kind of comment shows an error"] = function()
@@ -344,7 +331,7 @@ T["with unknown commentable ranges, the code host decides"] = function()
   open_review({ no_patch = true })
   child.api.nvim_win_set_cursor(0, { 10, 0 })
   child.cmd("Didymus review comment")
-  eq(wait_for_input().title, " file.txt:10 ")
+  eq(wait_for_input().title, "file.txt:10")
 end
 
 T["a modified buffer shows the reason"] = function()
@@ -357,7 +344,7 @@ T["a modified buffer shows the reason"] = function()
     true
   )
   child.lua("vim.wait(50)")
-  eq(float_win(), nil)
+  eq(helpers.get_input(child), nil)
 end
 
 T["a file that is different from the change head shows the reason"] = function()
@@ -370,7 +357,7 @@ T["a file that is different from the change head shows the reason"] = function()
   child.cmd("edit!")
   child.cmd("Didymus review comment")
   wait_for_message(message)
-  eq(float_win(), nil)
+  eq(helpers.get_input(child), nil)
 
   -- A local commit also changes the line numbers. It moves HEAD from the change head.
   helpers.git(repo.dir, { "commit", "--quiet", "--all", "--message", "local" })
@@ -379,7 +366,7 @@ T["a file that is different from the change head shows the reason"] = function()
   wait_for_message(
     "didymus: HEAD is not the head of #1. To check it out, close the review and open it again."
   )
-  eq(float_win(), nil)
+  eq(helpers.get_input(child), nil)
 end
 
 T["a window with no file of the change shows the reason"] = function()
@@ -412,17 +399,102 @@ T["after an error, the next comment at the same lines starts with the text"] = f
   -- A comment at different lines starts empty.
   child.api.nvim_win_set_cursor(0, { 4, 0 })
   child.cmd("Didymus review comment")
-  eq(wait_for_input(), { title = " file.txt:4 ", lines = { "" } })
+  eq(wait_for_input(), { title = "file.txt:4", lines = { "" } })
   child.type_keys("<Esc>", "q")
 
   child.api.nvim_win_set_cursor(0, { 3, 0 })
   child.cmd("Didymus review comment")
-  eq(wait_for_input(), { title = " file.txt:3 ", lines = { "First try." } })
+  eq(wait_for_input(), { title = "file.txt:3", lines = { "First try." } })
   -- The text stays also for the other action.
   child.type_keys(" Again.", "<C-y>")
   helpers.wait_for_threads(child, 2)
   local comment = provider_threads()[2].comments[1]
   eq({ comment.body, comment.pending }, { "First try. Again.", true })
+end
+
+--- Make the next `add_comment()` of the test provider wait until `_G.finish_add()`.
+local function delay_add_comment()
+  child.lua([[
+    local test = require("didymus.review.provider.test")
+    local add_comment = test.add_comment
+    test.add_comment = function(self, change, draft, cb)
+      test.add_comment = add_comment
+      _G.finish_add = function()
+        add_comment(self, change, draft, cb)
+      end
+    end
+  ]])
+end
+
+--- Hide the tabline, the status line and the panel, so that the screenshot shows the code window.
+local function prepare_screenshot()
+  child.o.showtabline, child.o.laststatus, child.o.ruler = 0, 0, false
+  child.cmd("echo ''")
+end
+
+T["the input shows in the file under the line, after its threads, and grows with the text"] = function()
+  open_review()
+  prepare_screenshot()
+  child.api.nvim_win_set_cursor(0, { 19, 0 })
+  child.cmd("Didymus review comment")
+  eq(wait_for_input(), { title = "file.txt:19", lines = { "" } })
+  child.type_keys("First line.", "<CR>", "Second line.")
+  expect_screenshot(child.get_screenshot())
+
+  child.type_keys("<Esc>", "q")
+  eq(helpers.get_input(child), nil)
+  eq(helpers.kept_inputs(child), {})
+end
+
+T["after a submit, the text stays in the file until the provider replies"] = function()
+  open_review()
+  delay_add_comment()
+  child.api.nvim_win_set_cursor(0, { 3, 0 })
+  child.cmd("Didymus review comment")
+  wait_for_input()
+  child.type_keys("Looks good.", "<C-y>")
+  wait_for(function()
+    return #helpers.kept_inputs(child) == 1
+  end, "the kept text")
+  eq(helpers.get_input(child), nil)
+  eq(helpers.kept_inputs(child), { { "┌ file.txt:3", "└ Looks good." } })
+
+  child.lua("_G.finish_add()")
+  helpers.wait_for_threads(child, 2)
+  eq(helpers.kept_inputs(child), {})
+  eq(marks()[1], { 2, { "┌ 💬 @reviewer [pending]", "└ Looks good." } })
+end
+
+T["the input of a comment on the file shows above line 1"] = function()
+  open_review()
+  child.o.lines = 12
+  local code_win = child.api.nvim_get_current_win()
+  child.api.nvim_win_set_cursor(0, { 15, 0 })
+  child.cmd("Didymus review comment file")
+  eq(wait_for_input(), { title = "file.txt", lines = { "" } })
+  -- The window scrolls to the top, and shows the input above line 1.
+  local view = child.lua_get("vim.api.nvim_win_call(..., vim.fn.winsaveview)", { code_win })
+  eq({ view.topline, view.topfill }, { 1, 3 })
+  child.type_keys("About the file.", "<C-y>")
+  helpers.wait_for_threads(child, 2)
+  eq(marks()[1], { 0, { "┌ 💬 @reviewer [pending]", "└ About the file." } })
+
+  -- After a scroll to the top, as with `gg`, the thread on the file shows.
+  child.cmd("normal! G")
+  child.cmd("redraw")
+  child.cmd("normal! gg")
+  child.cmd("redraw")
+  eq(child.lua_get("vim.fn.winsaveview().topfill"), 2)
+end
+
+T["c in the panel opens the file at the top for a comment on the file"] = function()
+  open_review()
+  child.cmd("enew")
+  child.lua("require('didymus.ui.picker.test').press('c', 'M file.txt +2 -2 1 thread')")
+  eq(wait_for_input(), { title = "file.txt", lines = { "" } })
+  child.type_keys("<Esc>", "q")
+  eq(child.fn.expand("%:t"), "file.txt")
+  eq(child.lua_get("vim.fn.line('w0')"), 1)
 end
 
 return T

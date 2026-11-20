@@ -193,6 +193,83 @@ function M.thread_marks(child)
   ]])
 end
 
+---@class didymus.test.Input
+---@field title string? As it shows: in the border of the float, or after `┌ ` in the inline frame.
+---@field footer string? The keys. In the border of the float, or after `└ ` in the inline frame.
+---@field lines string[]
+---@field inline boolean True if the input shows in the text, under a line.
+
+--- The open input of the review. Nil if no input is open.
+---@param child MiniTest.child
+---@return didymus.test.Input?
+function M.get_input(child)
+  local input = child.lua_get([[(function()
+    local function to_text(line)
+      return table.concat(vim.tbl_map(function(chunk)
+        return chunk[1]
+      end, line))
+    end
+    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+      local buf = vim.api.nvim_win_get_buf(win)
+      if vim.bo[buf].filetype == "didymus_input" then
+        local config = vim.api.nvim_win_get_config(win)
+        local result = { lines = vim.api.nvim_buf_get_lines(buf, 0, -1, true), inline = false }
+        if config.border == "none" then
+          local ns = vim.api.nvim_get_namespaces()["didymus.ui.input.inline"]
+          local row = config.bufpos[1]
+          local code_buf = vim.api.nvim_win_get_buf(config.win)
+          local marks = vim.api.nvim_buf_get_extmarks(code_buf, ns, { row, 0 }, { row, -1 }, { details = true })
+          for _, mark in ipairs(marks) do
+            local virt_lines = mark[4].virt_lines
+            if #virt_lines == config.height + 2 then
+              result.inline = true
+              result.title = to_text(virt_lines[1]):gsub("^%s*┌ ", "")
+              result.footer = to_text(virt_lines[#virt_lines]):gsub("^%s*└ ", "")
+            end
+          end
+        else
+          result.title = config.title and config.title[1][1]
+          result.footer = config.footer and config.footer[1][1]
+        end
+        return result
+      end
+    end
+  end)()]])
+  if input ~= vim.NIL then
+    return input
+  end
+end
+
+--- Wait for the input of the review, and give it.
+---@param child MiniTest.child
+---@return didymus.test.Input
+function M.wait_for_input(child)
+  local input
+  wait_for(function()
+    input = M.get_input(child)
+    return input ~= nil
+  end, "the input")
+  return input
+end
+
+--- The text of each inline frame in the current buffer that waits for the reply of the provider.
+---@param child MiniTest.child
+---@return string[][]
+function M.kept_inputs(child)
+  return child.lua_get([[(function()
+    local ns = vim.api.nvim_get_namespaces()["didymus.ui.input.inline"]
+    local result = {}
+    for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(0, ns, 0, -1, { details = true })) do
+      table.insert(result, vim.tbl_map(function(line)
+        return table.concat(vim.tbl_map(function(chunk)
+          return chunk[1]
+        end, line))
+      end, mark[4].virt_lines))
+    end
+    return result
+  end)()]])
+end
+
 --- Redraw the child, and wait until the unfolded threads of the current buffer wrap at the text
 --- width. A redraw can change the text width, for example with a new sign column.
 ---@param child MiniTest.child

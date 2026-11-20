@@ -111,7 +111,7 @@ local function get_thread_item(session, thread)
     { kind = "thread", thread = thread }
   )
   item.depth = 1
-  local line = session:get_thread_line(thread)
+  local line = session:get_thread_line(thread) or session:is_at_top(thread) and 1 or nil
   if line then
     item.location = { path = session:get_full_path(thread.path), line = line }
   end
@@ -176,10 +176,10 @@ local function choose(session, item)
     return threads.open_comments_float("Conversation of " .. session.label, session.comments)
   end
   if value.kind == "thread" then
-    if session:get_thread_line(value.thread) then
+    if session:get_thread_line(value.thread) or session:is_at_top(value.thread) then
       return session:open_thread(value.thread)
     end
-    -- The thread has no line in the file. The float is the only place that shows it.
+    -- The thread is not in the file. The float is the only place that shows it.
     return threads.open_float(value.thread)
   end
   if value.kind ~= "file" then

@@ -69,16 +69,12 @@ local function float_content()
   }
 end
 
---- Wait for the input float, and give its content.
+--- Wait for the input, and give its content. In the code window, the input is inline. From the
+--- panel, it is a float.
 ---@return { title: string, footer: string?, lines: string[] }
 local function wait_for_input()
-  wait_for(function()
-    local win = float_win()
-    local buf = win and child.api.nvim_win_get_buf(win)
-    return buf ~= nil
-      and child.api.nvim_get_option_value("filetype", { buf = buf }) == "didymus_input"
-  end, "the input float")
-  return float_content()
+  local input = helpers.wait_for_input(child)
+  return { title = input.title, footer = input.footer, lines = input.lines }
 end
 
 --- Open the thread float of the panel row `text`, and focus it. The test picker has no window, so a
@@ -160,10 +156,12 @@ T["a reply adds a pending comment to the thread"] = function()
   local code_win = child.api.nvim_get_current_win()
   child.cmd("Didymus review reply")
   eq(wait_for_input(), {
-    title = " Reply to file.txt:19 ",
-    footer = " <C-s> reply now  <C-y> add to review  q cancel ",
+    title = "Reply to file.txt:19",
+    footer = "<C-s> reply now  <C-y> add to review  q cancel",
     lines = { "" },
   })
+  -- The input shows under the thread.
+  eq(helpers.get_input(child).inline, true)
 
   child.type_keys("Thanks.", "<C-y>")
   wait_for(function()
@@ -225,7 +223,7 @@ T["reply and resolve work on an unfolded thread. A resolve folds it, and an unre
   open_review()
   eq(mark_lines(), { "┌ 💬 @octocat", "└ A comment." })
   child.cmd("Didymus review reply")
-  eq(wait_for_input().title, " Reply to file.txt:19 ")
+  eq(wait_for_input().title, "Reply to file.txt:19")
   child.type_keys("Thanks.", "<C-y>")
   wait_for(function()
     return #session_thread("old").comments == 2
@@ -320,6 +318,8 @@ T["the keys of the thread float reply and resolve"] = function()
 
   child.type_keys("r")
   eq(wait_for_input().title, " Reply to file.txt ")
+  -- A thread with no place in the file gets the input float.
+  eq(helpers.get_input(child).inline, false)
   child.type_keys("<Esc>", "q")
   eq(child.api.nvim_get_current_win(), code_win)
 
@@ -390,7 +390,7 @@ T["with two threads at the line, the picker asks which one"] = function()
 
   child.cmd("Didymus review reply")
   choose("💬 @octocat A comment.")
-  eq(wait_for_input().title, " Reply to file.txt:19 ")
+  eq(wait_for_input().title, "Reply to file.txt:19")
   child.type_keys("To the first.", "<C-y>")
   wait_for(function()
     return #session_thread("first").comments == 2
@@ -463,7 +463,7 @@ T["the mappings reply and resolve"] = function()
   child.lua("vim.keymap.set('n', 'gR', '<Plug>(didymus-review-reply)')")
   child.lua("vim.keymap.set('n', 'gX', '<Plug>(didymus-review-resolve)')")
   child.type_keys("gR")
-  eq(wait_for_input().title, " Reply to file.txt:19 ")
+  eq(wait_for_input().title, "Reply to file.txt:19")
   child.type_keys("<Esc>", "q")
   child.type_keys("gX")
   wait_for(function()

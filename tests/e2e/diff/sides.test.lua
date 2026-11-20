@@ -335,22 +335,11 @@ T["a file that is not in the change ends the base sides"] = function()
   eq(shown(code_win), "a.txt")
 end
 
---- The title, the footer and the lines of the input float, after it opens.
+--- The title, the footer and the lines of the input, after it opens.
 ---@return { title: string, footer: string?, lines: string[] }
 local function wait_for_input()
-  local win
-  wait_for(function()
-    win = vim.iter(tab_wins()):find(function(candidate)
-      return child.api.nvim_win_get_config(candidate).relative ~= ""
-    end)
-    return win ~= nil
-  end, "the input float")
-  local config = child.api.nvim_win_get_config(win)
-  return {
-    title = config.title[1][1],
-    footer = config.footer and config.footer[1][1],
-    lines = child.api.nvim_buf_get_lines(child.api.nvim_win_get_buf(win), 0, -1, true),
-  }
+  local input = helpers.wait_for_input(child)
+  return { title = input.title, footer = input.footer, lines = input.lines }
 end
 
 T["review comment on a base buffer adds a thread on the base side"] = function()
@@ -360,8 +349,8 @@ T["review comment on a base buffer adds a thread on the base side"] = function()
   child.cmd("2,3Didymus review comment")
   -- GitHub applies a suggestion only on the head side.
   eq(wait_for_input(), {
-    title = " a.txt:2-3 (base) ",
-    footer = " <C-s> comment now  <C-y> add to review  q cancel ",
+    title = "a.txt:2-3 (base)",
+    footer = "<C-s> comment now  <C-y> add to review  q cancel",
     lines = { "" },
   })
   child.type_keys("Why delete?", "<C-y>")
@@ -380,7 +369,7 @@ T["review comment file on a base buffer adds a thread on the file"] = function()
   child.cmd("Didymus diff side base")
   wait_for_position(code_win, "base:a.txt", 1)
   child.cmd("Didymus review comment file")
-  eq(wait_for_input().title, " a.txt ")
+  eq(wait_for_input().title, "a.txt")
   child.type_keys("About a.txt.", "<C-s>")
   helpers.wait_for_threads(child, 1)
   local thread = child.lua_get("require('didymus.review.provider.test').threads['1'][1]")

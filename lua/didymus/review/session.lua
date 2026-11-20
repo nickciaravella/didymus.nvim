@@ -4,6 +4,7 @@
 local DiffView = require("didymus.diff.view")
 local config = require("didymus.config")
 local diff_target = require("didymus.review.diff_target")
+local layout = require("didymus.ui.layout")
 local panel = require("didymus.review.panel")
 local patch = require("didymus.review.patch")
 local picker = require("didymus.ui.picker")
@@ -50,6 +51,8 @@ local workspace = require("didymus.review.workspace")
 ---@field private group integer The autocmds of the review.
 ---@field private thread_paths table<string, string> The path of each file with threads, by its real path.
 ---@field private thread_lines table<string, integer> The line of each thread in its file, by thread id. A thread with no line has none.
+---@field private top_threads table<string, true> The ids of the threads that show above line 1 of their file.
+---@field private toplines table<integer, integer> The top line of each window of the tabpage, at the last scroll.
 ---@field diff_view didymus.diff.View The diff of the change in the code window.
 ---@field private workspace_checked boolean True after the check for local changes in the diff.
 local Session = {}
@@ -75,6 +78,8 @@ function Session.new(opts)
     on_close = opts.on_close,
     thread_paths = {},
     thread_lines = {},
+    top_threads = {},
+    toplines = {},
     thread_filter = "all",
     folds = {},
     draw_scheduled = false,
@@ -109,6 +114,27 @@ function Session.new(opts)
     group = self.group,
     callback = function()
       self:scope_threads()
+    end,
+  })
+  -- Neovim shows the virtual lines above line 1 only with `topfill`. So when a window scrolls to
+  -- the top, as with `gg`, show the threads on the file.
+  vim.api.nvim_create_autocmd("WinScrolled", {
+    group = self.group,
+    callback = function()
+      for key in pairs(vim.v.event) do
+        local win = tonumber(key)
+        if
+          win
+          and vim.api.nvim_win_is_valid(win)
+          and vim.api.nvim_win_get_tabpage(win) == self.tabpage
+        then
+          local topline = vim.fn.line("w0", win)
+          if topline == 1 and self.toplines[win] ~= 1 then
+            self:show_top_threads(win)
+          end
+          self.toplines[win] = topline
+        end
+      end
     end,
   })
   -- Also after `:checktime` or `:edit!`, which load the file again.
@@ -332,22 +358,32 @@ function Session:check_text_widths()
   end
 end
 
---- Draw the threads in `buf`, if it shows a file with threads.
+--- Draw the threads in `buf`, if it shows a file with threads. In the windows of the review that
+--- show line 1 at the top, show the threads above line 1.
 ---@param buf integer
 function Session:draw_threads(buf)
   local name = vim.api.nvim_buf_get_name(buf)
   local real_path = name ~= "" and vim.uv.fs_realpath(name)
   local path = real_path and self.thread_paths[real_path]
-  if path then
-    threads.draw(buf, path, self.threads, {
-      width = self:get_text_width(buf),
-      is_folded = function(thread)
-        return self:is_folded(thread)
-      end,
-      get_line = function(thread)
-        return self:get_thread_line(thread)
-      end,
-    })
+  if not path then
+    return
+  end
+  threads.draw(buf, path, self.threads, {
+    width = self:get_text_width(buf),
+    is_folded = function(thread)
+      return self:is_folded(thread)
+    end,
+    get_line = function(thread)
+      return self:get_thread_line(thread)
+    end,
+    is_at_top = function(thread)
+      return self:is_at_top(thread)
+    end,
+  })
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(self.tabpage)) do
+    if vim.api.nvim_win_get_buf(win) == buf then
+      self:show_top_threads(win)
+    end
   end
 end
 
@@ -444,9 +480,10 @@ function Session:set_threads(list)
   for _, file in ipairs(self.change.files) do
     files[file.path] = file
   end
-  self.thread_lines = {}
+  self.thread_lines, self.top_threads = {}, {}
   for _, thread in ipairs(list) do
     self.thread_lines[thread.id] = threads.get_line(thread, files[thread.path])
+    self.top_threads[thread.id] = threads.is_at_top(thread, files[thread.path]) or nil
   end
   self.threads = sort_threads(list, self.change.files, self.thread_lines)
   self.thread_paths = {}
@@ -501,11 +538,27 @@ function Session:add_thread(thread)
   self:set_threads(vim.list_extend(vim.list_slice(self.threads), { thread }))
 end
 
---- The line of the thread in its file. Nil if the thread shows only in the panel.
+--- The line of the thread in its file. Nil if the thread shows only in the panel, or above line 1.
 ---@param thread didymus.review.Thread
 ---@return integer?
 function Session:get_thread_line(thread)
   return self.thread_lines[thread.id]
+end
+
+--- True if the thread shows above line 1 of its file: a thread on the file.
+---@param thread didymus.review.Thread
+---@return boolean
+function Session:is_at_top(thread)
+  return self.top_threads[thread.id] == true
+end
+
+--- If `win` shows line 1 at the top, show the threads above line 1. The cursor line stays in the
+--- window.
+---@param win integer
+function Session:show_top_threads(win)
+  if vim.fn.line("w0", win) == 1 then
+    layout.show_lines_above_first(win)
+  end
 end
 
 --- Keep the general comments of the change. Show them in the panel.
@@ -607,39 +660,15 @@ function Session:pick_thread_at_cursor(cb)
   end
 end
 
---- Scroll `win` so that the threads under `line` show, if they fit. `line` stays in the window.
+--- Scroll `win` so that the threads under `line` show, if they fit. On line 1, also show the
+--- threads above it.
 ---@param win integer
 ---@param line integer
 local function show_threads_under(win, line)
-  local line_count = vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(win))
-  local height = vim.api.nvim_win_get_height(win)
-  ---@param top integer
-  ---@return integer rows The screen rows from `top` to the last line of the threads.
-  local function get_rows(top)
-    -- With `start_vcol`, the virtual lines above `top` do not count. They do not show.
-    local opts = { start_row = top - 1, start_vcol = 0 }
-    if line == line_count then
-      -- With no `end_row`, the virtual lines under the last line count.
-      return vim.api.nvim_win_text_height(win, opts).all
-    end
-    -- The virtual lines under `line` count as a part of the next line.
-    opts.end_row = line
-    local next_line =
-      vim.api.nvim_win_text_height(win, { start_row = line, start_vcol = 0, end_row = line })
-    return vim.api.nvim_win_text_height(win, opts).all - next_line.all
+  layout.show_lines_under(win, line)
+  if line == 1 then
+    layout.show_lines_above_first(win)
   end
-  vim.api.nvim_win_call(win, function()
-    local top = vim.fn.line("w0")
-    -- A top line after this line moves the cursor, because of 'scrolloff'.
-    local last_top = math.max(top, line - vim.o.scrolloff)
-    local new_top = top
-    while new_top < last_top and get_rows(new_top) > height do
-      new_top = new_top + 1
-    end
-    if new_top ~= top then
-      vim.fn.winrestview({ topline = new_top, topfill = 0 })
-    end
-  end)
 end
 
 --- Fold or unfold the threads at the cursor line, with no question. If one of them is unfolded,
@@ -661,7 +690,7 @@ end
 --- Fold all threads if one of the threads at a line is unfolded. Else, unfold all threads.
 function Session:toggle_all_folds()
   local shown = vim.tbl_filter(function(thread)
-    return self:get_thread_line(thread) ~= nil
+    return self:get_thread_line(thread) ~= nil or self:is_at_top(thread)
   end, self.threads)
   if #shown == 0 then
     vim.notify(("didymus: %s has no threads at a line"):format(self.label), vim.log.levels.WARN)
@@ -746,13 +775,14 @@ function Session:open_file(path, line, opts)
   end
   self.code_win = vim.api.nvim_get_current_win()
   set_cursor(self.code_win, line)
+  self:show_top_threads(self.code_win)
   return true
 end
 
 --- Open the file of `thread` at the line of the thread, unfold the thread, and show it.
 ---@param thread didymus.review.Thread
 function Session:open_thread(thread)
-  local line = self:get_thread_line(thread)
+  local line = self:get_thread_line(thread) or self:is_at_top(thread) and 1 or nil
   if line and self:open_file(thread.path, line) then
     self:set_folded({ thread }, false)
     show_threads_under(self.code_win, vim.api.nvim_win_get_cursor(self.code_win)[1])

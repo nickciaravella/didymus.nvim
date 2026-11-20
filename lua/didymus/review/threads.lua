@@ -60,6 +60,15 @@ function M.get_line(thread, file)
   end
 end
 
+--- True if the thread shows above line 1 of its file: a thread on the file that is not outdated. A
+--- deleted file is not in the checkout.
+---@param thread didymus.review.Thread
+---@param file didymus.review.ChangedFile? The file of the thread.
+---@return boolean
+function M.is_at_top(thread, file)
+  return not thread.outdated and not thread.range and file ~= nil and file.status ~= "deleted"
+end
+
 --- The icon of the state, the author, the first line of the first comment, and the pending and
 --- outdated tags.
 ---@param thread didymus.review.Thread
@@ -282,10 +291,12 @@ end
 ---@field width integer The width of the text area. The comments of an unfolded thread wrap at it.
 ---@field is_folded fun(thread: didymus.review.Thread): boolean
 ---@field get_line fun(thread: didymus.review.Thread): integer? The line of the thread in the file. Nil shows no mark.
+---@field is_at_top fun(thread: didymus.review.Thread): boolean True shows the thread above line 1, with no sign.
 
 --- Draw the threads of `path` in `buf`. The id of each mark is the index of its thread in
 --- `threads`, so that `at_cursor()` finds the thread. A folded thread is one line: its summary. An
---- unfolded thread shows all its comments.
+--- unfolded thread shows all its comments. A thread on the file shows above line 1, so its mark is
+--- on line 1.
 ---@param buf integer
 ---@param path string
 ---@param threads didymus.review.Thread[]
@@ -297,13 +308,15 @@ function M.draw(buf, path, threads, opts)
   ---@type table<string, string>?
   local keys
   for index, thread in ipairs(threads) do
-    local line = thread.path == path and opts.get_line(thread)
+    local at_top = thread.path == path and opts.is_at_top(thread)
+    local line = thread.path == path and (opts.get_line(thread) or at_top and 1)
     if line then
       -- The file in the checkout can be shorter than the change head.
       line = math.min(line, line_count)
-      local indent = vim.api.nvim_buf_call(buf, function()
-        return vim.fn.indent(line)
-      end)
+      local indent = at_top and 0
+        or vim.api.nvim_buf_call(buf, function()
+          return vim.fn.indent(line)
+        end)
       local virt_lines
       if opts.is_folded(thread) or #thread.comments == 0 then
         local summary = M.get_summary(thread, "DidymusThread")
@@ -319,11 +332,15 @@ function M.draw(buf, path, threads, opts)
         })
         drawn_widths[buf] = opts.width
       end
+      -- A sign on line 1 is for a thread on line 1.
       vim.api.nvim_buf_set_extmark(buf, M.namespace, line - 1, 0, {
         id = index,
-        sign_text = get_sign_text(#thread.comments),
-        sign_hl_group = thread.resolved and "DidymusThreadResolved" or "DidymusThread",
+        sign_text = not at_top and get_sign_text(#thread.comments) or nil,
+        sign_hl_group = not at_top
+            and (thread.resolved and "DidymusThreadResolved" or "DidymusThread")
+          or nil,
         virt_lines = virt_lines,
+        virt_lines_above = at_top,
       })
     end
   end

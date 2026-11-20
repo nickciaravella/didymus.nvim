@@ -161,7 +161,7 @@ The helpers in `tests/e2e/review/helpers.lua` run in the test process:
 | `make_repo(opts)` | Make a temporary git repo with a base commit on `main` and a head commit on `feature`. `HEAD` is on `main`. Return the `dir` and a `change` that points to the two commits. |
 | `set_changes(child, changes)` | Give the changes to the test provider in the child. |
 | `set_threads(child, id, threads)` | Give the threads of the change `id` to the test provider in the child. |
-| `make_thread(id, path, fields)` | Make a thread with one comment on the head side. `fields` changes fields, such as `range`. With no `range`, the thread shows only in the panel. The viewer can reply, and resolve or unresolve the thread. |
+| `make_thread(id, path, fields)` | Make a thread with one comment on the head side. `fields` changes fields, such as `range`. With no `range`, the thread is on the file, and shows above line 1. The viewer can reply, and resolve or unresolve the thread. |
 | `wait_for_threads(child, count)` | Wait until the open review has `count` threads. The review gets its threads after the tabpage opens. |
 | `call(child, method, ...)` | Call a method of the configured provider in the child. Wait for its `cb`, and return `{ err, result }`. |
 | `review(child)`, `wait_for_review(child, id)` | Get the open review in the child, or wait for it. |

@@ -631,12 +631,17 @@ end
 --- text for the next comment at these lines.
 ---@param session didymus.review.Session
 ---@param draft didymus.review.CommentDraft
-local function add_comment(session, draft)
+---@param release fun()? Removes the text that the inline input keeps in the file.
+local function add_comment(session, draft, release)
   local location = format_location(draft.path, draft.range, draft.side)
   local verb = draft.pending and "add" or "post"
   track(("%s a comment at %s"):format(verb, location), function(done)
     session.provider:add_comment(session.change, draft, done)
   end, function(err, thread)
+    -- The new thread replaces the text in the same redraw.
+    if release then
+      release()
+    end
     if err then
       local message = ("cannot %s the comment at %s: %s"):format(verb, location, err)
       if session:is_open() then
@@ -679,13 +684,22 @@ local function make_suggestion(lines)
   return block, #block - 1
 end
 
---- Open the input float for a comment on `range` of `path`, or on the file with no range.
+--- The inline input under `line` of `win`, in the frame of a thread. Line 0 is above line 1.
+---@param win integer
+---@param line integer
+---@return didymus.ui.input.Inline
+local function make_inline(win, line)
+  return { win = win, line = line, hl = "DidymusThread" }
+end
+
+--- Open the input for a comment on `range` of `path`, or on the file with no range.
 ---@param session didymus.review.Session
 ---@param path string
 ---@param side didymus.review.Side
 ---@param range didymus.review.Range?
 ---@param code string[]? The lines of the range, for a suggestion. GitHub applies a suggestion only on the head side.
-local function open_comment_input(session, path, side, range, code)
+---@param inline didymus.ui.input.Inline? Else the input float opens at the cursor line.
+local function open_comment_input(session, path, side, range, code, inline)
   local options = config.options.review.input
   local failed = session.failed_draft
   local text
@@ -710,6 +724,7 @@ local function open_comment_input(session, path, side, range, code)
   end
   input.open({
     title = format_location(path, range, side),
+    inline = inline,
     range = range and { range.first, range.last },
     text = text,
     width = options.width,
@@ -720,25 +735,62 @@ local function open_comment_input(session, path, side, range, code)
       {
         key = options.keys.post,
         name = "comment now",
-        on_submit = function(body)
+        on_submit = function(body, release)
           add_comment(
             session,
-            { path = path, side = side, range = range, body = body, pending = false }
+            { path = path, side = side, range = range, body = body, pending = false },
+            release
           )
         end,
       },
       {
         key = options.keys.add,
         name = "add to review",
-        on_submit = function(body)
+        on_submit = function(body, release)
           add_comment(
             session,
-            { path = path, side = side, range = range, body = body, pending = true }
+            { path = path, side = side, range = range, body = body, pending = true },
+            release
           )
         end,
       },
     },
   })
+end
+
+--- Open the input for a comment on the file of the current window, or on `path`. The input shows
+--- above line 1 of the file. A deleted file is not in the checkout, so it gets the input float. A
+--- comment on the file has no lines, so it needs no check of the lines.
+---@param session didymus.review.Session
+---@param path string?
+local function comment_on_file(session, path)
+  local win = vim.api.nvim_get_current_win()
+  local shown = find_comment_file(session, vim.api.nvim_win_get_buf(win))
+  if not path and not shown then
+    return show_warning(("the current window does not show a file of %s"):format(session.label))
+  end
+  path = path or shown.path
+  threads.close_float()
+  if shown and shown.path == path then
+    -- The input shows above line 1, and the cursor line stays in the window.
+    vim.api.nvim_win_set_cursor(win, { 1, 0 })
+    return open_comment_input(session, path, "head", nil, nil, make_inline(win, 0))
+  end
+  local file = session:get_file(path)
+  if file and file.status ~= "deleted" then
+    if session:open_file(path, 1) then
+      open_comment_input(
+        session,
+        path,
+        "head",
+        nil,
+        nil,
+        make_inline(vim.api.nvim_get_current_win(), 0)
+      )
+    end
+    return
+  end
+  open_comment_input(session, path, "head")
 end
 
 --- Ask to comment on the file, because the lines are not in one commentable range.
@@ -751,26 +803,10 @@ local function offer_file_comment(session, path, reason)
     choice = "Comment on the file",
     cb = function(confirmed)
       if confirmed and session:is_open() then
-        open_comment_input(session, path, "head")
+        comment_on_file(session, path)
       end
     end,
   })
-end
-
---- Open the input float for a comment on the file of the current window, or on `path`. A comment
---- on the file has no lines, so it needs no check of the lines.
----@param session didymus.review.Session
----@param path string?
-local function comment_on_file(session, path)
-  if not path then
-    local file = find_comment_file(session, vim.api.nvim_get_current_buf())
-    if not file then
-      return show_warning(("the current window does not show a file of %s"):format(session.label))
-    end
-    path = file.path
-  end
-  threads.close_float()
-  open_comment_input(session, path, "head")
 end
 
 --- Post a general comment with the provider. Then show it in the panel. If the provider fails,
@@ -891,7 +927,7 @@ function M.comment(opts)
         and vim.api.nvim_get_current_win() == win
         and vim.api.nvim_win_get_buf(win) == buf
       then
-        open_comment_input(session, file.path, side, range, code)
+        open_comment_input(session, file.path, side, range, code, make_inline(win, range.last))
       end
     end
     -- The base buffer has the text of a commit, so only the head file can change.
@@ -920,12 +956,17 @@ end
 ---@param session didymus.review.Session
 ---@param thread didymus.review.Thread
 ---@param draft didymus.review.ReplyDraft
-local function add_reply(session, thread, draft)
+---@param release fun()? Removes the text that the inline input keeps in the file.
+local function add_reply(session, thread, draft, release)
   local location = threads.get_location(thread)
   local verb = draft.pending and "add" or "post"
   track(("%s a reply at %s"):format(verb, location), function(done)
     session.provider:reply(session.change, draft, done)
   end, function(err, comment)
+    -- The new comment replaces the text in the same redraw.
+    if release then
+      release()
+    end
     if err then
       local message = ("cannot %s the reply at %s: %s"):format(verb, location, err)
       if session:is_open() then
@@ -950,8 +991,6 @@ local function add_reply(session, thread, draft)
   end)
 end
 
---- Open the input float at the cursor line, for a reply to `thread`.
----@param session didymus.review.Session
 --- Mark the file as viewed, or unmark it. A file with new changes since the view becomes viewed.
 --- With no path, use the file of the current window, else the file of the code window.
 ---@param opts { path: string? }?
@@ -990,8 +1029,12 @@ function M.viewed(opts)
   end)
 end
 
+--- Open the input for a reply to `thread`: inline under the threads of the line, or the input
+--- float at the cursor line.
+---@param session didymus.review.Session
 ---@param thread didymus.review.Thread
-local function open_reply_input(session, thread)
+---@param inline didymus.ui.input.Inline?
+local function open_reply_input(session, thread, inline)
   local options = config.options.review.input
   local failed = session.failed_reply
   local text
@@ -1001,6 +1044,7 @@ local function open_reply_input(session, thread)
   end
   input.open({
     title = "Reply to " .. threads.get_location(thread),
+    inline = inline,
     text = text,
     width = options.width,
     max_height = options.max_height,
@@ -1010,15 +1054,25 @@ local function open_reply_input(session, thread)
       {
         key = options.keys.post,
         name = "reply now",
-        on_submit = function(body)
-          add_reply(session, thread, { thread_id = thread.id, body = body, pending = false })
+        on_submit = function(body, release)
+          add_reply(
+            session,
+            thread,
+            { thread_id = thread.id, body = body, pending = false },
+            release
+          )
         end,
       },
       {
         key = options.keys.add,
         name = "add to review",
-        on_submit = function(body)
-          add_reply(session, thread, { thread_id = thread.id, body = body, pending = true })
+        on_submit = function(body, release)
+          add_reply(
+            session,
+            thread,
+            { thread_id = thread.id, body = body, pending = true },
+            release
+          )
         end,
       },
     },
@@ -1026,13 +1080,17 @@ local function open_reply_input(session, thread)
 end
 
 --- Reply to the thread at the cursor, or to the thread of the open thread float. Post the reply at
---- once, or add it to the pending review. The input float opens at the cursor line of the window
---- under the thread float, such as the panel.
+--- once, or add it to the pending review. For the thread at the cursor, the input shows under the
+--- threads of the line. For the thread float, the input float opens at the cursor line of the
+--- window under it, such as the panel.
 function M.reply()
   local session = get_open_review()
   if not session then
     return
   end
+  local win = vim.api.nvim_get_current_win()
+  local in_file = threads.get_float_thread_id() == nil
+  local line = vim.api.nvim_win_get_cursor(win)[1]
   session:pick_thread_at_cursor(function(thread)
     if not thread.can_reply then
       return show_warning(
@@ -1040,7 +1098,12 @@ function M.reply()
       )
     end
     threads.close_float()
-    open_reply_input(session, thread)
+    local inline
+    if in_file and vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_set_current_win(win)
+      inline = make_inline(win, session:is_at_top(thread) and 0 or line)
+    end
+    open_reply_input(session, thread, inline)
   end)
 end
 
