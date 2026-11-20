@@ -23,6 +23,9 @@
 ---@field hunks fun(self, buf: integer): didymus.diff.Hunk[]? Nil before `attach` calls its `cb`.
 ---@field render fun(self, display: didymus.diff.Display, cb: fun(err: string?)) Show the diff in the windows of `display`.
 ---@field clear fun(self, win: integer) Remove the diff from the window.
+---@field prepare? fun(self, buf: integer, cb: fun(err: string?)) Prepare the inline diff of an attached buffer, so that `show_prepared()` can show it at once. Yield to the main loop often.
+---@field is_prepared? fun(self, buf: integer): boolean True after `prepare()` calls its `cb` with no error, until the hunks change.
+---@field show_prepared? fun(self, display: didymus.diff.Display): string? Show the inline diff of a prepared buffer in `display.head_win`, with no yield, so that the next redraw shows it. Give an error if the buffer is not prepared.
 ---@field health fun() Report the dependencies with `vim.health`.
 
 local M = {}

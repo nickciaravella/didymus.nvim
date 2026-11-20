@@ -227,7 +227,7 @@ T["the base sides highlight the deleted lines of the base buffer in the code win
   wait_for(has_view, "the unified view after the both sides")
 end
 
-T["the preview of the snacks files panel shows the unified view, until the panel loses the focus"] = function()
+T["the preview of the snacks files panel shows the preloaded diff in each redraw, until the panel loses the focus"] = function()
   helpers.restart(child, { "gitsigns.nvim", "snacks.nvim" })
   child.cmd("runtime plugin/didymus.lua")
   child.lua("require('gitsigns').setup()")
@@ -240,26 +240,26 @@ T["the preview of the snacks files panel shows the unified view, until the panel
   child.fn.chdir(repo.dir)
   review_helpers.set_changes(child, { repo.change })
   review_helpers.set_threads(child, "1", {})
+  -- Each redraw of the preview float: false if it shows a file with no diff, or if it is hidden.
+  child.lua([[
+    _G.frames = {}
+    vim.api.nvim_set_decoration_provider(vim.api.nvim_create_namespace("test.frames"), {
+      on_win = function(_, win, buf)
+        if vim.w[win].snacks_picker_preview and vim.bo[buf].buftype == "" then
+          local ns = vim.api.nvim_get_namespaces()["didymus.diff.gitsigns.preview." .. win]
+          local has_diff = ns ~= nil and #vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, {}) > 0
+          table.insert(_G.frames, has_diff and not vim.api.nvim_win_get_config(win).hide)
+        end
+        return false
+      end,
+    })
+  ]])
   child.cmd("Didymus review open 1")
   review_helpers.wait_for_review(child, "1")
   wait_for(function()
     return child.bo.filetype == "snacks_picker_list"
   end, "the focus in the panel")
 
-  -- Each redraw of file.txt in the preview float that shows. `on_win` comes also for a hidden float.
-  child.lua([[
-    _G.frames = {}
-    vim.api.nvim_set_decoration_provider(vim.api.nvim_create_namespace("test.frames"), {
-      on_win = function(_, win, buf)
-        local name = vim.fs.basename(vim.api.nvim_buf_get_name(buf))
-        if vim.w[win].snacks_picker_preview and name == "file.txt" and not vim.api.nvim_win_get_config(win).hide then
-          local ns = vim.api.nvim_get_namespaces()["gitsigns_unified_" .. win]
-          table.insert(_G.frames, ns and #vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, {}) > 0 or false)
-        end
-        return false
-      end,
-    })
-  ]])
   -- The rows: the title, the branches, the thread filter, then file.txt.
   child.type_keys("G")
   local function preview_win()
@@ -272,23 +272,51 @@ T["the preview of the snacks files panel shows the unified view, until the panel
       return 0
     end)()]])
   end
-  local function preview_has_view()
-    local win = preview_win()
-    return win ~= 0 and child.lua_get("require('gitsigns.unified').get_view(...) ~= nil", { win })
-  end
-  wait_for(preview_has_view, "the unified view in the preview")
   wait_for(function()
     return #child.lua_get("_G.frames") > 0
-  end, "a redraw of the preview")
-  -- The float shows file.txt only with its diff.
+  end, "a redraw of file.txt in the preview")
   eq(vim.tbl_contains(child.lua_get("_G.frames"), false), false)
-  local buf = child.api.nvim_win_get_buf(preview_win())
+  local win = preview_win()
+  local buf = child.api.nvim_win_get_buf(win)
   eq(child.fn.fnamemodify(child.api.nvim_buf_get_name(buf), ":t"), "file.txt")
+  -- The deleted line "two" shows above the line "2".
+  local virt_lines = child.lua_get(
+    [[(function(win, buf)
+    local ns = vim.api.nvim_get_namespaces()["didymus.diff.gitsigns.preview." .. win]
+    for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
+      if mark[4].virt_lines then
+        return { row = mark[2], text = mark[4].virt_lines[1][1][1] }
+      end
+    end
+  end)(...)]],
+    { win, buf }
+  )
+  eq(virt_lines.row, 1)
+  eq(vim.startswith(virt_lines.text, "two"), true)
 
   child.cmd("wincmd l")
   wait_for(function()
-    return preview_win() == 0 and not child.api.nvim_buf_is_loaded(buf)
-  end, "no preview, and file.txt is not loaded")
+    return preview_win() == 0
+  end, "no preview")
+  eq(
+    child.lua_get(
+      "vim.api.nvim_get_namespaces()['didymus.diff.gitsigns.preview.' .. ...] ~= nil",
+      { win }
+    ),
+    true
+  )
+  eq(
+    child.lua_get(
+      "#vim.api.nvim_buf_get_extmarks(..., vim.api.nvim_get_namespaces()['didymus.diff.gitsigns.preview.' .. select(2, ...)], 0, -1, {})",
+      { buf, win }
+    ),
+    0
+  )
+
+  -- The preloaded buffer stays until the review closes.
+  eq(child.api.nvim_buf_is_loaded(buf), true)
+  child.cmd("Didymus review close")
+  eq(child.api.nvim_buf_is_valid(buf), false)
 end
 
 T["with no gitsigns, a warning shows and the review works"] = function()

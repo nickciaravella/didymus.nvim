@@ -141,8 +141,8 @@ Then drive it in the child with `require("didymus.ui.picker.test")`:
 | `choose(target)` | Choose an item in the last open picker. A select closes first. A panel stays open. |
 | `cancel()` | Close the last open picker with no choice. |
 | `press(key, target)` | Call the action of `key` in the last open panel, with the item under the cursor. |
-| `preview(target)` | Show the item in a preview float of the last open panel, as a cursor move does, and call `on_preview`. A `location` shows the real buffer of the file. If `on_preview` returns true, the float stays hidden until its `ready()`. It gives the float. |
-| `hide_preview()` | Close the preview float of the last open panel, as a move of the focus out of the panel does, and call `on_preview(nil, nil)`. |
+| `preview(target)` | Show the item in a preview float of the last open panel, as a cursor move does. With `buffer_preview`, a `location` shows the buffer of `get_buf()`. If it is not ready, the float keeps its last buffer until the `cb`. It gives the float. |
+| `hide_preview()` | Close the preview float of the last open panel, as a move of the focus out of the panel does, and call `on_hide()`. |
 
 `target` is the index or the text of an item. Nil is the item under the cursor. The calls are synchronous, so the test does not wait.
 

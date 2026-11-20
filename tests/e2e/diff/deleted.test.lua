@@ -4,11 +4,12 @@ local wait_for = dofile("tests/helpers.lua").wait_for
 local child = MiniTest.new_child_neovim()
 local eq = MiniTest.expect.equality
 
----@param diff table? The `diff` options.
+---@param diff table? The `diff` options. The preload is off, because the tests count the calls of the
+--- provider. tests/e2e/diff/preview.test.lua tests it.
 local function setup(diff)
   child.lua(
     "require('didymus').setup({ review = { picker = 'test', provider = 'test' }, diff = ... })",
-    { vim.tbl_extend("force", { provider = "test" }, diff or {}) }
+    { vim.tbl_extend("force", { provider = "test", preload = 0 }, diff or {}) }
   )
 end
 

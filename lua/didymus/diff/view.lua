@@ -4,6 +4,7 @@
 
 local config = require("didymus.config")
 local hunks = require("didymus.diff.hunks")
+local Preload = require("didymus.diff.preload")
 local providers = require("didymus.diff.provider")
 local revision = require("didymus.diff.revision")
 local target_util = require("didymus.diff.target")
@@ -23,6 +24,9 @@ local progress_delay = 500
 ---@field file didymus.diff.File
 ---@field ready boolean True after `attach()` calls `cb` with no error.
 ---@field waiting fun(err: string?)[] The callbacks that wait for `attach()`.
+---@field quiet boolean True while only the preload waits. Then no progress message shows.
+---@field finished boolean True after the `cb` of the provider.
+---@field progress_shown boolean
 
 ---@class didymus.diff.view.Revision
 ---@field buf integer? Nil until `git show` ends.
@@ -37,11 +41,9 @@ local progress_delay = 500
 ---@field base_win integer? The base window that has the diff of the split layout.
 ---@field number integer Only the callbacks of the newest display apply.
 
----@class didymus.diff.view.Preview The preview window of the files panel that has the diff, or waits for it.
+---@class didymus.diff.view.Preview The preview window of the files panel that has the diff.
 ---@field win integer
 ---@field buf integer
----@field number integer Only the callbacks of the newest preview apply.
----@field ready fun()? Show the preview window. Call it once, when the diff shows or will not show.
 
 ---@class didymus.diff.view.Jump The newest `next` or `prev`. Only its callbacks apply.
 ---@field buf integer? The buffer whose `attach()` the jump waits for. The jump shows its error.
@@ -74,7 +76,7 @@ local progress_delay = 500
 ---@field private display didymus.diff.view.Shown?
 ---@field private display_count integer
 ---@field private preview didymus.diff.view.Preview?
----@field private preview_count integer
+---@field private preload didymus.diff.Preload The buffers and diffs of the preview.
 ---@field private warned table<string, boolean> The provider errors that showed. Each one shows once.
 ---@field private jump didymus.diff.view.Jump?
 ---@field private base_request didymus.diff.view.BaseRequest?
@@ -142,10 +144,20 @@ function View.new(opts)
     revisions = {},
     empty_heads = {},
     display_count = 0,
-    preview_count = 0,
     warned = {},
     update_scheduled = false,
   }, View)
+  self.preload = Preload.new({
+    tabpage = opts.tabpage,
+    cwd = opts.target and opts.target.cwd or vim.fn.getcwd(),
+    limit = config.options.diff.preload,
+    prepare = function(buf, file, cb)
+      self:prepare_preview(buf, file, cb)
+    end,
+    is_prepared = function(buf)
+      return self:is_preview_ready(buf)
+    end,
+  })
   self.group = vim.api.nvim_create_augroup(("didymus.diff.view.%d"):format(opts.tabpage), {})
   -- `:edit`, `gd`, `<CR>` in the panel: the code window can show a new buffer at any time.
   vim.api.nvim_create_autocmd("BufWinEnter", {
@@ -159,6 +171,7 @@ function View.new(opts)
     group = self.group,
     callback = function()
       self:schedule_update()
+      self.preload:resume()
     end,
   })
   vim.api.nvim_create_autocmd("BufUnload", {
@@ -315,6 +328,18 @@ local function show_progress(text, status)
   })
 end
 
+--- Show a progress message if the attach of `buf` takes longer than `progress_delay`.
+---@param buf integer
+---@param state didymus.diff.view.Attached
+function View:watch_progress(buf, state)
+  vim.defer_fn(function()
+    if not state.finished and self.attached[buf] == state then
+      state.progress_shown = true
+      show_progress(("get the diff of %s"):format(state.file.path), "running")
+    end
+  end, progress_delay)
+end
+
 --- Attach the provider to `buf`, if it is not attached. Call `cb` when the provider has the hunks.
 --- A buffer stays attached until the diff hides, so a return to a file is fast.
 ---@param buf integer
@@ -328,22 +353,29 @@ function View:attach(buf, file, cb, quiet)
   end
   if state then
     table.insert(state.waiting, cb)
+    -- The user opened a file while the preload attaches it.
+    if state.quiet and not quiet then
+      state.quiet = false
+      self:watch_progress(buf, state)
+    end
     return
   end
-  state = { file = file, ready = false, waiting = { cb } }
+  state = {
+    file = file,
+    ready = false,
+    waiting = { cb },
+    quiet = quiet == true,
+    finished = false,
+    progress_shown = false,
+  }
   self.attached[buf] = state
-  local text = ("get the diff of %s"):format(file.path)
-  local finished, progress_shown = false, false
-  vim.defer_fn(function()
-    if not quiet and not finished and self.attached[buf] == state then
-      progress_shown = true
-      show_progress(text, "running")
-    end
-  end, progress_delay)
+  if not quiet then
+    self:watch_progress(buf, state)
+  end
   self.provider:attach(buf, file, self.opts.target, function(err)
-    finished = true
-    if progress_shown then
-      show_progress(text, err and "failed" or "success")
+    state.finished = true
+    if state.progress_shown then
+      show_progress(("get the diff of %s"):format(file.path), err and "failed" or "success")
     end
     -- The diff hid, or the buffer unloaded, before `cb`.
     if self.attached[buf] ~= state then
@@ -734,72 +766,91 @@ function View:update()
   end)
 end
 
---- Remove the diff from the preview window. Make the callbacks of the old preview old.
+--- Remove the diff from the preview window.
 function View:clear_preview()
   local preview = self.preview
   self.preview = nil
-  self.preview_count = self.preview_count + 1
-  if preview and preview.ready then
-    preview.ready()
-  end
-  if preview and vim.api.nvim_win_is_valid(preview.win) then
+  -- snacks can close the preview window with no `WinClosed`. Then its marks stay in the buffer.
+  if preview then
     self.provider:clear(preview.win)
   end
 end
 
---- Show the diff in the preview window of the files panel, if it shows a file of the target. The
---- preview window is a float, with no room for a base window, and the panel owns its buffer. So
---- the diff is inline, with the "head" sides or both sides. Nil removes the diff from the preview.
+--- Attach `buf` and prepare its diff for the preview, so that `set_preview()` shows it at once.
+---@param buf integer
+---@param file didymus.diff.File?
+---@param cb fun(err: string?)
+function View:prepare_preview(buf, file, cb)
+  if not (file and self.shown and self.provider.prepare) then
+    return cb(nil)
+  end
+  self:attach(buf, file, function(err)
+    if err then
+      self:warn_once(file.path, err)
+      return cb(err)
+    end
+    self.provider:prepare(buf, function(prepare_err)
+      if prepare_err then
+        self:warn_once(file.path, prepare_err)
+      end
+      cb(prepare_err)
+    end)
+  end, true)
+end
+
+--- False if the preview cannot show the diff of `buf` at once.
+---@param buf integer
+---@return boolean
+function View:is_preview_ready(buf)
+  return not (self.shown and self.provider.is_prepared) or self.provider:is_prepared(buf)
+end
+
+--- The buffer of `path` for the preview of the files panel, if its diff is ready. Else nil, and
+--- the preload prepares it first and calls `cb` when it is ready.
+---@param path string
+---@param cb fun()
+---@return integer?
+function View:get_preview_buf(path, cb)
+  local file
+  for _, target_file in ipairs(self.opts.target and self.opts.target.files or {}) do
+    if target_file.path == path and target_file.status ~= "deleted" then
+      file = target_file
+    end
+  end
+  return self.preload:get_buf(path, file, cb)
+end
+
+--- Show the diff in the preview window of the files panel, if it shows a prepared file of the
+--- target. The provider shows it with no yield, so the redraw shows the file and its diff
+--- together. The preview window is a float, with no room for a base window, and the panel owns
+--- its buffer. So the diff is inline, with the "head" sides or both sides. Nil removes the diff.
 ---@param win integer?
----@param ready fun()? Called when the diff shows, or will not show.
----@return boolean wait True if the call of `ready` comes later.
-function View:set_preview(win, ready)
+function View:set_preview(win)
   self:clear_preview()
   if
     not (win and self.shown and vim.api.nvim_win_is_valid(win))
     or vim.api.nvim_win_get_tabpage(win) ~= self.opts.tabpage
-    or vim.api.nvim_get_current_tabpage() ~= self.opts.tabpage
+    or not self.provider.show_prepared
   then
-    return false
+    return
   end
   local buf = vim.api.nvim_win_get_buf(win)
   local file = self:find_file(buf)
-  if not file then
-    return false
+  if not (file and self.provider:is_prepared(buf)) then
+    return
   end
-  local number = self.preview_count
-  self.preview = { win = win, buf = buf, number = number, ready = ready }
-  local function is_current()
-    return self.shown and self.preview ~= nil and self.preview.number == number
+  self.preview = { win = win, buf = buf }
+  local err = self.provider:show_prepared({
+    layout = "inline",
+    sides = self.sides == "head" and "head" or "both",
+    file = file,
+    target = self.opts.target --[[@as didymus.diff.Target]],
+    head_win = win,
+    head_buf = buf,
+  })
+  if err then
+    self:warn_once(file.path, err)
   end
-  ---@param err string?
-  local function finish(err)
-    if not is_current() then
-      return
-    end
-    if err then
-      self:warn_once(file.path, err)
-    end
-    local preview_ready = self.preview.ready
-    self.preview.ready = nil
-    if preview_ready then
-      preview_ready()
-    end
-  end
-  self:attach(buf, file, function(err)
-    if err or not is_current() then
-      return finish(err)
-    end
-    self.provider:render({
-      layout = "inline",
-      sides = self.sides == "head" and "head" or "both",
-      file = file,
-      target = self.opts.target --[[@as didymus.diff.Target]],
-      head_win = win,
-      head_buf = buf,
-    }, finish)
-  end, true)
-  return true
 end
 
 --- Update once after the events of one command, such as `BufWinEnter` and `TabEnter` of `:tab
@@ -818,6 +869,7 @@ end
 --- Forget an unloaded buffer. A new load of the file attaches again.
 ---@param buf integer
 function View:forget(buf)
+  self.preload:forget(buf)
   for file, state in pairs(self.revisions) do
     if state.buf == buf then
       self.revisions[file] = nil
@@ -1314,6 +1366,8 @@ function View:show()
   self.shown = true
   self.opts.on_show()
   self:update()
+  self.preload:reset()
+  self.preload:start(self.opts.target.files)
 end
 
 --- Remove the diff from the code window, and detach all buffers.
@@ -1336,6 +1390,7 @@ function View:hide()
   self.shown = false
   self:clear_display()
   self:clear_preview()
+  self.preload:reset()
   self:close_base_win()
   local attached = self.attached
   self.attached = {}
@@ -1432,6 +1487,7 @@ end
 --- Hide the diff, and stop to follow the code window. Call it when the review closes.
 function View:close()
   self:hide()
+  self.preload:close()
   vim.api.nvim_del_augroup_by_id(self.group)
 end
 

@@ -307,9 +307,9 @@ The diff shows when the review opens, and follows the code window: after `<CR>` 
 
 A deleted file always shows its base, with all lines in the `DiffDelete` highlight. The `inline` layout shows the base in the code window. The `split` layout shows the base in the base window, and an empty buffer in the code window. The focus goes to the base. `side` on a deleted file applies to the next file. When the diff hides, the base stays in the code window until it shows a different buffer.
 
-When the cursor moves in the files panel, the preview over the code window shows the file with its diff. The preview is always `inline`, and with the `head` side it shows only the signs. The preview shows the file and its diff at the same time, so a file with many hunks can show after a short wait. The diff goes away when the panel loses the focus. `next` and `prev` do not use the preview.
+When the cursor moves in the files panel, the preview over the code window shows the file with its diff. The preview is always `inline`, and with the `head` side it shows only the signs. The preview shows the file and its diff at the same time. After the review opens, didymus loads the files of the change in the background, one at a time, in the order of the panel, up to `diff.preload` (30) files. The file under the cursor goes first. If a file is not ready, the preview keeps the last file until it is. The diff goes away when the panel loses the focus. `next` and `prev` do not use the preview.
 
-The preview opens the real file, so its `FileType` autocommands and your LSP servers start for each file that you preview. When the preview moves to a different file, didymus unloads a file that only the preview opened. A file that you opened stays open.
+The preload opens the real files, so their `FileType` autocommands and your LSP servers start for each preloaded file. When the review closes, didymus unloads the files that only the preload opened. A file that you opened stays open. Above `diff.preload`, didymus unloads the file that the preview used last.
 
 In a different tabpage, `toggle`, `layout`, `side`, `next` and `prev` go to the review tabpage first. With no review, a warning shows.
 
@@ -353,6 +353,7 @@ require("didymus").setup({
     layout = "inline", -- "inline" or "split"
     sides = "both", -- "both" or "head". Only `:Didymus diff side base` shows the base side.
     split = { width = 0.5 }, -- the width of the base window: below 1, a fraction of the code window, else columns
+    preload = 30, -- the most files that load in the background for the preview of the files panel
   },
 })
 ```

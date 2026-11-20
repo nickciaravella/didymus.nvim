@@ -86,46 +86,44 @@ local function preview(ctx)
   ctx.preview:reset()
 end
 
---- The preview of a panel with `on_preview`: the real buffer of a `location`, so that the caller
---- can decorate it. snacks shows a copy of a file that is not loaded.
+--- The preview of a panel with `buffer_preview`: the real buffer of a `location`, so that the
+--- caller can decorate it. snacks shows a copy of a file that is not loaded.
 ---@class didymus.picker.snacks.BufferPreview
----@field opts didymus.picker.PanelOpts
----@field bufs didymus.picker.PreviewBufs
+---@field opts didymus.picker.BufferPreview
 ---@field shown boolean True after a preview, until the preview window closes.
----@field count integer The number of previews. Only the `ready()` of the newest preview applies.
+---@field count integer The number of previews. Only the `cb` of `get_buf()` of the newest one applies.
 local BufferPreview = {}
 BufferPreview.__index = BufferPreview
 
 ---@param ctx table The context of a snacks previewer.
 function BufferPreview:show(ctx)
-  local location = ctx.item.didymus_item.location
-  if location and not ctx.item.preview then
-    ctx.item.buf = self.bufs:load(location.path)
+  self.count = self.count + 1
+  local item = ctx.item.didymus_item
+  if item.location and not ctx.item.preview then
+    local count, snacks_picker = self.count, ctx.picker
+    local buf = self.opts.get_buf(item, function()
+      if self.count == count and not snacks_picker.closed then
+        snacks_picker.preview:show(snacks_picker, { force = true })
+      end
+    end)
+    if not buf then
+      -- Keep the last buffer and its decoration. A redraw must not show a buffer before its
+      -- decoration, or the code window under the float.
+      return
+    end
+    ctx.item.buf = buf
   end
   preview(ctx)
   self.shown = true
-  self.count = self.count + 1
-  local count, win, is_ready = self.count, ctx.win, false
-  local function ready()
-    is_ready = true
-    if self.count == count and vim.api.nvim_win_is_valid(win) then
-      vim.api.nvim_win_set_config(win, { hide = false })
-    end
-  end
-  local wait = self.opts.on_preview(ctx.item.didymus_item, win, ready)
-  -- Hide the window in the same tick as the new buffer, so that no redraw shows the buffer before
-  -- its decoration. A slow decoration, such as a large diff, can block the redraw for a long time.
-  vim.api.nvim_win_set_config(win, { hide = wait == true and not is_ready })
-  self.bufs:release(vim.api.nvim_win_get_buf(win))
+  self.opts.on_show(item, ctx.win)
 end
 
---- Tell `on_preview` that the preview hid, if its window closed.
+--- Tell `on_hide` that the preview hid, if its window closed.
 ---@param snacks_picker table
 function BufferPreview:check_hidden(snacks_picker)
   if self.shown and not snacks_picker.preview.win:valid() then
     self.shown = false
-    self.opts.on_preview(nil, nil)
-    self.bufs:release()
+    self.opts.on_hide()
   end
 end
 
@@ -226,11 +224,8 @@ function M.panel(opts, config)
     keys[action.key] = name
   end
 
-  local buffer_preview = opts.on_preview
-    and setmetatable(
-      { opts = opts, bufs = picker.new_preview_bufs(), shown = false, count = 0 },
-      BufferPreview
-    )
+  local buffer_preview = opts.buffer_preview
+    and setmetatable({ opts = opts.buffer_preview, shown = false, count = 0 }, BufferPreview)
   local snacks_picker = require_snacks_picker().pick(merge_options(opts.kind, config, {
     title = opts.title,
     -- The options of the snacks explorer, so that the panel stays open next to the code.

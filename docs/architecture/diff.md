@@ -285,17 +285,22 @@ diff = {
 
 ### Preview
 
-The snacks `sidebar` layout shows the preview in a float over the code window, not in the code window. For a file that is not loaded, snacks shows a copy in a scratch buffer, so gitsigns cannot attach to it. So the panel gives the preview its own previewer.
+The snacks `sidebar` layout shows the preview in a float over the code window. The gitsigns unified view is async and bound to one window, and it blocks the UI while it copies the highlights of the deleted lines. So the preview does not use it.
 
-1. The files panel sets `on_preview` of the picker panel. Then the adapter shows the real buffer of the file in the preview, and calls `on_preview(item, win)` after each preview.
-2. `set_preview(win)` clears the old preview display. If `win` shows a file of the target, it attaches the buffer and renders it in `win`. Only the callbacks of the newest preview apply.
-3. The preview has no room for a base window, and the panel owns its buffer. So the display is `inline`, with the `head` sides if the sides are `head`, else `both`. It has `head_win` and `head_buf`, and no base window.
-4. When the panel loses the focus, snacks closes the preview window, and the adapter calls `on_preview(nil, nil)`. Then the diff view clears the preview display. `WinClosed` of the preview window and a hide of the diff also clear it.
-5. A preview attach shows no progress message, because each move of the cursor in the panel previews a file. Its errors show once, as in rule 4 of [Show](#show).
-6. The display of the code window does not change. `next` and `prev` do not use the preview.
-7. The preview window shows the file only together with its full diff. `on_preview` returns true, and the adapter hides the window in the same tick as the new buffer. `set_preview(win, ready)` calls `ready()` after the render, after an error, or when the preview display clears. Then the adapter shows the window. The gitsigns unified view blocks the redraw while it makes the deleted lines, so without this, the file shows first with only its signs.
-8. A buffer stays attached, as in rule 4 of [Follow the code window](#follow-the-code-window). When the preview leaves a buffer that only it loaded, the adapter unloads it, so it keeps no LSP client. Then the diff view detaches it.
-9. A header row and a deleted file show no diff in the preview.
+1. The files panel sets `buffer_preview`. The adapter asks `get_buf(item, cb)` for the buffer. If it is nil, the float keeps its last buffer and its diff, and `cb()` shows the item later. The float never hides.
+2. `on_show(item, win)` calls `set_preview(win)` in the same tick. The provider shows the prepared diff with `show_prepared()`, with no yield. So each redraw shows a file with its full diff.
+3. The display is `inline`, with the `head` sides if the sides are `head`, else `both`.
+4. When the panel loses the focus, `on_hide()` clears the preview display. A hide of the diff also clears it.
+5. A header row and a deleted file show no diff in the preview. A thread row shows its file.
+
+### Preload
+
+1. When the diff shows, `diff/preload.lua` loads the files of the target in the order of the panel, up to `diff.preload`. A `get_buf()` of a file that is not ready puts it first.
+2. It does one file at a time: load, async treesitter parse, attach, `provider:prepare()`. Then it yields. The gitsigns `prepare()` copies the deleted lines one line at a time, in slices of 8 ms.
+3. The provider attaches only to a buffer in a window of the current tabpage. So the preload shows the buffer in a hidden float of the review tabpage, and stops while the tabpage is not current.
+4. Above `diff.preload`, a load unloads the buffer that the preview used last, if only the preload loaded it and no window shows it.
+5. When the review closes, the preload unloads the buffers that only it loaded. It keeps a buffer that the user opened or loaded before.
+6. A failed prepare shows its error once. The file shows with no diff.
 
 ### Hide and close
 
@@ -566,11 +571,12 @@ The user asked for these changes after the manual test of #81 on 2026-11-19.
 The user approved these decisions of [#84](https://github.com/nickciaravella/didymus.nvim/issues/84) on 2026-11-18.
 
 49. **The preview of the files panel shows the diff.** It shows the real buffer of the file, because gitsigns cannot attach to the copy of snacks. See [Preview](#preview).
-50. **A buffer that only the preview loaded unloads when the preview leaves it.** It keeps no LSP client. A buffer that a window shows, or that the user opened, stays. The cleanup of snacks deletes only its own buffers, and only when the preview window closes.
+50. **A buffer that only the preview loaded unloads when the review closes (decision 55).** It keeps no LSP client. A buffer that a window shows, or that the user opened, stays. The cleanup of snacks deletes only its own buffers, and only when the preview window closes.
 51. **The preview is always `inline`.** It keeps the `head` sides. The `base` sides and the `split` layout show `both`.
 52. **A preview attach shows no progress message.** Its errors show once.
 53. **`next` and `prev` do not use the preview.** A header row and a deleted file have no preview.
-54. **The preview window stays hidden until its diff shows** (rule 7 of [Preview](#preview)). A manual test showed the deleted lines about one second after the file. The user asked for this fix on 2026-11-19.
+54. **The preview keeps the last file until the new file and its diff are ready** (rule 1 of [Preview](#preview)). The user asked for this, and for the preload, on 2026-11-19.
+55. **The preload loads up to `diff.preload` (30) files.** LSP clients attach to them. They unload when the review closes.
 
 ## Work plan
 

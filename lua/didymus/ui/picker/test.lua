@@ -13,8 +13,7 @@ local picker = require("didymus.ui.picker")
 ---@field open boolean
 ---@field focus_count integer The number of `focus()` calls of a panel.
 ---@field preview_win integer? The float of the preview, as the snacks sidebar has.
----@field preview_count integer The number of previews. Only the `ready()` of the newest one applies.
----@field preview_bufs didymus.picker.PreviewBufs
+---@field preview_count integer The number of previews. Only the `cb` of `get_buf()` of the newest one applies.
 
 local M = {}
 
@@ -36,7 +35,6 @@ local function record(kind, opts, config, items)
     open = true,
     focus_count = 0,
     preview_count = 0,
-    preview_bufs = picker.new_preview_bufs(),
   }
   table.insert(M.calls, call)
   return call
@@ -84,10 +82,9 @@ local function hide_preview(call)
   if vim.api.nvim_win_is_valid(win) then
     vim.api.nvim_win_close(win, true)
   end
-  if call.opts.on_preview then
-    call.opts.on_preview(nil, nil)
+  if call.opts.buffer_preview then
+    call.opts.buffer_preview.on_hide()
   end
-  call.preview_bufs:release()
 end
 
 function Panel:close()
@@ -175,21 +172,9 @@ function M.press(key, target)
   error(("no action for %q"):format(key), 2)
 end
 
---- Show the item in the preview float of the last open panel, as a cursor move in the panel does.
---- A `location` shows the real buffer of the file. Call `on_preview`. Hide the float until its
---- `ready()`, if it returns true.
----@param target (integer|string)? The index or the text of an item. Nil is the item under the cursor.
----@return integer win The preview float.
-function M.preview(target)
-  local call = last_open("panel")
-  move(call, target)
-  local item = call.items[call.cursor]
-  local location = item and item.location
-  local buf = location and call.preview_bufs:load(location.path)
-  if not buf then
-    buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[buf].bufhidden = "wipe"
-  end
+---@param call didymus.picker.test.Call
+---@param buf integer
+local function set_preview_buf(call, buf)
   if call.preview_win and vim.api.nvim_win_is_valid(call.preview_win) then
     vim.api.nvim_win_set_buf(call.preview_win, buf)
   else
@@ -201,22 +186,56 @@ function M.preview(target)
       height = 10,
     })
   end
+end
+
+---@return integer
+local function make_scratch_buf()
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].bufhidden = "wipe"
+  return buf
+end
+
+--- Show the item under the cursor in the preview float, as snacks does.
+---@param call didymus.picker.test.Call
+local function show_preview(call)
+  call.preview_count = call.preview_count + 1
+  local count = call.preview_count
+  local item = call.items[call.cursor]
+  local buffer_preview = call.opts.buffer_preview
+  local buf
+  if item and item.location and buffer_preview then
+    buf = buffer_preview.get_buf(item, function()
+      if call.open and call.preview_count == count then
+        show_preview(call)
+      end
+    end)
+    if not buf then
+      -- Keep the last buffer. A new float has no last buffer, so it is empty.
+      if not (call.preview_win and vim.api.nvim_win_is_valid(call.preview_win)) then
+        set_preview_buf(call, make_scratch_buf())
+      end
+      return
+    end
+  end
+  set_preview_buf(call, buf or make_scratch_buf())
+  local location = item and item.location
   if location and location.line then
     pcall(vim.api.nvim_win_set_cursor, call.preview_win, { location.line, 0 })
   end
-  local win, wait, is_ready = call.preview_win, false, false
-  call.preview_count = call.preview_count + 1
-  local count = call.preview_count
-  if call.opts.on_preview then
-    wait = call.opts.on_preview(item, win, function()
-      is_ready = true
-      if call.preview_count == count and vim.api.nvim_win_is_valid(win) then
-        vim.api.nvim_win_set_config(win, { hide = false })
-      end
-    end)
+  if buffer_preview and item then
+    buffer_preview.on_show(item, call.preview_win)
   end
-  vim.api.nvim_win_set_config(win, { hide = wait == true and not is_ready })
-  call.preview_bufs:release(buf)
+end
+
+--- Show the item in the preview float of the last open panel, as a cursor move in the panel does.
+--- With `buffer_preview`, a `location` shows the buffer of `get_buf()`. If it is not ready, the
+--- float keeps its last buffer, and the `cb` of `get_buf()` shows the item later.
+---@param target (integer|string)? The index or the text of an item. Nil is the item under the cursor.
+---@return integer win The preview float.
+function M.preview(target)
+  local call = last_open("panel")
+  move(call, target)
+  show_preview(call)
   return call.preview_win
 end
 

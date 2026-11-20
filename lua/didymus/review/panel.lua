@@ -228,9 +228,21 @@ function M.open(adapter, session)
       choose(session, item)
     end,
     actions = get_actions(session),
-    on_preview = function(_, win, ready)
-      return session:preview_diff(win, ready)
-    end,
+    buffer_preview = {
+      get_buf = function(item, cb)
+        -- Only the rows of files and of threads have a location.
+        ---@type didymus.review.panel.Value
+        local value = item.value
+        local path = value.kind == "file" and value.file.path or value.thread.path
+        return session:get_preview_buf(path, cb)
+      end,
+      on_show = function(_, win)
+        session:preview_diff(win)
+      end,
+      on_hide = function()
+        session:preview_diff(nil)
+      end,
+    },
   })
 end
 

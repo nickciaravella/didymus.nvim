@@ -84,6 +84,96 @@ function internal.config_base()
   return ok and base or nil
 end
 
+--- The gitsigns hunks of `buf`, with their lines. `get_hunks()` gives a different shape.
+---@param buf integer
+---@return table[]? hunks
+---@return string? err
+function internal.get_hunks(buf)
+  local ok, result = pcall(function()
+    local entry = require("gitsigns.cache").cache[buf]
+    return entry and entry.hunks
+  end)
+  if not ok then
+    return nil, "gitsigns.cache failed: " .. tostring(result)
+  end
+  return result
+end
+
+--- A scratch buffer with the base text and the filetype of `buf`, to copy the highlights of the
+--- deleted lines from. Call `cleanup()` after the copy.
+---@param buf integer
+---@return integer? source
+---@return fun() cleanup
+---@return string? err
+function internal.make_source(buf)
+  local ok, source, cleanup = pcall(function()
+    return require("gitsigns.hunk_preview").prepare_removed_source(buf, false, nil)
+  end)
+  if not ok then
+    return nil, function() end, "gitsigns.hunk_preview failed: " .. tostring(source)
+  end
+  return source, cleanup
+end
+
+--- The lines of `source` from `start_row`, with their highlights.
+---@param source integer
+---@param start_row integer
+---@param count integer
+---@return table[]? lines
+---@return string? err
+function internal.capture_lines(source, start_row, count)
+  local ok, result = pcall(function()
+    return require("gitsigns.render.capture").capture_lines(source, start_row, count)
+  end)
+  if not ok then
+    return nil, "gitsigns.render.capture failed: " .. tostring(result)
+  end
+  return result
+end
+
+--- Add the highlights of deleted lines to the captured `lines` of `hunk`, as the unified view
+--- does in `capture_removed_hunks_from_source()`.
+---@param buf integer
+---@param hunk table
+---@param lines table[]
+---@return string? err
+function internal.add_deleted_layers(buf, hunk, lines)
+  local ok, err = pcall(function()
+    local removed, added = hunk.removed.lines, hunk.added.lines
+    if vim.bo[buf].fileformat == "dos" then
+      local util = require("gitsigns.util")
+      removed, added = util.strip_cr(removed), util.strip_cr(added)
+    end
+    local regions = require("gitsigns.diff_int").run_word_diff(removed, added)
+    local overlay = require("gitsigns.render.overlay")
+    overlay.add_full_line_layer(lines, "GitSignsDeleteVirtLn", 1000)
+    overlay.add_word_diff_layers(lines, regions, "GitSignsDeleteVirtLnInLine", 1001)
+  end)
+  if not ok then
+    return "gitsigns.render.overlay failed: " .. tostring(err)
+  end
+end
+
+--- Highlight the added lines of `hunk` in `ns`, and show its deleted `lines` above them.
+---@param buf integer
+---@param ns integer
+---@param hunk table
+---@param lines table[]?
+---@return string? err
+function internal.show_hunk(buf, ns, hunk, lines)
+  local ok, err = pcall(function()
+    require("gitsigns.hunk_preview").highlight_added_hunk(buf, ns, hunk)
+    if lines then
+      require("gitsigns.deleted_preview").place_inline_preview_lines(buf, ns, hunk, false, {
+        lines = lines,
+      })
+    end
+  end)
+  if not ok then
+    return "gitsigns.hunk_preview failed: " .. tostring(err)
+  end
+end
+
 --- The internal functions that are missing, such as `gitsigns.unified.close`.
 ---@return string[]
 function internal.find_missing()
@@ -91,6 +181,12 @@ function internal.find_missing()
   for module, names in pairs({
     ["gitsigns.cache"] = { "cache" },
     ["gitsigns.unified"] = { "get_view", "close" },
+    ["gitsigns.hunk_preview"] = { "prepare_removed_source", "highlight_added_hunk" },
+    ["gitsigns.render.capture"] = { "capture_lines" },
+    ["gitsigns.render.overlay"] = { "add_full_line_layer", "add_word_diff_layers" },
+    ["gitsigns.diff_int"] = { "run_word_diff" },
+    ["gitsigns.util"] = { "strip_cr" },
+    ["gitsigns.deleted_preview"] = { "place_inline_preview_lines" },
   }) do
     local ok, value = pcall(require, module)
     for _, name in ipairs(names) do
@@ -459,8 +555,204 @@ function M:attach(buf, file, target, cb)
   )
 end
 
+--- The inline diff of a buffer that `prepare()` made. The unified view of gitsigns copies the
+--- highlights of the deleted lines in each update, with no yield, and that can block the UI for
+--- 400 ms. `prepare()` copies them once, in slices.
+---@class didymus.diff.provider.gitsigns.Prepared
+---@field key string The changedtick, the base and the hunks at the end of `prepare()`.
+---@field hunks table[] The gitsigns hunks.
+---@field lines table<integer, table[]> The deleted lines of each hunk, by the index of the hunk.
+
+---@type table<integer, didymus.diff.provider.gitsigns.Prepared>
+local prepared = {}
+
+--- The marks of `show_prepared()` in each window, in a namespace of that window.
+---@type table<integer, { ns: integer, buf: integer }>
+local preview_marks = {}
+
+--- The time in milliseconds of one slice of `prepare()`. Between the slices, the UI does its work.
+local slice_time = 8
+
+--- The deleted lines that one capture copies. The copy of one line with treesitter highlights can
+--- take 20 ms, and a capture cannot stop after `slice_time`.
+local chunk_lines = 1
+
+---@param win integer
+local function clear_preview_marks(win)
+  local marks = preview_marks[win]
+  preview_marks[win] = nil
+  if marks and vim.api.nvim_buf_is_valid(marks.buf) then
+    vim.api.nvim_buf_clear_namespace(marks.buf, marks.ns, 0, -1)
+  end
+end
+
+vim.api.nvim_create_autocmd("WinClosed", {
+  group = diff_group,
+  callback = function(args)
+    clear_preview_marks(tonumber(args.match) --[[@as integer]])
+  end,
+})
+
+--- The key of the diff of `buf`. The deleted lines of a prepared diff are correct while it is the
+--- same.
+---@param buf integer
+---@param gitsigns_hunks table[]
+---@return string
+local function get_prepared_key(buf, gitsigns_hunks)
+  local parts = { vim.api.nvim_buf_get_changedtick(buf), attached[buf] and attached[buf].sha }
+  for _, hunk in ipairs(gitsigns_hunks) do
+    table.insert(
+      parts,
+      ("%s,%d,%d,%d,%d"):format(
+        hunk.type,
+        hunk.removed.start,
+        hunk.removed.count,
+        hunk.added.start,
+        hunk.added.count
+      )
+    )
+  end
+  return table.concat(vim.tbl_map(tostring, parts), ";")
+end
+
+---@param buf integer
+---@param cb fun(err: string?)
+function M:prepare(buf, cb)
+  local state = attached[buf]
+  local gitsigns_hunks, err = internal.get_hunks(buf)
+  if not (state and state.ready) then
+    err = "the buffer is not attached"
+  elseif not err and not gitsigns_hunks then
+    err = "gitsigns has no hunks"
+  end
+  if err or M:is_prepared(buf) then
+    vim.schedule(function()
+      cb(err)
+    end)
+    return
+  end
+  ---@cast gitsigns_hunks table[]
+  prepared[buf] = nil
+  local key = get_prepared_key(buf, gitsigns_hunks)
+  local source, cleanup, source_err
+  -- The deleted lines of each hunk. A large hunk takes more than one slice.
+  local lines, index, offset = {}, 1, 0
+  local function step()
+    if attached[buf] ~= state or not vim.api.nvim_buf_is_loaded(buf) then
+      cleanup()
+      return cb("the buffer was detached")
+    end
+    local current_hunks, hunks_err = internal.get_hunks(buf)
+    if hunks_err or not current_hunks or get_prepared_key(buf, current_hunks) ~= key then
+      -- An edit or an update of gitsigns changed the hunks. Start again with the new hunks.
+      cleanup()
+      return M:prepare(buf, cb)
+    end
+    local start = vim.uv.hrtime()
+    while index <= #gitsigns_hunks and (vim.uv.hrtime() - start) / 1e6 < slice_time do
+      local hunk = gitsigns_hunks[index]
+      local count = math.min(chunk_lines, hunk.removed.count - offset)
+      if count > 0 then
+        local chunk, capture_err =
+          internal.capture_lines(source --[[@as integer]], hunk.removed.start - 1 + offset, count)
+        if capture_err then
+          cleanup()
+          return cb(capture_err)
+        end
+        lines[index] = vim.list_extend(lines[index] or {}, chunk --[[@as table[] ]])
+        offset = offset + count
+      end
+      if offset >= hunk.removed.count then
+        if lines[index] then
+          local layer_err = internal.add_deleted_layers(buf, hunk, lines[index])
+          if layer_err then
+            cleanup()
+            return cb(layer_err)
+          end
+        end
+        index, offset = index + 1, 0
+      end
+    end
+    if index <= #gitsigns_hunks then
+      vim.defer_fn(step, 0)
+      return
+    end
+    cleanup()
+    prepared[buf] = { key = key, hunks = gitsigns_hunks, lines = lines }
+    cb(nil)
+  end
+  vim.schedule(function()
+    source, cleanup, source_err = internal.make_source(buf)
+    if source_err then
+      return cb(source_err)
+    end
+    -- The first capture parses all of the base text. Parse it in slices first.
+    local highlighter = vim.treesitter.highlighter.active[source]
+    if highlighter then
+      highlighter.tree:parse(true, vim.schedule_wrap(step))
+    else
+      step()
+    end
+  end)
+end
+
+---@param buf integer
+---@return boolean
+function M:is_prepared(buf)
+  local entry = prepared[buf]
+  local gitsigns_hunks = entry and internal.get_hunks(buf)
+  return gitsigns_hunks ~= nil and get_prepared_key(buf, gitsigns_hunks) == entry.key
+end
+
+---@param display didymus.diff.Display
+---@return string? err
+function M:show_prepared(display)
+  local win, buf = display.head_win, display.head_buf
+  if display.layout ~= "inline" then
+    return "the prepared diff is only inline"
+  end
+  if
+    not (win and buf and vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == buf)
+  then
+    return "the head window does not show the head buffer"
+  end
+  if not M:is_prepared(buf) then
+    return ("%s is not prepared"):format(display.file.path)
+  end
+  clear_preview_marks(win)
+  if display.sides == "head" then
+    return
+  end
+  local entry = prepared[buf]
+  local ns = vim.api.nvim_create_namespace(("didymus.diff.gitsigns.preview.%d"):format(win))
+  vim.api.nvim__ns_set(ns, { wins = { win } })
+  preview_marks[win] = { ns = ns, buf = buf }
+  for index, hunk in ipairs(entry.hunks) do
+    local err = internal.show_hunk(buf, ns, hunk, entry.lines[index])
+    if err then
+      clear_preview_marks(win)
+      return err
+    end
+  end
+  -- Deleted lines above line 1 show only with a filler at the top, as in the unified view.
+  local first = entry.hunks[1]
+  if first and first.added.start <= 1 and first.removed.count > 0 then
+    vim.api.nvim_win_call(win, function()
+      if vim.fn.line("w0") == 1 then
+        vim.fn.winrestview({ topfill = first.removed.count })
+      end
+    end)
+  end
+end
+
 ---@param buf integer
 function M:detach(buf)
+  prepared[buf] = nil
+  for win, marks in pairs(preview_marks) do
+    if marks.buf == buf then
+      clear_preview_marks(win)
+    end
+  end
   for win, view_buf in pairs(opened_views) do
     if view_buf == buf then
       M:clear(win)
@@ -665,6 +957,7 @@ end
 ---@param win integer
 function M:clear(win)
   clear_base_marks(win)
+  clear_preview_marks(win)
   opened_views[win] = nil
   internal.close_view(win)
   if vim.api.nvim_win_is_valid(win) then
