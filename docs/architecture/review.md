@@ -18,7 +18,7 @@ The facts in this section were checked on 2026-11-08 with `gh` 2.103.2 and the l
 | Need | Command | Notes |
 | --- | --- | --- |
 | List PRs | `gh pr list --json number,title,author,body,isDraft --limit 100` | The fields of `ChangeSummary`. `--search "review-requested:@me"` gives the PRs that wait for you. |
-| PR data | `gh api graphql --paginate --slurp`, one query | `id number title body isDraft author baseRefName headRefName baseRefOid headRefOid isCrossRepository headRepositoryOwner`, `files { path changeType additions deletions }`, `reviews(states: [PENDING]) { id viewerDidAuthor }`. Each page repeats the PR data. `viewerViewedState` of `files` is for [#49](https://github.com/nickciaravella/didymus.nvim/issues/49). |
+| PR data | `gh api graphql --paginate --slurp`, one query | `id number title body isDraft author baseRefName headRefName baseRefOid headRefOid isCrossRepository headRepositoryOwner`, `files { path changeType additions deletions viewerViewedState }`, `reviews(states: [PENDING]) { id viewerDidAuthor }`. Each page repeats the PR data. `viewerViewedState` is `VIEWED`, `UNVIEWED` or `DISMISSED`. `DISMISSED` is a viewed file with new changes. |
 | Commentable lines | `gh api --paginate --slurp repos/{owner}/{repo}/pulls/{n}/files` | Only REST gives `patch`. A large or binary file, or a pure rename, has no `patch`. |
 | Threads | `gh api graphql --paginate --slurp`, `node(id:)` of the PR, `reviewThreads` | `id path line startLine diffSide startDiffSide isResolved isOutdated subjectType viewerCanReply viewerCanResolve viewerCanUnresolve`, and `comments { author body state }`. A thread with more than 100 comments gets a second query, `node(id:)` of the thread. `gh` reads the first `pageInfo`, so the `pageInfo` of the threads comes before the comments. |
 | General comments | `gh api graphql`, `comments` | Issue comments of the PR. |
@@ -35,7 +35,7 @@ All write actions are GraphQL mutations. Each one is in the live schema:
 | Submit | `submitPullRequestReview` | `pullRequestReviewId`, `event` (`COMMENT`, `APPROVE`, `REQUEST_CHANGES`), `body`. |
 | Submit with no pending review | `addPullRequestReview` | `pullRequestId`, `commitOID`, `event`, `body`. |
 | Discard | `deletePullRequestReview` | `pullRequestReviewId`. |
-| Viewed | `markFileAsViewed`, `unmarkFileAsViewed` | `pullRequestId`, `path`. |
+| Viewed | `markFileAsViewed`, `unmarkFileAsViewed` | `pullRequestId`, `path`. A path that is not in the PR gives the error `Filepath must be part of pull request`. Both work on a merged PR. |
 
 ### Pickers
 
@@ -111,7 +111,7 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 | Header 1 | `#12 <title>` | `Number`, `Title` |
 | Header 2 | `@author main ← feature` | `Comment` |
 | Header 3 | `All threads` or `Active threads`: the thread filter | `Comment` |
-| File | `M path +12 -3 2 threads`, in the order of the provider | `Added`, `Changed`, `Removed`, `Comment` |
+| File | `M path +12 -3 2 threads [viewed]`, in the order of the provider | `Added`, `Changed`, `Removed`, `Comment`. A viewed file is all `DidymusFileViewed`. `[changed]` is `DiagnosticWarn`. |
 | Thread, at depth 1 under its file | `💬 @author <first line of the first comment> [pending] [outdated]`. A resolved thread has ✅. | `DidymusThread` for the author. A resolved thread is all `DidymusThreadResolved`. `[pending]` is `DidymusThreadPending`. `[outdated]` is `DiagnosticWarn`. |
 
 1. The status letters are `A`, `M`, `D` and `R`. The full path comes before the counts. A long path can hide the counts in a narrow panel.
@@ -129,6 +129,11 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 13. The icons of the state come from `review.icons`: `active` (default 💬) and `resolved` (default ✅). An active thread is not resolved. An empty icon shows no icon. The threads in the files use the same icons.
 14. The key `review.panel.keys.toggle_active` (default `a`, false turns it off) shows only the active threads, or all threads again. The default is all threads. The session keeps the filter, also when the panel opens again. The filter does not change the marks in the files.
 15. A thread row with a line has a `location` with the full path, as rule 4, and the line of the thread. A thread with no line has no `location`.
+16. A viewed file has the `[viewed]` tag, and the row is dim. A file with new changes since the view (`changed`) has the `[changed]` tag, and the row is not dim. A file with no viewed state has no tag.
+17. The key `review.panel.keys.viewed` (default `v`, false turns it off) marks the file at the cursor as viewed, or unmarks it. On a thread row, it uses the file of the thread. On a header row, it does nothing. A deleted file can be marked, as on github.com. No snacks or test picker default uses `v`. The key hides visual mode in the panel list, but the panel does not use a multi-select.
+18. `:Didymus review viewed` and `<Plug>(didymus-review-viewed)` use the file of the current window, else the file of the code window, as `next` and `prev` do. If no window shows a file of the change, a warning shows.
+19. A `viewed` file becomes `unviewed`. An `unviewed` or a `changed` file becomes `viewed`. `M.viewed()` calls `provider:set_viewed()` with a progress message. Then `Session:set_viewed()` changes the file in the session and updates the panel. If the provider fails, the error shows, and the state does not change. A refresh gets the state again from `get_change()`.
+20. If the provider has no `set_viewed`, a warning shows.
 
 ### Patch parser
 
@@ -407,6 +412,7 @@ All methods are async. Each one takes a final `cb(err, result)` and does not blo
 ---@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?, thread: didymus.review.Thread?)) Give the thread with its new state.
 ---@field submit_review fun(self, change: didymus.review.Change, verdict: "approve"|"comment"|"request_changes", body: string?, cb: fun(err: string?))
 ---@field discard_review fun(self, change: didymus.review.Change, cb: fun(err: string?))
+---@field set_viewed? fun(self, change: didymus.review.Change, path: string, viewed: boolean, cb: fun(err: string?)) Mark the file as viewed, or unmark it. Optional.
 ---@field health fun() Report the dependencies with `vim.health`.
 ```
 
@@ -414,6 +420,7 @@ All methods are async. Each one takes a final `cb(err, result)` and does not blo
 - The GitHub provider keeps all GraphQL documents as string constants in one module.
 - The `test` provider keeps its changes and threads in memory. Tests give it the data. Its `checkout` runs `git checkout` in a temporary repo of the test. It calls each `cb` in `vim.schedule()`, as a real provider does.
 - The `add_comment` of the `test` provider adds a thread with one comment of `viewer`. The comment is pending if `draft.pending` is true. Its `reply` adds a comment of `viewer`, pending if `draft.pending` is true. Its `set_resolved` changes `resolved`, and then lets the viewer do only the other action, as GitHub does. `errors.<method>` makes the next call of that method fail.
+- The `set_viewed` of the `test` provider changes `viewed` of the file in its `changes`, so that a refresh gives the new state.
 - The `submit_review` of the `test` provider records the verdict and the body in `reviews`, and makes the pending comments submitted. Its `discard_review` removes the pending comments, and the threads with no comments left. With no pending comment, it gives an error.
 
 ### Review types
@@ -447,6 +454,8 @@ The types come from the [reference file](../reference/design-prompt.md#data-mode
 ---@field base didymus.diff.Revision
 ---@field head didymus.diff.Revision
 
+---@alias didymus.review.ViewedState "viewed"|"unviewed"|"changed" "changed" is a viewed file with new changes since the view.
+
 ---@class didymus.review.ChangedFile
 ---@field path string
 ---@field old_path string?          The path before a rename or a copy.
@@ -454,6 +463,7 @@ The types come from the [reference file](../reference/design-prompt.md#data-mode
 ---@field additions integer
 ---@field deletions integer
 ---@field patch string?             The hunks of the unified diff, with no file header. Nil for a large or binary file, or a pure rename.
+---@field viewed didymus.review.ViewedState? Nil if the provider has no viewed state.
 
 ---@class didymus.review.Thread
 ---@field id string
@@ -497,7 +507,6 @@ The MVP does not use these fields of the reference file:
 | --- | --- |
 | `ChangeRef` | There is one provider in the config, and it works on the current repo. |
 | `updated_at`, `url`, `state`, `source` | No MVP feature uses them. The provider does the checkout. |
-| `viewed` | [Mark as viewed](https://github.com/nickciaravella/didymus.nvim/issues/49) is after the MVP. |
 | `original_line` | Outdated threads show only in the panel. |
 | `Comment.id`, `created_at` | No MVP feature uses them. |
 | `CommentDraft.side`, `file_level` | [More comment kinds](https://github.com/nickciaravella/didymus.nvim/issues/53) is after the MVP. |
@@ -529,6 +538,8 @@ The `github` provider is in `lua/didymus/review/provider/github/`. It runs the [
 21. GitHub can refuse a review with an error that has no message. Then `gh` exits with 0, and the payload is `null`. So `submit_review` and `discard_review` check the payload.
 22. `discard_review` gets the pending review again, and runs `deletePullRequestReview`. With no pending review, it gives an error.
 23. GitHub does not let the author of a PR approve it or request changes on it. The error of GitHub shows.
+24. `viewerViewedState` `VIEWED` is `viewed`, `UNVIEWED` is `unviewed`, and `DISMISSED` is `changed`.
+25. `set_viewed` runs `markFileAsViewed` or `unmarkFileAsViewed` with the `node_id` of the PR and the path. It checks the payload, as `submit_review` does. The reply has only the PR id, so the session sets the new state.
 
 ## Tests
 
