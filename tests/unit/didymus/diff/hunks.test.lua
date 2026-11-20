@@ -116,6 +116,17 @@ T["prev()"]["uses the base lines on the base side"] = function()
   eq(prev_from(3, "base"), {})
 end
 
+T["get_deleted_file_hunks()"] = MiniTest.new_set()
+
+T["get_deleted_file_hunks()"]["gives one deletion of all base lines, with a stop at base line 1"] = function()
+  local deleted = hunks.get_deleted_file_hunks(5)
+  eq(deleted, { hunk("delete", { 1, 5 }, { 0, 0 }) })
+  local opts = { side = "base", line_count = 5 }
+  eq({ hunks.next(deleted, vim.tbl_extend("force", opts, { line = 0 })) }, { 1, deleted[1] })
+  eq({ hunks.prev(deleted, vim.tbl_extend("force", opts, { line = 3 })) }, { 1, deleted[1] })
+  eq({ hunks.next(deleted, vim.tbl_extend("force", opts, { line = 1 })) }, {})
+end
+
 T["map_line()"] = MiniTest.new_set()
 
 -- Base line 3 changed, head lines 6 and 7 added after base line 5, and base lines 8 and 9 deleted

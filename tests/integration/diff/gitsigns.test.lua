@@ -427,12 +427,14 @@ end
 
 --- Show a base buffer of a.txt in `win`, and keep the head buffer loaded. Render the "base" sides.
 ---@param win integer
----@param head_buf integer
+---@param head_buf integer?
+---@param file didymus.diff.File? Default: the modified a.txt.
 ---@return integer base_buf
-local function render_base(win, head_buf)
+local function render_base(win, head_buf, file)
   return child.lua(
     [[
-    local win, head_buf = ...
+    local win, head_buf, file = ...
+    head_buf, file = head_buf ~= vim.NIL and head_buf or nil, file ~= vim.NIL and file or nil
     local base_buf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_lines(base_buf, 0, -1, false, { "one", "two", "three", "four", "five" })
     vim.api.nvim_win_call(win, function()
@@ -442,7 +444,7 @@ local function render_base(win, head_buf)
     provider:render({
       layout = "inline",
       sides = "base",
-      file = { path = "a.txt", status = "modified" },
+      file = file or { path = "a.txt", status = "modified" },
       target = target(),
       head_buf = head_buf,
       base_win = win,
@@ -452,7 +454,7 @@ local function render_base(win, head_buf)
     end)
     return base_buf
   ]],
-    { win, head_buf }
+    { win, head_buf or vim.NIL, file or vim.NIL }
   )
 end
 
@@ -491,6 +493,14 @@ T["render"]["highlights the deleted lines of the base buffer with the base sides
 
   child.lua("provider:clear(...)", { head_win })
   eq(base_marks(head_win, base_buf).lines, {})
+end
+
+T["render"]["highlights all lines of the base buffer of a deleted file, with no head buffer"] = function()
+  start({})
+  local win = child.api.nvim_get_current_win()
+  local base_buf = render_base(win, nil, { path = "gone.txt", status = "deleted" })
+  eq(wait_for_render(), vim.NIL)
+  eq(base_marks(win, base_buf), { lines = { 1, 2, 3, 4, 5 }, wins = { win } })
 end
 
 T["render"]["gives an error for the base sides with no attached head buffer"] = function()
@@ -610,6 +620,40 @@ T["split"]["turns off diff mode when the buffer comes back to the window"] = fun
   child.lua("provider:clear(...)", { base_win })
   child.cmd("buffer " .. buf)
   eq(get_options(head_win), head_options)
+end
+
+T["split"]["a buffer that leaves a window leaves the diff, so the next diff has only two buffers"] = function()
+  -- Neovim keeps a hidden buffer in the diff of the tabpage, until `:diffoff` in a window with it.
+  local _, head_win, base_win = open_split()
+  child.lua("render_split(...)", { head_win, base_win })
+  eq(wait_for_render(), vim.NIL)
+
+  child.api.nvim_set_current_win(head_win)
+  local b_buf = edit("b.txt")
+  child.lua("attach(...)", { b_buf, "b.txt" })
+  eq(wait_for_attach(b_buf)[1].err, vim.NIL)
+  -- The same text as the head buffer, so a diff of these two buffers has no changes.
+  child.lua(
+    [[
+    local base_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(base_buf, 0, -1, false, { "B" })
+    vim.api.nvim_win_set_buf(..., base_buf)
+  ]],
+    { base_win }
+  )
+  child.lua("render_split(...)", { head_win, base_win })
+  eq(wait_for_render(), vim.NIL)
+  for _, win in ipairs({ head_win, base_win }) do
+    local changes = child.lua(
+      [[
+      return vim.api.nvim_win_call(..., function()
+        return { vim.fn.diff_hlID(1, 1), vim.fn.diff_filler(1), vim.fn.diff_filler(2) }
+      end)
+    ]],
+      { win }
+    )
+    eq(changes, { 0, 0, 0 })
+  end
 end
 
 T["split"]["gives an error with no base window"] = function()
