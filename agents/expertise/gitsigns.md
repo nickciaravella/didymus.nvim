@@ -45,9 +45,9 @@ An update reads the base text with `git show` when `compare_text` is nil. If `ch
 
 ### gitsigns computes the hunks only for a buffer in a window of the current tabpage
 
-`manager.update()` checks the windows of the current tabpage only. For a buffer that is not there, it keeps the old hunks and updates later. So attach only a buffer in a window of the current tabpage.
+`manager.update()` checks the windows of the current tabpage only. For a buffer that is not there, it keeps the old hunks and updates later. So attach only a buffer in a window of the current tabpage. A float with `hide = true` counts, because `nvim_tabpage_list_wins()` lists it. So to attach a buffer that no window shows, show it in a hidden float.
 
-- Proof: [`manager.lua`](https://github.com/lewis6991/gitsigns.nvim/blob/fd780920613e541cbdfac41bf711583ed49f9249/lua/gitsigns/manager.lua#L125-L132).
+- Proof: [`manager.lua`](https://github.com/lewis6991/gitsigns.nvim/blob/fd780920613e541cbdfac41bf711583ed49f9249/lua/gitsigns/manager.lua#L125-L132). The test `the preview of the snacks files panel shows the preloaded diff in each redraw, until the panel loses the focus` attaches the preloaded buffers in a hidden float.
 - Checked: gitsigns.nvim `fd78092`
 
 ## Unified view
@@ -75,7 +75,14 @@ A second `diffthis(…, { unified = true })` closes the view, but only if the cu
 
 ### The unified view blocks the event loop while it copies the highlights of the deleted lines
 
-The update of a unified view calls `capture_removed_hunks_from_source()` with no yield. It copies the treesitter highlights of each deleted hunk from the base buffer. A redraw can come between `diffthis()` and that update, so a window that shows the buffer shows the signs first, and the deleted lines after the block. To show both together, hide the window until the `cb` of `diffthis()`. That `cb` comes after the update.
+The update of a unified view calls `capture_removed_hunks_from_source()` with no yield, and it does this again after each `diffthis()`. A redraw can come before that update, so a window shows the signs first and the deleted lines after the block. The view is bound to one window, so you cannot keep its result for a different window. To show a diff at once, copy the lines one time with `gitsigns.render.capture.capture_lines()`, then place them with `deleted_preview.place_inline_preview_lines(buf, ns, hunk, false, { lines = … })`. See `prepare()` in `lua/didymus/diff/provider/gitsigns.lua`.
 
-- Proof: a timer of 2 ms in a Neovim with lua_ls and treesitter. For a Lua file with 76 hunks, the capture took 411 ms, and the loop was blocked for 433 ms. For 15 hunks, it was blocked for 42 ms. See [`unified.lua`](https://github.com/lewis6991/gitsigns.nvim/blob/fd780920613e541cbdfac41bf711583ed49f9249/lua/gitsigns/unified.lua#L116-L170). The test `the preview of the snacks files panel shows the unified view, until the panel loses the focus` checks each redraw of the preview.
+- Proof: a timer of 2 ms in a Neovim with lua_ls and treesitter. For a Lua file with 76 hunks, the capture took 411 ms, and the loop was blocked for 433 ms. See [`unified.lua`](https://github.com/lewis6991/gitsigns.nvim/blob/fd780920613e541cbdfac41bf711583ed49f9249/lua/gitsigns/unified.lua#L116-L170). The test `the preview of the snacks files panel shows the preloaded diff in each redraw, until the panel loses the focus` checks each redraw of a preview that places the copied lines.
 - Checked: gitsigns.nvim `fd78092`
+
+### The copy of the highlights of one long line can take 150 ms
+
+`capture_lines()` calls `inspect_range()` for each line, and that inspects the treesitter captures, also of the injections. A Markdown line of 400 bytes, with `markdown_inline`, took up to 157 ms. Part of the cost is fixed for each call, so a smaller column range does not help much: 0 to 8 took 13 ms, and the full line took 20 ms. So copy one line in each call, and yield after a time budget. Parse the source buffer first with `LanguageTree:parse(true, cb)`, which is async.
+
+- Proof: a timer of 2 ms and a wrapper of `gitsigns.inspect.inspect_range` in the preload of 30 files of this repo, with treesitter for Markdown and Lua.
+- Checked: gitsigns.nvim `fd78092`, Neovim 0.12.6

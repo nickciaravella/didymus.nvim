@@ -338,6 +338,24 @@ T["the preload shows no progress message"] = function()
   eq(child.lua_get("_G.progress"), {})
 end
 
+T["a progress message shows if the user opens a file while the preload attaches it"] = function()
+  child.lua([[
+    _G.progress = {}
+    local echo = vim.api.nvim_echo
+    vim.api.nvim_echo = function(chunks, history, opts)
+      if opts.kind == "progress" and opts.id == "didymus.diff.progress" then
+        table.insert(_G.progress, chunks[1][1])
+      end
+      return echo(chunks, history, opts)
+    end
+    require("didymus.diff.provider.test").delays = { ["file.txt"] = 900 }
+  ]])
+  open_review()
+  child.lua("require('didymus.ui.picker.test').choose(...)", { file_row })
+  wait_for_renders(1)
+  eq(child.lua_get("_G.progress"), { "get the diff of file.txt", "get the diff of file.txt" })
+end
+
 T["above diff.preload, a load unloads the buffer that the preview used last"] = function()
   child.lua("_G.setup_opts.diff.preload = 1")
   open_review()
