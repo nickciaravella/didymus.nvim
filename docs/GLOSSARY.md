@@ -50,6 +50,7 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Test picker | A picker adapter with no UI. End-to-end tests use it to choose items. |
 | Test provider | A provider with no external system. The review test provider keeps changes in memory, in place of GitHub. The diff test provider keeps hunks in memory, in place of gitsigns. |
 | Thread | A list of comments on one line or range. |
+| Thread block | A thread, the inline input, or a text that waits for the code host, in the virtual lines of a line. The cursor goes into it with `j` or `k`. |
 | Thread float | The float that shows all comments of a thread that shows only in the panel, as markdown. |
 | Unit test | A test of a pure function, or of a function that uses only Neovim. It has no external dependencies. |
 | View | The window that shows an agent session: a float or a split. |
