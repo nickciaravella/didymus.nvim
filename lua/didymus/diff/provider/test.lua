@@ -1,6 +1,7 @@
 --- A diff provider with no tool, for end-to-end tests. Tests give it the hunks of each path in
 --- `hunks_by_path`. `render()` puts one extmark at the stop of each hunk, with the layout and the
---- sides in its text, so that a test can check the screen.
+--- sides in its text, so that a test can check the screen. A deleted file has the hunks of
+--- `hunks.get_deleted_file_hunks()`.
 
 local hunks = require("didymus.diff.hunks")
 
@@ -151,6 +152,9 @@ function M:render(display, cb)
     return
   end
   local file_hunks = display.head_buf and M:hunks(display.head_buf)
+  if display.file.status == "deleted" and display.base_buf then
+    file_hunks = hunks.get_deleted_file_hunks(vim.api.nvim_buf_line_count(display.base_buf))
+  end
   if not file_hunks then
     vim.schedule(function()
       cb(("%s is not attached"):format(display.file.path))

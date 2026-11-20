@@ -44,22 +44,20 @@ local function make_text(prefix, count)
   return table.concat(lines, "\n") .. "\n"
 end
 
---- Open a review where the change modifies a.txt, b.txt and c.txt, and deletes d.txt. other.txt is
---- not in the change.
+--- Open a review where the change modifies a.txt, b.txt and c.txt. other.txt is not in the change.
+--- tests/e2e/diff/deleted.test.lua has the deleted files.
 local function open_review()
   local repo = helpers.make_repo({
     base = {
       ["a.txt"] = make_text("a", 7),
       ["b.txt"] = make_text("b", 3),
       ["c.txt"] = make_text("c", 7),
-      ["d.txt"] = make_text("d", 2),
       ["other.txt"] = make_text("o", 2),
     },
     head = {
       ["a.txt"] = make_text("A", 8),
       ["b.txt"] = make_text("B", 3),
       ["c.txt"] = make_text("C", 6),
-      ["d.txt"] = false,
     },
   })
   child.fn.chdir(repo.dir)
@@ -188,7 +186,6 @@ T["at the last hunk, next shows a message and does not move"] = function()
   open_review()
   open_file("c.txt", 5)
   child.cmd("clearjumps")
-  -- d.txt is deleted, so it has no hunks.
   child.cmd("Didymus diff next")
   wait_for_message("didymus: no next hunk")
   eq(position(), { "c.txt", 5 })
