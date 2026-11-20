@@ -99,6 +99,12 @@ local function find_buf(path)
   return child.fn.bufnr(path)
 end
 
+---@param win integer
+---@return boolean
+local function is_hidden(win)
+  return child.api.nvim_win_get_config(win).hide
+end
+
 T["the preview of a file shows the inline diff in the preview window"] = function()
   open_review()
   local win = preview(file_row)
@@ -194,6 +200,47 @@ T["an attach in the preview shows no progress message"] = function()
   preview(file_row)
   wait_for_renders(1)
   eq(child.lua_get("_G.progress"), {})
+end
+
+T["the preview float stays hidden until its diff shows"] = function()
+  child.lua("require('didymus.diff.provider.test').delays = { ['file.txt'] = 200 }")
+  open_review()
+  local win = preview(file_row)
+  eq(is_hidden(win), true)
+  wait_for(function()
+    return not is_hidden(win)
+  end, "the preview float")
+  eq(marks(win), { "diff inline both" })
+
+  -- A row with no diff shows at once, and the ready of an old preview does not hide it. The
+  -- second preview is fast, so read the float in the same call.
+  eq(
+    child.lua_get(
+      [[vim.api.nvim_win_get_config(require('didymus.ui.picker.test').preview(...)).hide]],
+      { file_row }
+    ),
+    true
+  )
+  preview(1)
+  eq(is_hidden(win), false)
+  child.lua("vim.wait(300, function() return false end)")
+  eq(is_hidden(win), false)
+end
+
+T["the preview float shows if the diff fails or hides before it is ready"] = function()
+  child.lua("require('didymus.diff.provider.test').delays = { ['file.txt'] = 200 }")
+  open_review()
+  local win = preview(file_row)
+  child.cmd("Didymus diff toggle")
+  eq(is_hidden(win), false)
+
+  child.cmd("Didymus diff toggle")
+  child.lua("require('didymus.diff.provider.test').errors = { attach = 'no hunks' }")
+  preview(new_row)
+  wait_for(function()
+    return not is_hidden(win)
+  end, "the preview float after the error")
+  eq(marks(win), {})
 end
 
 T["a buffer that only the preview loaded goes away, with its LSP client, when the preview moves on"] = function()

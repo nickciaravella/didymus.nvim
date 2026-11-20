@@ -246,6 +246,20 @@ T["the preview of the snacks files panel shows the unified view, until the panel
     return child.bo.filetype == "snacks_picker_list"
   end, "the focus in the panel")
 
+  -- Each redraw of file.txt in the preview float that shows. `on_win` comes also for a hidden float.
+  child.lua([[
+    _G.frames = {}
+    vim.api.nvim_set_decoration_provider(vim.api.nvim_create_namespace("test.frames"), {
+      on_win = function(_, win, buf)
+        local name = vim.fs.basename(vim.api.nvim_buf_get_name(buf))
+        if vim.w[win].snacks_picker_preview and name == "file.txt" and not vim.api.nvim_win_get_config(win).hide then
+          local ns = vim.api.nvim_get_namespaces()["gitsigns_unified_" .. win]
+          table.insert(_G.frames, ns and #vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, {}) > 0 or false)
+        end
+        return false
+      end,
+    })
+  ]])
   -- The rows: the title, the branches, the thread filter, then file.txt.
   child.type_keys("G")
   local function preview_win()
@@ -263,6 +277,11 @@ T["the preview of the snacks files panel shows the unified view, until the panel
     return win ~= 0 and child.lua_get("require('gitsigns.unified').get_view(...) ~= nil", { win })
   end
   wait_for(preview_has_view, "the unified view in the preview")
+  wait_for(function()
+    return #child.lua_get("_G.frames") > 0
+  end, "a redraw of the preview")
+  -- The float shows file.txt only with its diff.
+  eq(vim.tbl_contains(child.lua_get("_G.frames"), false), false)
   local buf = child.api.nvim_win_get_buf(preview_win())
   eq(child.fn.fnamemodify(child.api.nvim_buf_get_name(buf), ":t"), "file.txt")
 

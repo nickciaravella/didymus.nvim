@@ -155,11 +155,11 @@ end
 
 --- Show the diff in the preview window of the files panel. Nil removes it.
 ---@param win integer?
-function Session:preview_diff(win)
+---@param ready fun()? Called when the diff shows, or will not show.
+---@return boolean wait True if the call of `ready` comes later.
+function Session:preview_diff(win, ready)
   -- The panel opens before the diff view.
-  if self.diff_view then
-    self.diff_view:set_preview(win)
-  end
+  return self.diff_view ~= nil and self.diff_view:set_preview(win, ready)
 end
 
 --- The reason that the diff is not the diff of the code host, or nil.

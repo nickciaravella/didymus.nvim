@@ -41,6 +41,7 @@ local progress_delay = 500
 ---@field win integer
 ---@field buf integer
 ---@field number integer Only the callbacks of the newest preview apply.
+---@field ready fun()? Show the preview window. Call it once, when the diff shows or will not show.
 
 ---@class didymus.diff.view.Jump The newest `next` or `prev`. Only its callbacks apply.
 ---@field buf integer? The buffer whose `attach()` the jump waits for. The jump shows its error.
@@ -623,6 +624,9 @@ function View:clear_preview()
   local preview = self.preview
   self.preview = nil
   self.preview_count = self.preview_count + 1
+  if preview and preview.ready then
+    preview.ready()
+  end
   if preview and vim.api.nvim_win_is_valid(preview.win) then
     self.provider:clear(preview.win)
   end
@@ -632,31 +636,44 @@ end
 --- preview window is a float, with no room for a base window, and the panel owns its buffer. So
 --- the diff is inline, with the "head" sides or both sides. Nil removes the diff from the preview.
 ---@param win integer?
-function View:set_preview(win)
+---@param ready fun()? Called when the diff shows, or will not show.
+---@return boolean wait True if the call of `ready` comes later.
+function View:set_preview(win, ready)
   self:clear_preview()
   if
     not (win and self.shown and vim.api.nvim_win_is_valid(win))
     or vim.api.nvim_win_get_tabpage(win) ~= self.opts.tabpage
     or vim.api.nvim_get_current_tabpage() ~= self.opts.tabpage
   then
-    return
+    return false
   end
   local buf = vim.api.nvim_win_get_buf(win)
   local file = self:find_file(buf)
   if not file then
-    return
+    return false
   end
   local number = self.preview_count
-  self.preview = { win = win, buf = buf, number = number }
+  self.preview = { win = win, buf = buf, number = number, ready = ready }
   local function is_current()
     return self.shown and self.preview ~= nil and self.preview.number == number
   end
-  self:attach(buf, file, function(err)
+  ---@param err string?
+  local function finish(err)
     if not is_current() then
       return
     end
     if err then
-      return self:warn_once(file.path, err)
+      self:warn_once(file.path, err)
+    end
+    local preview_ready = self.preview.ready
+    self.preview.ready = nil
+    if preview_ready then
+      preview_ready()
+    end
+  end
+  self:attach(buf, file, function(err)
+    if err or not is_current() then
+      return finish(err)
     end
     self.provider:render({
       layout = "inline",
@@ -665,12 +682,9 @@ function View:set_preview(win)
       target = self.opts.target --[[@as didymus.diff.Target]],
       head_win = win,
       head_buf = buf,
-    }, function(render_err)
-      if render_err and is_current() then
-        self:warn_once(file.path, render_err)
-      end
-    end)
+    }, finish)
   end, true)
+  return true
 end
 
 --- Update once after the events of one command, such as `BufWinEnter` and `TabEnter` of `:tab

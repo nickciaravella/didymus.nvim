@@ -350,7 +350,7 @@ The MVP needs no diff provider. The patch from the code host gives the first hun
 ---@field actions? didymus.picker.Action[] Keys in the panel, such as `R` for refresh.
 ---@field position? "left"|"right" Default "left".
 ---@field width? number Below 1, a fraction of the editor width. Else columns. Default 40.
----@field on_preview? fun(item: didymus.picker.Item?, win: integer?) Called after the preview shows `item` in `win`, and with nil when the preview hides. With it, the preview of a `location` shows the real buffer of the file, not a copy.
+---@field on_preview? fun(item: didymus.picker.Item?, win: integer?, ready: fun()): boolean? Called after the preview shows `item` in `win`, and with nil when the preview hides. With it, the preview of a `location` shows the real buffer of the file, not a copy. Return true to keep `win` hidden until the call of `ready()`, so that the buffer and its decoration show at the same time.
 
 ---@class didymus.picker.Panel
 ---@field update fun(self) Call `items()` again and show the new items. Keep the cursor on the same item.

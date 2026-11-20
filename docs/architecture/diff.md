@@ -291,8 +291,9 @@ The snacks `sidebar` layout shows the preview in a float over the code window, n
 4. When the panel loses the focus, snacks closes the preview window, and the adapter calls `on_preview(nil, nil)`. Then the diff view clears the preview display. `WinClosed` of the preview window and a hide of the diff also clear it.
 5. A preview attach shows no progress message, because each move of the cursor in the panel previews a file. Its errors show once, as in rule 4 of [Show](#show).
 6. The display of the code window does not change. `next` and `prev` do not use the preview.
-7. A buffer stays attached, as in rule 4 of [Follow the code window](#follow-the-code-window). When the preview leaves a buffer that only it loaded, the adapter unloads it, so it keeps no LSP client. Then the diff view detaches it.
-8. A header row and a deleted file show no diff in the preview.
+7. The preview window shows the file only together with its full diff. `on_preview` returns true, and the adapter hides the window in the same tick as the new buffer. `set_preview(win, ready)` calls `ready()` after the render, after an error, or when the preview display clears. Then the adapter shows the window. The gitsigns unified view blocks the redraw while it makes the deleted lines, so without this, the file shows first with only its signs.
+8. A buffer stays attached, as in rule 4 of [Follow the code window](#follow-the-code-window). When the preview leaves a buffer that only it loaded, the adapter unloads it, so it keeps no LSP client. Then the diff view detaches it.
+9. A header row and a deleted file show no diff in the preview.
 
 ### Hide and close
 
@@ -533,6 +534,7 @@ The user approved these decisions of [#84](https://github.com/nickciaravella/did
 41. **The preview is always `inline`.** It keeps the `head` sides. The `base` sides and the `split` layout show `both`.
 42. **A preview attach shows no progress message.** Its errors show once.
 43. **`next` and `prev` do not use the preview.** A header row and a deleted file have no preview.
+44. **The preview window stays hidden until its diff shows** (rule 7 of [Preview](#preview)). A manual test showed the deleted lines about one second after the file. The user asked for this fix on 2026-11-19.
 
 ## Work plan
 

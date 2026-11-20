@@ -13,6 +13,7 @@ local picker = require("didymus.ui.picker")
 ---@field open boolean
 ---@field focus_count integer The number of `focus()` calls of a panel.
 ---@field preview_win integer? The float of the preview, as the snacks sidebar has.
+---@field preview_count integer The number of previews. Only the `ready()` of the newest one applies.
 ---@field preview_bufs didymus.picker.PreviewBufs
 
 local M = {}
@@ -34,6 +35,7 @@ local function record(kind, opts, config, items)
     cursor = 1,
     open = true,
     focus_count = 0,
+    preview_count = 0,
     preview_bufs = picker.new_preview_bufs(),
   }
   table.insert(M.calls, call)
@@ -174,7 +176,8 @@ function M.press(key, target)
 end
 
 --- Show the item in the preview float of the last open panel, as a cursor move in the panel does.
---- A `location` shows the real buffer of the file. Call `on_preview`.
+--- A `location` shows the real buffer of the file. Call `on_preview`. Hide the float until its
+--- `ready()`, if it returns true.
 ---@param target (integer|string)? The index or the text of an item. Nil is the item under the cursor.
 ---@return integer win The preview float.
 function M.preview(target)
@@ -201,9 +204,18 @@ function M.preview(target)
   if location and location.line then
     pcall(vim.api.nvim_win_set_cursor, call.preview_win, { location.line, 0 })
   end
+  local win, wait, is_ready = call.preview_win, false, false
+  call.preview_count = call.preview_count + 1
+  local count = call.preview_count
   if call.opts.on_preview then
-    call.opts.on_preview(item, call.preview_win)
+    wait = call.opts.on_preview(item, win, function()
+      is_ready = true
+      if call.preview_count == count and vim.api.nvim_win_is_valid(win) then
+        vim.api.nvim_win_set_config(win, { hide = false })
+      end
+    end)
   end
+  vim.api.nvim_win_set_config(win, { hide = wait == true and not is_ready })
   call.preview_bufs:release(buf)
   return call.preview_win
 end

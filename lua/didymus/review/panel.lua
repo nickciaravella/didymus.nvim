@@ -225,8 +225,8 @@ function M.open(adapter, session)
       choose(session, item)
     end,
     actions = get_actions(session),
-    on_preview = function(_, win)
-      session:preview_diff(win)
+    on_preview = function(_, win, ready)
+      return session:preview_diff(win, ready)
     end,
   })
 end

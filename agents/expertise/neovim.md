@@ -185,6 +185,18 @@ The float has a `BufLeave` autocmd on the buffer where it opened. A picker, such
 
 - Checked: Neovim 0.12.5
 
+### A decoration provider gets `on_win` also for a hidden float
+
+A float with `hide = true` does not show, but each redraw still calls `on_win` for it. So a test that records the frames of a window with `on_win` must skip the frames where `nvim_win_get_config(win).hide` is true.
+
+- Proof: this command prints `on_win calls for the hidden float: 1`.
+
+  ```sh
+  nvim --clean --headless -c 'lua local b = vim.api.nvim_create_buf(false, true) local w = vim.api.nvim_open_win(b, false, { relative = "editor", row = 0, col = 0, width = 10, height = 2, hide = true }) local n = 0 vim.api.nvim_set_decoration_provider(vim.api.nvim_create_namespace("t"), { on_win = function(_, win) if win == w then n = n + 1 end return false end }) vim.api.nvim__redraw({ flush = true, valid = false }) io.write("on_win calls for the hidden float: ", n, "\n")' -c qa
+  ```
+
+- Checked: Neovim 0.12.6
+
 ## Lua scripts (`nvim -l`)
 
 ### A script that blocks in `io.read` does not exit on SIGTERM or SIGHUP

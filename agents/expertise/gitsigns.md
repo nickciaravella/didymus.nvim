@@ -72,3 +72,10 @@ A second `diffthis(…, { unified = true })` closes the view, but only if the cu
 
 - Proof: the test `render shows the view again after clear in a window with a different buffer`, and [`unified.lua`](https://github.com/lewis6991/gitsigns.nvim/blob/fd780920613e541cbdfac41bf711583ed49f9249/lua/gitsigns/unified.lua#L255-L272).
 - Checked: gitsigns.nvim `fd78092`
+
+### The unified view blocks the event loop while it copies the highlights of the deleted lines
+
+The update of a unified view calls `capture_removed_hunks_from_source()` with no yield. It copies the treesitter highlights of each deleted hunk from the base buffer. A redraw can come between `diffthis()` and that update, so a window that shows the buffer shows the signs first, and the deleted lines after the block. To show both together, hide the window until the `cb` of `diffthis()`. That `cb` comes after the update.
+
+- Proof: a timer of 2 ms in a Neovim with lua_ls and treesitter. For a Lua file with 76 hunks, the capture took 411 ms, and the loop was blocked for 433 ms. For 15 hunks, it was blocked for 42 ms. See [`unified.lua`](https://github.com/lewis6991/gitsigns.nvim/blob/fd780920613e541cbdfac41bf711583ed49f9249/lua/gitsigns/unified.lua#L116-L170). The test `the preview of the snacks files panel shows the unified view, until the panel loses the focus` checks each redraw of the preview.
+- Checked: gitsigns.nvim `fd78092`
