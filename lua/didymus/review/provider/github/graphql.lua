@@ -26,7 +26,7 @@ query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
       }
       files(first: 100, after: $endCursor) {
         pageInfo { hasNextPage endCursor }
-        nodes { path changeType additions deletions }
+        nodes { path changeType additions deletions viewerViewedState }
       }
     }
   }
@@ -246,6 +246,23 @@ mutation($threadId: ID!) {
     thread {
 ]] .. thread_fields .. [[
     }
+  }
+}
+]]
+
+--- Mark a file as viewed for the viewer, and `M.unmark_viewed` unmarks it.
+M.mark_viewed = [[
+mutation($pullRequestId: ID!, $path: String!) {
+  markFileAsViewed(input: { pullRequestId: $pullRequestId, path: $path }) {
+    pullRequest { id }
+  }
+}
+]]
+
+M.unmark_viewed = [[
+mutation($pullRequestId: ID!, $path: String!) {
+  unmarkFileAsViewed(input: { pullRequestId: $pullRequestId, path: $path }) {
+    pullRequest { id }
   }
 }
 ]]

@@ -952,6 +952,44 @@ end
 
 --- Open the input float at the cursor line, for a reply to `thread`.
 ---@param session didymus.review.Session
+--- Mark the file as viewed, or unmark it. A file with new changes since the view becomes viewed.
+--- With no path, use the file of the current window, else the file of the code window.
+---@param opts { path: string? }?
+function M.viewed(opts)
+  local session = get_open_review()
+  if not session then
+    return
+  end
+  local path = opts and opts.path
+  if not path then
+    local position = session:get_cursor_position()
+    if not position then
+      return show_warning(("no window shows a file of %s"):format(session.label))
+    end
+    path = session.change.files[position.file_index].path
+  end
+  local file = session:get_file(path)
+  if not file then
+    return show_warning(("%s is not a file of %s"):format(path, session.label))
+  end
+  if not session.provider.set_viewed then
+    return show_warning("the review provider cannot mark a file as viewed")
+  end
+  local viewed = file.viewed ~= "viewed"
+  local action = viewed and "mark" or "unmark"
+  track(("%s %s as viewed"):format(action, path), function(done)
+    session.provider:set_viewed(session.change, path, viewed, done)
+  end, function(err)
+    if err then
+      return show_error(("cannot %s %s as viewed: %s"):format(action, path, err))
+    end
+    if session:is_open() then
+      session:set_viewed(path, viewed and "viewed" or "unviewed")
+    end
+    vim.notify(("didymus: %sed %s as viewed"):format(action, path))
+  end)
+end
+
 ---@param thread didymus.review.Thread
 local function open_reply_input(session, thread)
   local options = config.options.review.input

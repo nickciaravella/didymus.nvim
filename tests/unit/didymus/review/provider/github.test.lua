@@ -187,6 +187,16 @@ T["get_change()"]["a renamed file has its new path and its old path, and the fil
   )
 end
 
+T["get_change()"]["gives the viewed state of each file"] = function()
+  mock_change("fork")
+  eq(
+    vim.tbl_map(function(file)
+      return file.viewed
+    end, get_change("38540").files),
+    { "viewed", "changed", "unviewed" }
+  )
+end
+
 T["get_change()"]["a file with no patch, by number in the current repo"] = function()
   mock_change("no_patch")
   local files = get_change("27317").files
@@ -1074,6 +1084,54 @@ T["post_change_comment()"]["posts a general comment on the PR"] = function()
     call("post_change_comment", make_comment_change(), body),
     { err = "gh api graphql: Could not resolve to a node" }
   )
+end
+
+T["set_viewed()"] = MiniTest.new_set()
+
+-- The node id of nickciaravella/didymus.nvim#93, where the replies were recorded.
+local viewed_node_id = "PR_kwDOVmiVUM8AAAABPebkjQ"
+
+T["set_viewed()"]["marks the file as viewed, and unmarks it, on the host of a URL"] = function()
+  mock_comment({
+    mark_viewed = fixture_reply("viewed_mark_graphql"),
+    unmark_viewed = fixture_reply("viewed_unmark_graphql"),
+  })
+  local change = { id = "93", github = { number = 93, node_id = viewed_node_id } }
+  eq(call("set_viewed", change, "README.md", true), {})
+  eq(commands, {
+    {
+      "gh",
+      "api",
+      "graphql",
+      "-f",
+      "query=" .. graphql.mark_viewed,
+      "-f",
+      "pullRequestId=" .. viewed_node_id,
+      "-f",
+      "path=README.md",
+    },
+  })
+
+  change.github.host = "github.example.com"
+  eq(call("set_viewed", change, "README.md", false), {})
+  eq(commands[2][5], "query=" .. graphql.unmark_viewed)
+  eq(vim.list_slice(commands[2], 10), { "--hostname", "github.example.com" })
+end
+
+T["set_viewed()"]["gives the error of gh, or an error if GitHub changes nothing"] = function()
+  local change = { id = "93", github = { number = 93, node_id = viewed_node_id } }
+  -- The recorded error for a path that is not in the PR.
+  mock_comment({
+    mark_viewed = { code = 1, stderr = "gh: Filepath must be part of pull request\n" },
+  })
+  eq(call("set_viewed", change, "no/such/file.txt", true), {
+    err = "gh api graphql: Filepath must be part of pull request",
+  })
+
+  mock_comment({ unmark_viewed = { stdout = '{"data":{"unmarkFileAsViewed":null}}' } })
+  eq(call("set_viewed", change, "README.md", false), {
+    err = "gh api graphql: GitHub did not change the viewed state",
+  })
 end
 
 T["submit_review()"] = MiniTest.new_set()

@@ -31,6 +31,9 @@
 ---@field base didymus.diff.Revision
 ---@field head didymus.diff.Revision
 
+--- The state of a file for the viewer. "changed" is a viewed file with new changes since the view.
+---@alias didymus.review.ViewedState "viewed"|"unviewed"|"changed"
+
 ---@class didymus.review.ChangedFile
 ---@field path string
 ---@field old_path string? The path before a rename or a copy.
@@ -38,6 +41,7 @@
 ---@field additions integer
 ---@field deletions integer
 ---@field patch string? The hunks of the unified diff, with no file header. Nil for a large or binary file, or a pure rename.
+---@field viewed didymus.review.ViewedState? Nil if the provider has no viewed state.
 
 ---@class didymus.review.Thread
 ---@field id string
@@ -85,6 +89,7 @@
 ---@field set_resolved fun(self, change: didymus.review.Change, thread_id: string, resolved: boolean, cb: fun(err: string?, thread: didymus.review.Thread?)) Give the thread with its new state.
 ---@field submit_review fun(self, change: didymus.review.Change, verdict: didymus.review.Verdict, body: string?, cb: fun(err: string?)) Submit the pending review. With no pending review, add a review with no comments.
 ---@field discard_review fun(self, change: didymus.review.Change, cb: fun(err: string?)) Delete the pending review and its comments. Give an error if there is none.
+---@field set_viewed? fun(self, change: didymus.review.Change, path: string, viewed: boolean, cb: fun(err: string?)) Mark the file as viewed, or unmark it. Optional.
 ---@field health fun() Report the dependencies with `vim.health`.
 
 local M = {}

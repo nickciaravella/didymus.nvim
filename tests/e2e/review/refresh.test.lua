@@ -276,7 +276,7 @@ T["review.panel.keys.refresh = false turns off the key"] = function()
     child.lua_get([[vim.tbl_map(function(action)
       return action.key
     end, require("didymus.ui.picker.test").calls[1].opts.actions)]]),
-    { "a", "c" }
+    { "a", "c", "v" }
   )
 end
 
