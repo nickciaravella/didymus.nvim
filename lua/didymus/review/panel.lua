@@ -8,6 +8,16 @@ local threads = require("didymus.review.threads")
 
 local M = {}
 
+local function set_highlights()
+  vim.api.nvim_set_hl(0, "DidymusFileViewed", { link = "Comment", default = true })
+end
+set_highlights()
+-- A color scheme clears the highlight groups.
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group = vim.api.nvim_create_augroup("didymus.review.panel", {}),
+  callback = set_highlights,
+})
+
 ---@class didymus.review.panel.Value
 ---@field kind "header"|"file"|"thread"
 ---@field file? didymus.review.ChangedFile
@@ -64,16 +74,23 @@ end
 ---@return didymus.picker.Item
 local function get_file_item(session, file, thread_count)
   local status = statuses[file.status]
+  -- A viewed file is dim, so that the files to review stand out.
+  local dim = file.viewed == "viewed" and "DidymusFileViewed" or nil
   local segments = {
-    { status[1], status[2] },
-    { " " .. file.path },
-    { " +" .. file.additions, "Added" },
-    { " -" .. file.deletions, "Removed" },
+    { status[1], dim or status[2] },
+    { " " .. file.path, dim },
+    { " +" .. file.additions, dim or "Added" },
+    { " -" .. file.deletions, dim or "Removed" },
   }
   -- A count of 0 on each row makes the rows long and adds no information.
   if thread_count > 0 then
     local noun = thread_count == 1 and "thread" or "threads"
-    table.insert(segments, { (" %d %s"):format(thread_count, noun), "Comment" })
+    table.insert(segments, { (" %d %s"):format(thread_count, noun), dim or "Comment" })
+  end
+  if file.viewed == "viewed" then
+    table.insert(segments, { " [viewed]", dim })
+  elseif file.viewed == "changed" then
+    table.insert(segments, { " [changed]", "DiagnosticWarn" })
   end
   local item = make_item("file:" .. file.path, segments, { kind = "file", file = file })
   -- The preview shows the location. A deleted file is not in the checkout.
@@ -169,6 +186,24 @@ local function get_actions(session)
         -- A require at the top makes a loop: the review module loads the session, which loads
         -- this module.
         require("didymus.review").refresh()
+      end,
+    })
+  end
+  if keys.viewed then
+    table.insert(actions, {
+      key = keys.viewed,
+      name = "mark the file as viewed, or unmark it",
+      fn = function(item)
+        ---@type didymus.review.panel.Value?
+        local value = item and item.value
+        local path = value
+          and (
+            value.kind == "file" and value.file.path
+            or value.kind == "thread" and value.thread.path
+          )
+        if path then
+          require("didymus.review").viewed({ path = path })
+        end
       end,
     })
   end

@@ -463,6 +463,30 @@ function Session:set_change(change, list)
   self:set_threads(list)
 end
 
+--- The file of the change at `path`.
+---@param path string
+---@return didymus.review.ChangedFile?
+function Session:get_file(path)
+  for _, file in ipairs(self.change.files) do
+    if file.path == path then
+      return file
+    end
+  end
+end
+
+--- Set the viewed state of the file at `path`. Show it in the panel.
+---@param path string
+---@param state didymus.review.ViewedState
+function Session:set_viewed(path, state)
+  local file = self:get_file(path)
+  if file then
+    file.viewed = state
+  end
+  if self:is_panel_open() then
+    self.panel:update()
+  end
+end
+
 --- Add a new thread. Show it in the panel and in the loaded files.
 ---@param thread didymus.review.Thread
 function Session:add_thread(thread)

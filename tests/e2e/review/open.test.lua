@@ -449,6 +449,7 @@ T["the command completes the review actions"] = function()
     "reply",
     "resolve",
     "submit",
+    "viewed",
   })
   eq(
     child.fn.getcompletion("Didymus review submit ", "cmdline"),
@@ -464,7 +465,7 @@ T["an unknown review action shows the usage"] = function()
   child.lua("require('didymus.command').run('review foo')")
   expect_message(
     "didymus: unknown command. Use :Didymus review open, close, files, fold, next, prev, comment, "
-      .. "reply, resolve, submit, discard or refresh."
+      .. "reply, resolve, submit, discard, refresh or viewed."
   )
 end
 

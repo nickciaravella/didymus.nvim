@@ -32,13 +32,15 @@
                 "path": "src/nvim/tui/tui.c",
                 "changeType": "MODIFIED",
                 "additions": 1,
-                "deletions": 1
+                "deletions": 1,
+                "viewerViewedState": "VIEWED"
               },
               {
                 "path": "src/nvim/tui/ugrid.c",
                 "changeType": "RENAMED",
                 "additions": 2,
-                "deletions": 2
+                "deletions": 2,
+                "viewerViewedState": "DISMISSED"
               }
             ]
           }
@@ -79,7 +81,8 @@
                 "path": "src/nvim/tui/ugrid.h",
                 "changeType": "RENAMED",
                 "additions": 1,
-                "deletions": 1
+                "deletions": 1,
+                "viewerViewedState": "UNVIEWED"
               }
             ]
           }

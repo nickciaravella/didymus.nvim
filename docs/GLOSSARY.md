@@ -53,4 +53,5 @@ Use these terms with these meanings. Add terms when we decide on them.
 | Thread float | The float that shows all comments of a thread that shows only in the panel, as markdown. |
 | Unit test | A test of a pure function, or of a function that uses only Neovim. It has no external dependencies. |
 | View | The window that shows an agent session: a float or a split. |
+| Viewed | The state of a file that the user marked as reviewed. The code host keeps it for each user. A viewed file is dim in the files panel. |
 | Workspace | The git checkout of a review. In the MVP, the current checkout. |
