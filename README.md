@@ -305,7 +305,7 @@ The review tabpage shows the diff of the pull request on the real file, in the c
 
 The diff shows when the review opens, and follows the code window: after `<CR>` in the files panel, `gd`, `gf` or `:e` to a file of the pull request, the diff shows for that file. Other windows show only the gitsigns signs.
 
-A deleted file always shows its base in the code window, with all lines in the `DiffDelete` highlight. `side` and `layout` on it apply to the next file. When the diff hides, the base stays in the code window until it shows a different buffer.
+A deleted file always shows its base, with all lines in the `DiffDelete` highlight. The `inline` layout shows the base in the code window. The `split` layout shows the base in the base window, and an empty buffer in the code window. The focus goes to the base. `side` on a deleted file applies to the next file. When the diff hides, the base stays in the code window until it shows a different buffer.
 
 In a different tabpage, `toggle`, `layout`, `side`, `next` and `prev` go to the review tabpage first. With no review, a warning shows.
 

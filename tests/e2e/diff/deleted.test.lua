@@ -127,11 +127,16 @@ local function wait_for_message(text)
   end)
 end
 
---- The name of the buffer of `win`: "base:<path>" for a base buffer, else the path.
+--- The name of the buffer of `win`: "base:<path>" for a base buffer, "empty:<path>" for the empty
+--- head buffer of a deleted file, else the path.
 ---@param win integer
 ---@return string
 local function shown(win)
   local name = child.api.nvim_buf_get_name(child.api.nvim_win_get_buf(win))
+  local empty_path = name:match("^didymus://deleted/(.*)$")
+  if empty_path then
+    return "empty:" .. empty_path
+  end
   local base_path = name:match("^didymus://%x+/(.*)$")
   if base_path then
     return "base:" .. base_path
@@ -222,18 +227,133 @@ T["if the code window is closed, the base buffer opens in a new window on the ri
   eq(shown(new_win), "base:b.txt")
 end
 
-T["the split layout closes the base window on a deleted file, and opens it again after"] = function()
+--- The window on the left of `win` in the current tabpage, or nil.
+---@param win integer
+---@return integer?
+local function find_left_win(win)
+  local wins = child.api.nvim_tabpage_list_wins(0)
+  for index, other in ipairs(wins) do
+    if other == win then
+      return wins[index - 1]
+    end
+  end
+end
+
+T["split"] = MiniTest.new_set()
+
+T["split"]["a deleted file shows its base buffer on the left, and an empty head buffer on the right"] = function()
   setup({ layout = "split" })
   local code_win = open_a()
-  eq(#child.api.nvim_tabpage_list_wins(0), 2)
   choose_file("b.txt")
   local render = wait_for_render(2)
-  eq({ render.layout, render.sides }, { "split", "base" })
-  eq(child.api.nvim_tabpage_list_wins(0), { code_win })
+  local base_win = find_left_win(code_win)
+  eq({ render.path, render.layout, render.sides }, { "b.txt", "split", "base" })
+  eq({ render.head_win, render.head_buf, render.base_win }, { nil, nil, base_win })
+  eq(child.api.nvim_tabpage_list_wins(0), { base_win, code_win })
+  eq({ shown(base_win), shown(code_win) }, { "base:b.txt", "empty:b.txt" })
+  eq(marks(base_win), { "1 diff split base" })
+  eq(marks(code_win), {})
+  local empty_buf = child.api.nvim_win_get_buf(code_win)
+  eq(child.api.nvim_buf_get_lines(empty_buf, 0, -1, true), { "" })
+  eq({
+    child.api.nvim_get_option_value("modifiable", { buf = empty_buf }),
+    child.api.nvim_get_option_value("buftype", { buf = empty_buf }),
+  }, { false, "nofile" })
+  -- The text is in the base window, so the focus goes there.
+  eq(child.api.nvim_get_current_win(), base_win)
+  eq(child.api.nvim_win_get_cursor(base_win)[1], 1)
+
   choose_file("c.txt")
   render = wait_for_render(3)
   eq({ render.path, render.layout, render.sides }, { "c.txt", "split", "both" })
+  eq({ shown(base_win), shown(code_win) }, { "base:c.txt", "c.txt" })
+  eq(child.api.nvim_get_current_win(), code_win)
+end
+
+T["split"]["next and prev stop in a deleted file at base line 1 of the base window"] = function()
+  setup({ layout = "split" })
+  local code_win = open_a()
+  wait_for_position(code_win, "a.txt", 2)
+  child.cmd("Didymus diff next")
+  local base_win = find_left_win(code_win) --[[@as integer]]
+  wait_for_position(base_win, "base:b.txt", 1)
+  eq(shown(code_win), "empty:b.txt")
+  eq(child.api.nvim_get_current_win(), base_win)
+  child.api.nvim_win_set_cursor(base_win, { 3, 0 })
+  child.cmd("Didymus diff prev")
+  wait_for_position(base_win, "base:b.txt", 1)
+  -- From the base window, the next stop is in the base window, as for a modified file.
+  child.cmd("Didymus diff next")
+  wait_for_position(base_win, "base:c.txt", 3)
+  eq(shown(code_win), "c.txt")
+  child.cmd("Didymus diff prev")
+  wait_for_position(base_win, "base:b.txt", 1)
+  eq(shown(code_win), "empty:b.txt")
+end
+
+T["split"]["a change of the layout or the sides moves the base buffer, and keeps the cursor line"] = function()
+  setup({ layout = "split" })
+  local code_win = open_a()
+  choose_file("b.txt")
+  wait_for_render(2)
+  local base_win = find_left_win(code_win) --[[@as integer]]
+  child.api.nvim_win_set_cursor(base_win, { 2, 0 })
+
+  child.cmd("Didymus diff layout inline")
+  local render = wait_for_render(3)
+  eq({ render.layout, render.sides, render.base_win }, { "inline", "base", code_win })
+  eq(child.api.nvim_tabpage_list_wins(0), { code_win })
+  eq(shown(code_win), "base:b.txt")
+  eq(child.api.nvim_get_current_win(), code_win)
+  eq(child.api.nvim_win_get_cursor(code_win)[1], 2)
+
+  child.cmd("Didymus diff layout split")
+  render = wait_for_render(4)
+  base_win = find_left_win(code_win) --[[@as integer]]
+  eq({ render.layout, render.base_win }, { "split", base_win })
+  eq({ shown(base_win), shown(code_win) }, { "base:b.txt", "empty:b.txt" })
+  eq(child.api.nvim_get_current_win(), base_win)
+  eq(child.api.nvim_win_get_cursor(base_win)[1], 2)
+
+  -- The head sides show one window, as for a modified file.
+  child.cmd("Didymus diff side head")
+  wait_for_message("didymus: b.txt is deleted, so only its base side shows")
+  eq(child.api.nvim_tabpage_list_wins(0), { code_win })
+  eq(shown(code_win), "base:b.txt")
+  child.cmd("Didymus diff side both")
+  wait_for_render(6)
   eq(#child.api.nvim_tabpage_list_wins(0), 2)
+end
+
+T["split"]["a close of the base window shows the base buffer in the code window, with the inline layout"] = function()
+  setup({ layout = "split" })
+  local code_win = open_a()
+  choose_file("b.txt")
+  wait_for_render(2)
+  child.api.nvim_win_close(find_left_win(code_win), false)
+  wait_for_message("didymus: the base window closed, so the diff layout is inline")
+  local render = wait_for_render(3)
+  eq({ render.layout, render.base_win }, { "inline", code_win })
+  eq(shown(code_win), "base:b.txt")
+end
+
+T["split"]["a hide shows the base buffer in the code window, and deletes the empty head buffer"] = function()
+  setup({ layout = "split" })
+  local code_win = open_a()
+  choose_file("b.txt")
+  wait_for_render(2)
+  local empty_buf = child.api.nvim_win_get_buf(code_win)
+  child.cmd("Didymus diff toggle")
+  eq(child.api.nvim_tabpage_list_wins(0), { code_win })
+  eq(shown(code_win), "base:b.txt")
+  eq(marks(code_win), {})
+  eq(child.api.nvim_buf_is_valid(empty_buf), false)
+  eq(child.api.nvim_get_current_win(), code_win)
+
+  child.cmd("Didymus diff toggle")
+  local base_win = find_left_win(code_win) --[[@as integer]]
+  eq(wait_for_render(3).base_win, base_win)
+  eq({ shown(base_win), shown(code_win) }, { "base:b.txt", "empty:b.txt" })
 end
 
 T["next and prev stop in a deleted file at base line 1"] = function()

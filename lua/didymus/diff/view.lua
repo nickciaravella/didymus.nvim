@@ -62,6 +62,7 @@ local progress_delay = 500
 ---@field private provider_err string?
 ---@field private attached table<integer, didymus.diff.view.Attached>
 ---@field private revisions table<didymus.diff.File, didymus.diff.view.Revision> The base buffers. They are deleted when the diff hides.
+---@field private empty_heads table<didymus.diff.File, integer> The empty head buffers of deleted files, for the code window of the split layout. They are deleted when the diff hides.
 ---@field private base_win integer? The base window of the split layout, on the left of the code window.
 ---@field private base_win_buf integer? The base buffer that the base window must show. Any other buffer ends the split layout.
 ---@field private display didymus.diff.view.Shown?
@@ -131,6 +132,7 @@ function View.new(opts)
     provider_err = provider_err and ("%s (diff.provider)"):format(provider_err),
     attached = {},
     revisions = {},
+    empty_heads = {},
     display_count = 0,
     warned = {},
     update_scheduled = false,
@@ -234,7 +236,7 @@ function View:find_base_file(buf)
   end
 end
 
---- The deleted file of the target whose base buffer is `buf`, or nil.
+--- The deleted file of the target whose base buffer or empty head buffer is `buf`, or nil.
 ---@param buf integer
 ---@return didymus.diff.File?
 function View:find_deleted_file(buf)
@@ -242,6 +244,36 @@ function View:find_deleted_file(buf)
   if file and file.status == "deleted" then
     return file
   end
+  for empty_file, empty_buf in pairs(self.empty_heads) do
+    if empty_buf == buf then
+      return empty_file
+    end
+  end
+end
+
+--- The empty head buffer of the deleted file `file`. The code window of the split layout shows
+--- it, as the base window shows the empty base buffer of an added file.
+---@param file didymus.diff.File
+---@return integer
+function View:get_empty_head_buf(file)
+  local buf = self.empty_heads[file]
+  if buf and vim.api.nvim_buf_is_valid(buf) then
+    return buf
+  end
+  local name = "didymus://deleted/" .. file.path
+  -- A buffer of an old review can have the name.
+  for _, old_buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_get_name(old_buf) == name then
+      vim.api.nvim_buf_delete(old_buf, { force = true })
+    end
+  end
+  -- A scratch buffer: `nofile`, `bufhidden=hide`, and no swap file.
+  buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_name(buf, name)
+  vim.bo[buf].modifiable = false
+  vim.bo[buf].readonly = true
+  self.empty_heads[file] = buf
+  return buf
 end
 
 --- An attached buffer of `file`: a buffer that has its hunks, else one that waits for them.
@@ -514,10 +546,52 @@ function View:enter_base()
   end)
 end
 
+--- Put the deleted file `file` in the windows. With `split`, the base window shows the base buffer,
+--- and the code window shows the empty head buffer. Else, the code window shows the base buffer,
+--- and the base window closes later. The cursor line and the focus go with the base buffer. Do not
+--- change the jumplist.
+---@param win integer The code window.
+---@param buf integer The buffer of the code window: the base buffer or the empty head buffer.
+---@param file didymus.diff.File
+---@param split boolean
+---@return integer buf The buffer of the code window.
+---@return integer? base_buf Nil if the base buffer is not loaded.
+function View:arrange_deleted(win, buf, file, split)
+  local state = self.revisions[file]
+  local base_buf = state and state.buf
+  if not (base_buf and vim.api.nvim_buf_is_valid(base_buf)) then
+    return buf
+  end
+  local current_win = vim.api.nvim_get_current_win()
+  if split and buf == base_buf then
+    local line = vim.api.nvim_win_get_cursor(win)[1]
+    self:show_base_buf(win, base_buf)
+    buf = self:get_empty_head_buf(file)
+    show_buf(win, buf, true)
+    set_cursor(self.base_win --[[@as integer]], line)
+    if current_win == win then
+      vim.api.nvim_set_current_win(self.base_win --[[@as integer]])
+    end
+  elseif not split and buf ~= base_buf then
+    local base_win = self.base_win
+    local shows_base = base_win
+      and vim.api.nvim_win_is_valid(base_win)
+      and vim.api.nvim_win_get_buf(base_win) == base_buf
+    show_buf(win, base_buf, true)
+    set_cursor(win, shows_base and vim.api.nvim_win_get_cursor(base_win)[1] or 1)
+    if shows_base and current_win == base_win then
+      vim.api.nvim_set_current_win(win)
+    end
+    buf = base_buf
+  end
+  return buf, base_buf
+end
+
 --- Show the diff of the buffer of the code window, if it is a file of the target. Clear the old
 --- display first. The split layout with both sides also shows the base buffer in the base window.
 --- With the "base" sides, the code window shows the base buffer. A deleted file always shows the
---- "base" sides, because it has no head buffer.
+--- "base" sides, because it has no head buffer. In the split layout with both sides, its base
+--- buffer is in the base window.
 function View:update()
   if not self.shown or vim.api.nvim_get_current_tabpage() ~= self.opts.tabpage then
     return
@@ -525,8 +599,16 @@ function View:update()
   self:check_base_win()
   local win = self.opts.get_code_win()
   local buf = win and vim.api.nvim_win_get_buf(win)
-  local base_file = buf and self:find_base_file(buf) or nil
-  local deleted = base_file ~= nil and base_file.status == "deleted"
+  local deleted_file = buf and self:find_deleted_file(buf)
+  local deleted_base_buf
+  if deleted_file then
+    ---@cast win integer
+    local split_both = self.layout == "split" and self.sides == "both"
+    buf, deleted_base_buf = self:arrange_deleted(win, buf, deleted_file, split_both)
+  end
+  local deleted = deleted_base_buf ~= nil
+  local deleted_split = deleted and buf ~= deleted_base_buf
+  local base_file = deleted and deleted_file or (buf and self:find_base_file(buf)) or nil
   if self.sides ~= "base" and not deleted then
     base_file = nil
   end
@@ -551,7 +633,7 @@ function View:update()
   self:clear_display()
   local file = base_file or (buf and self:find_file(buf))
   local split = layout == "split" and sides == "both"
-  if not (win and buf and file and split) then
+  if not (win and buf and file and (split or deleted_split)) then
     self:close_base_win()
   end
   if not (win and buf and file) then
@@ -576,6 +658,7 @@ function View:update()
     layout = layout,
     sides = sides,
     head_buf = head_buf,
+    base_win = deleted_split and self.base_win or nil,
     number = number,
   }
   self.display = new_display
@@ -594,8 +677,8 @@ function View:update()
       target = self.opts.target --[[@as didymus.diff.Target]],
       head_win = not base_file and win or nil,
       head_buf = head_buf,
-      base_win = base_file and win or new_display.base_win,
-      base_buf = base_file and buf or base_buf,
+      base_win = base_file and not deleted_split and win or new_display.base_win,
+      base_buf = deleted_base_buf or (base_file and buf) or base_buf,
     }, function(render_err)
       if render_err and is_current() then
         self:warn_once(file.path, render_err)
@@ -658,6 +741,11 @@ function View:forget(buf)
   for file, state in pairs(self.revisions) do
     if state.buf == buf then
       self.revisions[file] = nil
+    end
+  end
+  for file, empty_buf in pairs(self.empty_heads) do
+    if empty_buf == buf then
+      self.empty_heads[file] = nil
     end
   end
   if self.display and (self.display.buf == buf or self.display.head_buf == buf) then
@@ -1006,15 +1094,24 @@ function View:go_to(direction)
   ---@cast start_win integer
   ---@cast start_buf integer
   if start_deleted then
-    local line = get_deleted_stop(start_buf, vim.api.nvim_win_get_cursor(start_win)[1])
+    -- In the split layout, the base window shows the base buffer.
+    local deleted_win, deleted_buf = start_win, start_buf
+    if start_buf == self.empty_heads[start_deleted] then
+      deleted_win, deleted_buf = self.base_win, self.base_win_buf
+    end
+    local line = deleted_win
+      and deleted_buf
+      and vim.api.nvim_win_is_valid(deleted_win)
+      and get_deleted_stop(deleted_buf, vim.api.nvim_win_get_cursor(deleted_win)[1])
     if not line then
       start = { win = start_win, buf = start_buf, cursor = vim.api.nvim_win_get_cursor(start_win) }
       return check(1)
     end
+    ---@cast deleted_win integer
     self.jump = nil
-    vim.api.nvim_set_current_win(start_win)
+    vim.api.nvim_set_current_win(deleted_win)
     vim.cmd("normal! m'")
-    return set_cursor(start_win, line)
+    return set_cursor(deleted_win, line)
   end
   ---@cast start_head_buf integer
   wait_for_hunks(start_head_buf, start_file, function(file_hunks, base_buf)
@@ -1145,6 +1242,13 @@ function View:hide()
   if self.sides == "base" then
     self:leave_base()
   end
+  -- The empty head buffers are deleted below, so the code window must show the base buffer.
+  local win = self.opts.get_code_win()
+  local deleted_file = win and self:find_deleted_file(vim.api.nvim_win_get_buf(win))
+  if deleted_file then
+    ---@cast win integer
+    self:arrange_deleted(win, vim.api.nvim_win_get_buf(win), deleted_file, false)
+  end
   self.base_request, self.open_request = nil, nil
   self.shown = false
   self:clear_display()
@@ -1154,6 +1258,12 @@ function View:hide()
   for buf in pairs(attached) do
     self.provider:detach(buf)
   end
+  for _, empty_buf in pairs(self.empty_heads) do
+    if vim.api.nvim_buf_is_valid(empty_buf) then
+      vim.api.nvim_buf_delete(empty_buf, { force = true })
+    end
+  end
+  self.empty_heads = {}
   local revisions = self.revisions
   self.revisions = {}
   local code_win = self.opts.get_code_win()

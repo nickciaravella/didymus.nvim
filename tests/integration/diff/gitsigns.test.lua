@@ -622,6 +622,40 @@ T["split"]["turns off diff mode when the buffer comes back to the window"] = fun
   eq(get_options(head_win), head_options)
 end
 
+T["split"]["a buffer that leaves a window leaves the diff, so the next diff has only two buffers"] = function()
+  -- Neovim keeps a hidden buffer in the diff of the tabpage, until `:diffoff` in a window with it.
+  local _, head_win, base_win = open_split()
+  child.lua("render_split(...)", { head_win, base_win })
+  eq(wait_for_render(), vim.NIL)
+
+  child.api.nvim_set_current_win(head_win)
+  local b_buf = edit("b.txt")
+  child.lua("attach(...)", { b_buf, "b.txt" })
+  eq(wait_for_attach(b_buf)[1].err, vim.NIL)
+  -- The same text as the head buffer, so a diff of these two buffers has no changes.
+  child.lua(
+    [[
+    local base_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(base_buf, 0, -1, false, { "B" })
+    vim.api.nvim_win_set_buf(..., base_buf)
+  ]],
+    { base_win }
+  )
+  child.lua("render_split(...)", { head_win, base_win })
+  eq(wait_for_render(), vim.NIL)
+  for _, win in ipairs({ head_win, base_win }) do
+    local changes = child.lua(
+      [[
+      return vim.api.nvim_win_call(..., function()
+        return { vim.fn.diff_hlID(1, 1), vim.fn.diff_filler(1), vim.fn.diff_filler(2) }
+      end)
+    ]],
+      { win }
+    )
+    eq(changes, { 0, 0, 0 })
+  end
+end
+
 T["split"]["gives an error with no base window"] = function()
   local _, head_win = open_split()
   child.lua("render_split(...)", { head_win, nil })

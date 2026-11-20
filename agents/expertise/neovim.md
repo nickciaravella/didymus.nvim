@@ -161,12 +161,15 @@ With `signcolumn=auto`, the first sign of a buffer makes the sign column show. B
 
 ### Diff mode comes back when its buffer comes back to the window
 
-Neovim keeps the window options of each buffer in each window. If the window shows a different buffer, `:diffoff` changes the options of that buffer only. When the old buffer comes back to the window, 'diff', 'scrollbind', 'cursorbind' and 'foldmethod=diff' come back too. A new buffer in the window gets no diff options. So turn off diff mode before the buffer leaves, or in `BufWinEnter` when it comes back. The gitsigns diff provider does it in `BufWinEnter`.
+Neovim keeps the window options of each buffer in each window. If the window shows a different buffer, `:diffoff` changes the options of that buffer only. When the old buffer comes back to the window, 'diff', 'scrollbind', 'cursorbind' and 'foldmethod=diff' come back too. A new buffer in the window gets no diff options. So turn off diff mode in `BufWinEnter` when the buffer comes back. The gitsigns diff provider does it in `BufWinEnter`.
 
-- Proof: the test "turns off diff mode when the buffer comes back to the window" in `tests/integration/diff/gitsigns.test.lua`. This command prints `true true diff`:
+`BufWinLeave` is too late for the options: Neovim saved them before the event, so a `:diffoff` there does not stop diff mode from coming back. But the provider must also run `:diffoff` in `BufWinLeave`, because a hidden buffer stays in the diff of the tabpage (`:h diff-mode`). Else, the next diff compares three or more buffers, and its highlights are wrong.
+
+- Proof: the tests "turns off diff mode when the buffer comes back to the window" and "a buffer that leaves a window leaves the diff, so the next diff has only two buffers" in `tests/integration/diff/gitsigns.test.lua`. Each of these commands prints `true true diff`:
 
   ```sh
   cd "$(mktemp -d)" && echo a > a.txt && echo b > b.txt && nvim --clean --headless -c 'edit a.txt' -c 'vsplit b.txt' -c 'windo diffthis' -c 'wincmd l' -c 'enew' -c 'diffoff' -c 'buffer a.txt' -c 'lua print(vim.wo.diff, vim.wo.scrollbind, vim.wo.foldmethod)' -c qa
+  cd "$(mktemp -d)" && echo a > a.txt && echo b > b.txt && nvim --clean --headless -c 'edit a.txt' -c 'vsplit b.txt' -c 'windo diffthis' -c 'autocmd BufWinLeave * diffoff' -c 'wincmd l' -c 'enew' -c 'buffer a.txt' -c 'lua print(vim.wo.diff, vim.wo.scrollbind, vim.wo.foldmethod)' -c qa
   ```
 
 - Checked: Neovim 0.12.6

@@ -159,7 +159,7 @@ Calls go in one direction: `command` → `diff/init` → `review` (for the curre
 ---@field target didymus.diff.Target
 ---@field head_win integer?  The code window with the head buffer. Nil if the sides are "base".
 ---@field head_buf integer?  The attached head buffer, which has the hunks. Also for "base", when it is hidden. Nil for a deleted file.
----@field base_win integer?  The window with the base revision buffer. The code window if the sides are "base".
+---@field base_win integer?  The window with the base revision buffer. The code window if the sides are "base", except for a deleted file in the split layout.
 ---@field base_buf integer?  Nil for inline "both" and for "head".
 
 ---@class didymus.diff.Capabilities
@@ -277,7 +277,7 @@ diff = {
 2. The diff view attaches only when the review tabpage is current (fact 8). On `TabEnter`, it checks the code window again.
 3. The callbacks of an old display do nothing. For example, a slow `attach` does not render after the code window shows a different file.
 4. A buffer stays attached until the diff hides or the review closes. Then the diff view detaches all buffers. So a return to a file is fast. An unloaded buffer is detached.
-5. A deleted file is not in the checkout. The code window shows its base buffer. See [Deleted files](#deleted-files).
+5. A deleted file is not in the checkout. The code window shows its base buffer, or its empty head buffer in the split layout. See [Deleted files](#deleted-files).
 6. The target does not change at a refresh, because the checkout does not change. See rule 5 of [the review refresh](review.md#refresh).
 
 ### Hide and close
@@ -300,7 +300,7 @@ diff = {
 10. If the provider does not have a layout, `layout` shows `didymus: the diff provider does not have the <layout> layout`, and the layout does not change. If `diff.layout` has such a layout, the diff shows `inline`, with this warning once.
 11. `:tabclose` and `review close` close the base window with no message.
 
-The revision buffers of `diff/revision.lua` have the name `didymus://<sha7>/<path>`, `buftype=nofile`, `bufhidden=hide`, no swap file, and the filetype of the path. They are unlisted and not modifiable. `nofile` keeps LSP off, because `vim.lsp.enable()` attaches only to buffers with an empty `buftype`. gitsigns also skips them. An added file has an empty base buffer, with no `git show`. A renamed file uses its base path.
+The revision buffers of `diff/revision.lua` have the name `didymus://<sha7>/<path>`, `buftype=nofile`, `bufhidden=hide`, no swap file, and the filetype of the path. They are unlisted and not modifiable. `nofile` keeps LSP off, because `vim.lsp.enable()` attaches only to buffers with an empty `buftype`. gitsigns also skips them. An added file has an empty base buffer, with no `git show`. A deleted file has an empty head buffer, `didymus://deleted/<path>`, for the split layout. A renamed file uses its base path.
 
 ### Sides
 
@@ -348,18 +348,20 @@ The revision buffers of `diff/revision.lua` have the name `didymus://<sha7>/<pat
 
 ### Deleted files
 
-A deleted file is not in the checkout, so it has no head buffer. The diff shows its base buffer in the code window.
+A deleted file is not in the checkout, so it has no head buffer. The diff shows its base buffer in the code window. In the split layout with both sides, the base window shows the base buffer, and the code window shows an empty head buffer, as for an added file on the other side.
 
 1. With the diff shown, `<CR>` on a deleted file in the panel calls `View:open_deleted_file(path)`. The view gets the base buffer with `git show`, then shows it with `open_file(path, 1, { buf = base_buf })`. So the jumplist, the focus and a closed code window act as for a head file.
 2. A newer buffer in the code window wins over the open. A `git show` error shows each time, because the user gave the command.
 3. With the diff hidden or not available, `<CR>` shows `didymus: <path> is deleted in <label>`, and opens nothing.
 4. The diff view makes the hunks: one `delete` hunk with all base lines, from `hunks.get_deleted_file_hunks()`. The provider does not attach.
-5. The base buffer of a deleted file always shows the `base` display: all lines in `DiffDelete`, and no base window. `diff.sides` and the layout do not change, so the next file shows as before. In the split layout, the base window closes, and opens again with the next file.
-6. `side base` on a deleted file starts the temporary `base` sides. `side both` and `side head` set the sides for the next file. The base buffer stays, and `didymus: <path> is deleted, so only its base side shows` shows. `layout` changes with no message.
-7. The base buffer of a deleted file is a base buffer of the target, so it keeps the `base` sides (rule 5 of [Sides](#sides)). It does not start them.
-8. `next` and `prev` stop at base line 1 of a deleted file, with all sides. From the base buffer, `next` goes to the next file with the current sides. From the base window of the split layout, the stop shows in the code window, and the focus goes there.
-9. A hide of the diff keeps the base buffer of a deleted file in the code window, with no marks. It gets `bufhidden=wipe`, so it goes when the code window shows a different buffer or the review closes. A new show uses it again.
-10. `review next file`, `hunk` and `thread` skip deleted files. The panel preview of a deleted file has no location. The base buffer shows no threads (#82).
+5. The base buffer of a deleted file always shows the `base` display: all lines in `DiffDelete`. `diff.sides` and the layout do not change, so the next file shows as before. With the inline layout, or the `head` or `base` sides, the code window shows the base buffer, and there is no base window.
+6. In the split layout with both sides, the diff view shows the base buffer in the base window, and the empty head buffer in the code window. The display has the `base` sides, the base window as `base_win`, and no `head_win`. The provider marks only the base window, with no native diff mode. The empty head buffer is `nofile` and not modifiable.
+7. A change between the two arrangements moves the base buffer, and keeps its cursor line. The focus goes with the base buffer, because the empty head buffer has no text. So `<CR>` and `next` in the split layout put the focus in the base window. A close of the base window changes the layout to `inline`, and the code window shows the base buffer.
+8. `side base` on a deleted file starts the temporary `base` sides. `side both` and `side head` set the sides for the next file. The base buffer stays, and `didymus: <path> is deleted, so only its base side shows` shows. `layout` changes with no message.
+9. The base buffer of a deleted file is a base buffer of the target, so it keeps the `base` sides (rule 5 of [Sides](#sides)). It does not start them.
+10. `next` and `prev` stop at base line 1 of a deleted file, with all sides. From the base buffer in the code window, `next` goes to the next file with the current sides. From the base window, `next` uses the base lines, as in rule 5 of [Navigation](#navigation).
+11. A hide of the diff keeps the base buffer of a deleted file in the code window, with no marks. It gets `bufhidden=wipe`, so it goes when the code window shows a different buffer or the review closes. A new show uses it again. In the split layout, the code window shows the base buffer first, and the empty head buffer is deleted.
+12. `review next file`, `hunk` and `thread` skip deleted files. The panel preview of a deleted file has no location. The base buffer shows no threads (#82).
 
 ## gitsigns provider
 
@@ -392,8 +394,9 @@ The gitsigns view of the user, such as `:Gitsigns diffthis`, can conflict with t
 1. Neovim computes the diff of the split layout with the `'diffopt'` of the user. So it can show a hunk differently from the gitsigns hunks. `next` and `prev` use the gitsigns hunks.
 2. Before `:diffthis`, the provider saves the window options that diff mode changes: `'diff'`, `'scrollbind'`, `'cursorbind'`, `'wrap'`, `'foldmethod'`, `'foldcolumn'`, `'foldenable'` and `'foldlevel'`. `clear` sets them again after `:diffoff`, because `:diffoff` does not put back `'foldenable'`. It also puts back the global `'scrollopt'`.
 3. Neovim keeps the window options of each buffer. So diff mode comes back when the buffer comes back to the window, also after `clear`. The provider turns it off in `BufWinEnter`, and the diff view renders again if necessary.
-4. The provider turns off only the diff mode that it turned on. A new buffer in the window has no diff options. See [the Neovim notebook](../../agents/expertise/neovim.md#windows).
-5. Diff mode folds the lines that did not change. The inline threads stay in the code window, as virtual lines. A thread on a line in a closed fold shows when the fold opens.
+4. A hidden buffer stays in the diff of the tabpage (`:h diff-mode`). So the provider runs `:diffoff` in `BufWinLeave`, while the window shows the buffer. Else, the next file compares three or more buffers, and its highlights are wrong. See [the Neovim notebook](../../agents/expertise/neovim.md#windows).
+5. The provider turns off only the diff mode that it turned on. A new buffer in the window has no diff options. See [the Neovim notebook](../../agents/expertise/neovim.md#windows).
+6. Diff mode folds the lines that did not change. The inline threads stay in the code window, as virtual lines. A thread on a line in a closed fold shows when the fold opens.
 
 ### Internal gitsigns calls
 
@@ -537,6 +540,11 @@ The user approved these decisions of [#81](https://github.com/nickciaravella/did
 44. **`next` and `prev` stop at base line 1 of a deleted file.**
 45. **A hide keeps the base buffer of a deleted file in the code window,** with `bufhidden=wipe`.
 46. **`review next`, the panel preview and the threads do not change** for deleted files.
+
+The user asked for these changes after the manual test of #81 on 2026-11-19.
+
+47. **The split layout shows a deleted file in two windows:** the base buffer on the left, and an empty head buffer on the right. The focus goes with the base buffer.
+48. **The gitsigns provider runs `:diffoff` in `BufWinLeave`,** so that a hidden buffer leaves the diff. Before, each split diff after the first one also compared the hidden buffers of the files before it.
 
 ## Work plan
 

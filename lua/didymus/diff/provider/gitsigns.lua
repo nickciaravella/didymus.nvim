@@ -186,6 +186,26 @@ local function turn_off_diff(win)
 end
 
 local diff_group = vim.api.nvim_create_augroup("didymus.diff.gitsigns", {})
+-- A hidden buffer stays in the diff of the tabpage, so the next diff would compare three or more
+-- buffers. Only `:diffoff` while the window shows the buffer removes it. Neovim saved the window
+-- options of the buffer before this event, so `BufWinEnter` must still put them back.
+vim.api.nvim_create_autocmd("BufWinLeave", {
+  group = diff_group,
+  callback = function(args)
+    for win, bufs in pairs(diff_wins) do
+      if
+        bufs[args.buf]
+        and vim.api.nvim_win_is_valid(win)
+        and vim.api.nvim_win_get_buf(win) == args.buf
+        and vim.wo[win].diff
+      then
+        vim.api.nvim_win_call(win, function()
+          vim.cmd("diffoff")
+        end)
+      end
+    end
+  end,
+})
 vim.api.nvim_create_autocmd("BufWinEnter", {
   group = diff_group,
   callback = function()
