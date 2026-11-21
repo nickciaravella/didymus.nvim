@@ -29,8 +29,8 @@ M.defaults = {
       keys = { post = "<C-s>", add = "<C-y>", cancel = "q" }, -- Also for a reply. A submit has only `post`.
     },
     thread = {
-      -- In the thread float of a thread that shows only in the panel. False turns a key off.
-      keys = { reply = "r", resolve = "x" },
+      -- In a focused inline thread, or in a thread split. False turns a key off.
+      keys = { reply = "r", resolve = "x", fold = "z" },
     },
   },
   diff = {

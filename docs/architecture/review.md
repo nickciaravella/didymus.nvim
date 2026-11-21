@@ -160,51 +160,52 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 
 ### Inline threads
 
-`lua/didymus/review/threads.lua` draws the threads in the files, and opens the thread float. The session keeps the fold state.
+`lua/didymus/review/threads.lua` draws the threads in the files. `lua/didymus/review/markdown.lua` highlights markdown with the built-in treesitter parsers of Neovim 0.12 and wraps styled chunks. `lua/didymus/review/inline_box.lua` manages the embedded inline windows for focus, comments and replies, plus the bottom split for deleted files. The session keeps the fold state.
 
 1. The review gets the threads after the review tabpage opens, with a progress message. Then the session updates the panel and the marks. On an error, the message shows and the review stays open. A close, a newer review or a newer get of the threads ignores the result. See [Refresh](#refresh).
-2. A thread shows in the file at the last line of its range, as on GitHub. The `<CR>` of the panel, `next` and `prev` use this line.
-3. Outdated threads, threads on the base side and threads on the file show only in the panel, and in the thread float.
-4. Each thread has one extmark in the namespace `didymus.review`. It has a sign with the comment count (`9+` above 9), and the thread in `virt_lines` under the line, with the indent of the line. So the thread does not cover the code.
-5. The id of an extmark is the index of its thread in the session. `fold`, `reply` and `resolve` read the extmarks at the cursor line, so they follow edits of the text.
-6. The session draws the marks in all loaded buffers of files with threads, and again on `BufReadPost`, also after `:checktime` or `:edit!`. The close of the review removes all marks.
-7. The marks show only in the windows of the review tabpage, because the review buffers are the normal buffers of the user. See rule 8.
-8. The scope uses `nvim__ns_set(ns, { wins = … })`. Neovim 0.12 marks it as experimental. The session gives it all windows of the review tabpage, at the start and on `WinNew`. The list is never empty, because an empty list shows the marks in all windows. If `vim.api.nvim__ns_set` does not exist, the marks show in all windows, with no error.
-9. With `signcolumn=auto`, a window outside the review tabpage that shows a review buffer has an empty sign column. The sign column counts the signs of the buffer, not of the window.
+2. A head-side thread shows in the file under the last line of its range, as on GitHub. The `<CR>` of the panel, `next` and `prev` use this line.
+3. Outdated threads, threads on the base side and threads on the file show inline above line 1 (`virt_lines_above`), with no sign on line 1. On a deleted file with no buffer, `<CR>` in the panel opens a bottom split under the code window.
+4. All `virt_lines` on the same `(row, above)` combine into one extmark in the namespace `didymus.review`, so Neovim keeps them in panel order. Additional threads on the same row get a tracking extmark with `id = index` so `at_cursor()` finds every thread and follows edits.
+5. The session draws the marks in all loaded buffers of files with threads (or an active inline box), and again on `BufReadPost`, also after `:checktime` or `:edit!`. The close of the review removes all marks and closes any inline box.
+6. The marks show only in the windows of the review tabpage, because the review buffers are the normal buffers of the user. See rule 7.
+7. The scope uses `nvim__ns_set(ns, { wins = … })`. Neovim 0.12 marks it as experimental. The session gives it all windows of the review tabpage, at the start and on `WinNew`. The list is never empty, because an empty list shows the marks in all windows. If `vim.api.nvim__ns_set` does not exist, the marks show in all windows, with no error.
+8. With `signcolumn=auto`, a window outside the review tabpage that shows a review buffer has an empty sign column. The sign column counts the signs of the buffer, not of the window.
 
-#### Folds
+#### Folds and boxes
 
-```
+```text
 2 local count = 2
-  ┌ 💬 @octocat
-  │ Why two?
-  ├ @hubot [pending]
-  │ Because.
-  └ <Space>rr reply  <Space>rx resolve  <Space>rz fold
+  ┌─ 💬 @octocat ────────────────────────────────────────────┐
+  │ Why two?                                                 │
+  ├─ @hubot [pending] ───────────────────────────────────────┤
+  │ Because.                                                 │
+  └─ <Space>rr reply  <Space>rx resolve  <Space>rz fold ─────┘
   local total = count * 2
   ✅ @hubot Rename this.
 ```
 
-1. A folded thread is one line: the text of its panel row.
-2. An unfolded thread shows all comments in a frame. `┌` and the icon come before the first author, and `├` before each next author. `│` comes before each line of a body, and `└` before the last line. A pending comment has `[pending]` after its author. The body is plain text, with no markdown. A resolved thread is dim.
-3. The session keeps the fold state that the user set, by thread id, so a refresh keeps it. With no state, a resolved thread is folded and an active thread is unfolded, as on github.com. A resolve or an unresolve removes the state, so the thread folds or unfolds with its new state.
-4. `fold` folds or unfolds the threads at the cursor line, with no question, because `next` treats them as one stop. If one of them is unfolded, it folds all of them. `fold all` does the same for all threads of the session. With no thread, a warning shows.
+1. A folded thread is one line: the text of its panel row (with `[base]` or `[file]` for top-of-file threads).
+2. An unfolded thread shows all comments in a 4-sided box (`┌─┐`, `│ │`, `├─┤`, `└─┘`), aligned to the line indent and the text width of the code window. `DidymusThreadBorder` highlights the border. A pending comment has `[pending]` after its author. Comment bodies get built-in `markdown` and `markdown_inline` treesitter highlights (plus installed parsers for fenced code blocks). A resolved thread is dim.
+3. The session keeps the fold state that the user set, by thread id, so a refresh keeps it. With no state, a resolved, outdated or base-side thread is folded, and an active head-side or file-level thread is unfolded. A resolve or an unresolve removes the state, so the thread folds or unfolds with its new state.
+4. `fold` folds or unfolds the threads at the cursor line, with no question, because `next` treats them as one stop. Inside a focused thread, `fold` closes focus and folds that thread. `fold all` does the same for all head-line threads of the session. With no thread, a warning shows.
 5. `next thread`, `prev thread` and the `<CR>` of the panel unfold the threads at the line. `file` and `hunk` do not.
 6. After an unfold at a line, the window scrolls so that the threads under the line show, if they fit. The cursor line stays in the window, also with `'scrolloff'`. `nvim_win_text_height()` counts the `virt_lines` under a line as a part of the next line.
-7. The last line of an unfolded thread shows the keys that the user mapped to `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)` and `<Plug>(didymus-review-fold)`, as `keytrans()` writes them. A buffer mapping comes before a global mapping. A resolved thread shows `unresolve`. The line shows only if it fits. didymus sets no keys in the review buffers, because they are the normal buffers of the user, also in other tabpages.
+7. The bottom border of an unfolded thread shows the keys that the user mapped to `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-fold)` and `<Plug>(didymus-review-focus)`, as `keytrans()` writes them. A buffer mapping comes before a global mapping. A resolved thread shows `unresolve`. The keys show only if they fit. didymus sets no keys in the review buffers, because they are the normal buffers of the user, also in other tabpages.
 
 #### Wrap
 
-1. The lines of a body wrap at the spaces, at the text width. A word that is longer than a line breaks. Spaces at the start of a line stay, because they can be the indent of code. Tabs become spaces, with the `'tabstop'` of the buffer.
+1. The styled chunks of a body wrap at spaces, at the inner box width. A word that is longer than a line breaks and keeps its highlight. Spaces at the start of a line stay, because they can be the indent of code. Tabs become spaces, with the `'tabstop'` of the buffer.
 2. The text width is the width of the narrowest window of the review tabpage that shows the buffer, minus its `textoff`. A float, such as the preview of a picker, does not count. If no window shows the buffer, the code window gives the width.
 3. Only a redraw updates the sign column, and with it the `textoff` of `getwininfo()`. So with `signcolumn=auto`, the first draw of a buffer uses a width that is 2 too large. `on_win` of a decoration provider also gets the old `textoff`, but `on_end` gets the new one.
-4. So the session sets a decoration provider on the namespace. At `on_end` of each redraw of the review tabpage, it compares the text width of each buffer with an unfolded thread to the width of its last draw. If they are different, it draws the buffer again in `vim.schedule()`, because a decoration provider must not change extmarks. This also covers a resize, a new window and a change of `'number'`. A folded thread does not wrap, so a buffer with only folded threads needs no check.
+4. So the session sets a decoration provider on the namespace. At `on_end` of each redraw of the review tabpage, it compares the text width of each buffer with an unfolded thread or inline box to the width of its last draw. If they are different, it draws the buffer again in `vim.schedule()` and syncs any open inline box.
 
-#### Thread float
+#### Inline focus and bottom split
 
-1. The thread float shows a thread with no line. `<CR>` on its panel row opens it with `vim.lsp.util.open_floating_preview()`, as a hover: next to the panel, closed by a move of the cursor, focused by a second `<CR>`, closed by `q`. The float is markdown. Each comment is `**@author**`, with `*pending*` for a pending comment, then the body. A line separates the comments. The title is the path, the line, and the tags `base`, `resolved` and `outdated`.
-2. A float that opens from the panel is not wider than the panel, because the float of Neovim is not wider than the current window.
-3. The order of the threads is the order of the panel: the files in the order of the provider. In each file, the threads with a line come first, by line. The other threads stay in the order of the provider.
+1. `:Didymus review focus` and `<Plug>(didymus-review-focus)` put a read-only markdown window (`relative = "win"`, `statuscolumn = " "`, 4-sided single border) into the exact `virt_lines` space of the thread, so no code hides under it. Inside it, the user can move the cursor, select text, yank, follow links and scroll long threads.
+2. Leaving a read-only focused thread (`q`, `<Esc>` or `WinLeave`) closes the window and restores the `virt_lines` box.
+3. `<CR>` on a top-of-file thread (outdated, base side or file level) in the panel opens the file at line 1 and focuses the thread inline above line 1. On a deleted file with no buffer, it opens a bottom split under the code window.
+4. The focused thread and the bottom split have the keys of `review.thread.keys`: `r` replies, `x` resolves or unresolves, and `z` folds (in an inline thread). `false` turns a key off.
+5. The order of the threads is the order of the panel: the files in the order of the provider. In each file, the threads with a line come first, by line. The other threads stay in the order of the provider.
 
 ### Navigation
 
@@ -229,35 +230,34 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 
 ### Comments
 
-`:[range]Didymus review comment` adds a thread on the head side. `M.comment()` in `lua/didymus/review/init.lua` does the checks and opens the input float.
+`:[range]Didymus review comment` adds a thread on the head side. `M.comment()` in `lua/didymus/review/init.lua` does the checks and opens an inline markdown box under the lines.
 
 1. The lines are the range of the command, the selection in visual mode, or the cursor line. The `<Plug>` mapping leaves visual mode, as a `:` command does.
-2. The current window must show a file of the change, in any tabpage. If a check fails, the reason shows as a warning, and no float opens.
+2. The current window must show a file of the change. If a check fails, the reason shows as a warning, and no box opens.
 3. The buffer must not be modified, and all lines must be in one commentable range. If the commentable ranges are unknown, the code host decides.
 4. didymus refuses a range across two hunks. GitHub accepts it, but keeps only the hunk of the last line. github.com does not let you select it.
 5. Then `HEAD` must be the change head. After a [refresh](#refresh) with a new head, git can have no commit of the new head, and `git diff` gives an error that does not tell the reason. A local commit also moves `HEAD`. Then `git diff --quiet <head_sha> -- <path>` checks the file on disk. A file that is different from the change head has different line numbers.
-6. The input float opens above the lines. Its title is `path:3` or `path:3-5`. `review.input` sets its size and its keys.
-7. The float has two actions, as the float of the agent. "comment now" (`keys.post`, `<C-s>`) posts the comment at once. "add to review" (`keys.add`, `<C-y>`) adds it to the pending review. The reply and the submit of the review use the same keys.
-8. On an action, `provider:add_comment()` runs with a progress message. `draft.pending` is false for "comment now". The session adds the new thread, and updates the panel and the marks. If the review closed, only the message shows.
-9. If the first comment of a thread is pending, the thread has the `[pending]` tag, in the panel and at the line. A comment that is posted at once has no tag.
-10. If the provider fails, the error shows on one line, because a longer message makes the user press Enter. The session keeps the draft. The next comment on the same file and lines starts with its text, for both actions.
-11. The session keeps the provider that gave the change, because only that provider knows its own fields of the change.
+6. The inline box opens under the last line of the range, in `virt_lines` space so it covers no code, and highlights the target lines. Its title is `New comment (path:3)` or `New comment (path:3-5)`. It spans the text width of the code window minus the line indent, and grows up to `review.input.max_height`.
+7. The box has two actions: "comment now" (`keys.post`, `<C-s>`) posts the comment at once, and "add to review" (`keys.add`, `<C-y>`) adds it to the pending review. `q` and `<Esc>` in normal mode cancel.
+8. An open inline editor stays alive when the user leaves it, scrolls away or opens another file. It hides while off screen and shows again on return. Only submit, cancel or review close removes it. Only one inline editor is open at a time: another `comment` or `reply` at a different place shows a warning, and the same place focuses the open editor.
+9. On an action, `provider:add_comment()` runs with a progress message. `draft.pending` is false for "comment now". The session adds the new thread, and updates the panel and the marks. If the review closed, only the message shows.
+10. If the first comment of a thread is pending, the thread has the `[pending]` tag, in the panel and at the line. A comment that is posted at once has no tag.
+11. If the provider fails, the error shows on one line, because a longer message makes the user press Enter. The session keeps the draft. The next comment on the same file and lines starts with its text, for both actions.
+12. The session keeps the provider that gave the change, because only that provider knows its own fields of the change.
 
 ### Replies and resolve
 
 `M.reply()` and `M.resolve()` in `lua/didymus/review/init.lua` act on the thread at the cursor. `Session:pick_thread_at_cursor()` finds it.
 
-1. If the thread float is open, and the current window is the float or the window where it opened, the thread is the thread of the float. A move of the cursor closes the float, so the cursor is still at that thread. Else, the thread is the thread with a mark at the cursor line. If more than one thread is at the line, the select role of the picker asks which one, with the `choice` kind.
-2. The cursor cannot go into the `virt_lines` of a thread. So the cursor line selects the thread, and the select is the clear choice on a line with two threads.
-3. The thread float opens only from the panel, for a thread with no line. In the panel, the commands use only the thread of an open float. `<CR>` on a thread row opens the float, and a second `<CR>` focuses it. Then the float keys work.
-4. The thread float has the keys of `review.thread.keys`: `r` replies, and `x` resolves or unresolves. They call the same functions as the commands. `false` turns a key off. The footer shows the keys only if it fits, because Neovim cuts a long footer from the start.
-5. Before an action, didymus checks `can_reply`, `can_resolve` or `can_unresolve` of the thread. If the viewer cannot do the action, a warning shows, and the provider gets no call. On a resolved thread, `resolve` unresolves it. The description of `<Plug>(didymus-review-resolve)` is "resolve or unresolve".
-6. Each action closes the thread float first. If the float is the current window, the focus goes back to the window where the float opened.
-7. `reply` opens the input float at the cursor line of that window: the code window or the panel. The title is `Reply to path:19`, or `Reply to path` for a thread with no line. It uses `review.input`. A reply is a comment, so the float has the two actions of the comment float: "reply now" (`keys.post`, `<C-s>`) posts the reply at once, and "add to review" (`keys.add`, `<C-y>`) adds it to the pending review.
-8. A reply has no line numbers, so didymus does not check the file on disk. Replies also work on outdated threads and on threads on the base side.
-9. On submit, `provider:reply()` runs with a progress message. The session adds the comment to the thread, and updates the panel and the marks. A reply that is posted at once is not pending, so it has no `[pending]` tag. If the provider fails, the session keeps the draft. The next reply to the same thread starts with its text, as for a comment that GitHub refuses.
-10. `provider:set_resolved()` gives the thread with its new state, because the `can_…` fields change. The session replaces the thread, and updates the panel and the marks. A resolved thread is dim and folded. See [Folds](#folds), rule 3.
-11. If the review closed before the provider replies, only the message shows.
+1. If a focused inline thread or thread split is current, the thread is its thread. Else, the thread is the thread with a mark at the cursor line. If more than one thread is at the line, the select role of the picker asks which one, with the `choice` kind.
+2. The cursor cannot go into the `virt_lines` of an unfocused thread. `:Didymus review focus` moves the cursor into the thread inline.
+3. The focused thread has the keys of `review.thread.keys`: `r` replies, `x` resolves or unresolves, and `z` folds. They call the same functions as the commands. `false` turns a key off.
+4. Before an action, didymus checks `can_reply`, `can_resolve` or `can_unresolve` of the thread. If the viewer cannot do the action, a warning shows, and the provider gets no call. On a resolved thread, `resolve` unresolves it. The description of `<Plug>(didymus-review-resolve)` is "resolve or unresolve".
+5. `reply` closes any read-only focus box, unfolds the thread, and opens an inline markdown editor attached to the bottom of the thread box (`├─ Reply ───┤`), in `virt_lines` space. For a deleted file with no buffer, it opens a bottom split. It has the actions of a comment: "reply now" (`keys.post`, `<C-s>`) posts the reply at once, and "add to review" (`keys.add`, `<C-y>`) adds it to the pending review.
+6. A reply has no line numbers, so didymus does not check the file on disk. Replies also work on outdated threads, file threads and threads on the base side.
+7. On submit, `provider:reply()` runs with a progress message. The session adds the comment to the thread, and updates the panel and the marks. A reply that is posted at once is not pending, so it has no `[pending]` tag. If the provider fails, the session keeps the draft. The next reply to the same thread starts with its text, as for a comment that GitHub refuses.
+8. `provider:set_resolved()` gives the thread with its new state, because the `can_…` fields change. The session replaces the thread, and updates the panel and the marks. A resolved thread is dim and folded. See [Folds and boxes](#folds-and-boxes), rule 3.
+9. If the review closed before the provider replies, only the message shows.
 
 ### Submit and discard
 
@@ -307,7 +307,8 @@ flowchart LR
 | Picker adapter | Show items and call back with the choice. | Know about reviews. It gets plain items. |
 | Files panel | Make picker items from the review session, and the actions on them. | Draw a buffer. The picker adapter draws it. |
 | Patch parser | Make the hunks and the commentable ranges from the patch of a file. | Use editor state. |
-| Inline threads | Extmarks for the threads, folded or unfolded, their window scope, the wrap, and the thread float. | Call the provider. |
+| Inline threads | Extmarks for the threads in 4-sided boxes, treesitter markdown highlights, top-of-file threads, and window scope. | Call the provider. |
+| Inline boxes | `virt_lines` space, embedded focus and edit windows, height sync, off-screen hide/show, and bottom split for deleted files. | Call the provider. |
 
 The picker adapter goes in `lua/didymus/ui/picker/`, because it does not know about reviews.
 
@@ -610,3 +611,4 @@ Each manual test of a GitHub feature needs a real PR. Use a throwaway PR in a te
 | [More pickers](https://github.com/nickciaravella/didymus.nvim/issues/52) | `review` | Adapters for other pickers, such as telescope or fzf-lua. A panel fallback for a picker with only the select role. |
 | [More comment kinds](https://github.com/nickciaravella/didymus.nvim/issues/53) | `review` | Suggestion blocks, file-level comments and comments on deleted lines. |
 | [Agent primer](https://github.com/nickciaravella/didymus.nvim/issues/54) | `agent` | A first prompt with the PR title, body and merge-base. |
+| [Inline focus and comment input](https://github.com/nickciaravella/didymus.nvim/issues/98) | `review` | 4-sided thread boxes with markdown highlights, `:Didymus review focus`, inline comment and reply boxes, and top-of-file threads (no thread float). |

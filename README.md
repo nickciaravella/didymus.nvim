@@ -120,7 +120,8 @@ Review a GitHub pull request in the current checkout. The picker is [snacks.nvim
 | `:Didymus review open [n\|url]` | Open a pull request in the review tabpage. With no argument, choose a pull request in the picker. The preview shows its description. |
 | `:Didymus review close` | Close the files panel and the review tabpage. |
 | `:Didymus review files` | Show the files panel, or hide it. |
-| `:Didymus review fold [all]` | Fold or unfold the threads at the cursor line. With `all`, fold or unfold all threads. |
+| `:Didymus review fold [all]` | Fold or unfold the threads at the cursor line. With `all`, fold or unfold all head-line threads. |
+| `:Didymus review focus` | Move the cursor into the thread at the cursor line inline (or into an open inline editor). |
 | `:Didymus review next [thread\|file\|hunk]`, `:Didymus review prev [thread\|file\|hunk]` | Go to the next or the previous thread, changed file or hunk, also in a different file. The default is `thread`. |
 | `:[range]Didymus review comment` | Add a comment on the current line, the selection or the range. Post it at once, or add it to your pending review. |
 | `:Didymus review reply` | Reply to the thread at the cursor. Post the reply at once, or add it to your pending review. |
@@ -148,11 +149,11 @@ In the file, each thread has a sign with its comment count. The thread shows und
 
 ```
 2 local count = 2
-  ┌ 💬 @octocat
-  │ Why two?
-  ├ @hubot [pending]
-  │ Because.
-  └ <Space>rr reply  <Space>rx resolve  <Space>rz fold
+  ┌─ 💬 @octocat ────────────────────────────────────────────┐
+  │ Why two?                                                 │
+  ├─ @hubot [pending] ───────────────────────────────────────┤
+  │ Because.                                                 │
+  └─ <Space>rr reply  <Space>rx resolve  <Space>rz fold ─────┘
   local total = count * 2
   ✅ @hubot Rename this.
 ```
@@ -160,14 +161,16 @@ In the file, each thread has a sign with its comment count. The thread shows und
 A thread is folded or unfolded:
 
 - A folded thread is one line: the icon of the state, the author and the first line of the first comment.
-- An unfolded thread shows all its comments. A long line wraps at the width of the window.
-- As on github.com, an active thread starts unfolded, and a resolved thread starts folded. A resolve folds the thread, and an unresolve unfolds it.
+- An unfolded thread shows all its comments in a 4-sided box with markdown treesitter highlights. A long line wraps at the width of the window.
+- As on github.com, an active head-side thread starts unfolded, and a resolved, outdated or base-side thread starts folded. A resolve folds the thread, and an unresolve unfolds it.
 
-`fold` folds the threads at the cursor line, or unfolds them. With two threads at the line, it folds both if one of them is unfolded. `fold all` folds all threads if one of them is unfolded. Else, it unfolds all threads. A refresh keeps the folds.
+`fold` folds the threads at the cursor line, or unfolds them. With two threads at the line, it folds both if one of them is unfolded. `fold all` folds all head-line threads if one of them is unfolded. Else, it unfolds them. A refresh keeps the folds.
 
-The last line of an unfolded thread shows your keys for `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)` and `<Plug>(didymus-review-fold)`, if the line fits.
+The bottom border of an unfolded thread shows your keys for `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-fold)` and `<Plug>(didymus-review-focus)`, if they fit.
 
-Outdated threads, threads on deleted lines and threads on the file show only in the panel. `<CR>` on one of them opens its float next to the panel. The float closes when the cursor moves. A second `<CR>` moves the focus into the float, and `q` closes it.
+`focus` opens a read-only markdown view in the exact inline space of the thread, with no float over the code. Inside it, you can move the cursor, select text, yank, follow links and scroll long threads. Press `r` to reply inline, `x` to resolve or unresolve, `z` to fold, or `q` / `<Esc>` to return to the code.
+
+Outdated threads, threads on deleted lines and threads on the file show inline above line 1 of their file. `<CR>` on one of them in the panel opens the file at line 1 and focuses the thread inline. On a deleted file with no buffer, `<CR>` opens a bottom split under the code window.
 
 `next` and `prev` go in the order of the panel, from the cursor. If the current window does not show a file of the pull request, they start at the cursor of the code window.
 
@@ -178,28 +181,31 @@ Outdated threads, threads on deleted lines and threads on the file show only in 
 
 At the last or the first stop, a message shows, and the cursor does not move. `<C-o>` goes back to the position before the jump. In a different tabpage, `next` and `prev` go to the review tabpage first.
 
-`comment` opens a float above the lines, with the location as the title. Type the comment, then press a key:
+`comment` opens an inline markdown box under the lines, in the same 4-sided frame, so it covers no code. Type the comment, then press a key:
 
 | Key | Action |
 | --- | --- |
 | `<C-s>` | Comment now: post the comment at once. GitHub does this only if you have no pending review. |
 | `<C-y>` | Add to review: add the comment to your pending review. If you have no pending review, didymus starts one. A pending review that you started on github.com also works. |
-| `q`, in normal mode | Cancel. |
+| `q` or `<Esc>`, in normal mode | Cancel. |
+
+An open inline editor stays alive if you leave it, scroll away or open another file. It hides while off screen and shows again when you return. Only one inline editor can be open at a time.
 
 The new thread shows in the panel and at the line. A comment in your pending review has the `[pending]` tag. It stays pending until you submit the review.
 
 didymus refuses a comment, and shows the reason, in these cases:
 
 - The current window does not show a file of the pull request.
+- Another inline comment or reply is already open at a different place.
 - `HEAD` is not the head of the pull request, for example after a refresh with a new head, or after a local commit.
 - The buffer is modified, or the file is different from the head of the pull request. A comment needs the line numbers of the head.
 - The lines are not in a hunk of the pull request. A range must be in one hunk. If the hunks of a file are unknown, for example in a large file, GitHub decides.
 
 If GitHub does not add the comment, the error shows. The next `comment` on the same lines starts with your text.
 
-`reply` and `resolve` use the thread at the cursor line. If more than one thread is at the line, the picker asks which one. If the thread float is open, they use the thread of the float, also from the window under the float, such as the panel. In the thread float, `r` replies and `x` resolves or unresolves. The footer of the float shows these keys if it is wide enough.
+`reply` and `resolve` use the focused inline thread, else the thread at the cursor line. If more than one thread is at the line, the picker asks which one.
 
-`reply` opens a float at the cursor line. It has the keys of `comment`: `<C-s>` (reply now) posts the reply at once, and `<C-y>` (add to review) adds it to your pending review. `q` in normal mode cancels. GitHub posts a reply at once only if you have no pending review. A reply in your pending review has the `[pending]` tag, until you submit the review. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
+`reply` unfolds the thread and opens an inline markdown box attached to the bottom of the thread box (or a bottom split for a deleted file). It has the keys of `comment`: `<C-s>` (reply now) posts the reply at once, and `<C-y>` (add to review) adds it to your pending review. `q` or `<Esc>` in normal mode cancels. GitHub posts a reply at once only if you have no pending review. A reply in your pending review has the `[pending]` tag, until you submit the review. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
 
 After a resolve, the thread is dim in the panel and at its line, and it is folded. If GitHub does not let you do the action, a message shows. For example, GitHub does not let you resolve a thread of your pending review.
 
@@ -211,7 +217,7 @@ After a submit or a discard, didymus gets the threads again. The review stays op
 
 `refresh` gets the pull request and its threads again, for example after a comment on github.com. Then the files panel and the threads in the files show the new data. A message shows when the refresh starts and when it ends. If the pull request has a new head, a warning shows, and didymus does not check it out. To check out the new head, close the review and open it again.
 
-The highlight groups are `DidymusThread` (default: `DiagnosticInfo`), `DidymusThreadResolved` (default: `Comment`) and `DidymusThreadPending` (default: `DiagnosticHint`) and `DidymusFileViewed` (default: `Comment`).
+The highlight groups are `DidymusThread` (default: `DiagnosticInfo`), `DidymusThreadBorder` (default: `DidymusThread`), `DidymusThreadResolved` (default: `Comment`), `DidymusThreadPending` (default: `DiagnosticHint`) and `DidymusFileViewed` (default: `Comment`).
 
 `close` does not check out the branch from before the review. Its message names that branch. `:tabclose` of the review tabpage also closes the review.
 
@@ -223,6 +229,7 @@ vim.keymap.set("n", "<leader>rc", "<Plug>(didymus-review-close)")
 vim.keymap.set("n", "<leader>rf", "<Plug>(didymus-review-files)")
 vim.keymap.set("n", "<leader>rz", "<Plug>(didymus-review-fold)")
 vim.keymap.set("n", "<leader>rZ", "<Plug>(didymus-review-fold-all)")
+vim.keymap.set("n", "<leader>ri", "<Plug>(didymus-review-focus)")
 vim.keymap.set("n", "<leader>rnt", "<Plug>(didymus-review-next-thread)")
 vim.keymap.set("n", "<leader>rpt", "<Plug>(didymus-review-prev-thread)")
 vim.keymap.set("n", "<leader>rnf", "<Plug>(didymus-review-next-file)")
@@ -240,7 +247,7 @@ vim.keymap.set("n", "<leader>rv", "<Plug>(didymus-review-viewed)")
 
 | Mapping | Modes |
 | --- | --- |
-| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-fold)`, `<Plug>(didymus-review-fold-all)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-submit)`, `<Plug>(didymus-review-discard)`, `<Plug>(didymus-review-refresh)`, `<Plug>(didymus-review-viewed)` | Normal |
+| `<Plug>(didymus-review-open)`, `<Plug>(didymus-review-close)`, `<Plug>(didymus-review-files)`, `<Plug>(didymus-review-fold)`, `<Plug>(didymus-review-fold-all)`, `<Plug>(didymus-review-focus)`, `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-submit)`, `<Plug>(didymus-review-discard)`, `<Plug>(didymus-review-refresh)`, `<Plug>(didymus-review-viewed)` | Normal |
 | `<Plug>(didymus-review-next-thread)`, `<Plug>(didymus-review-next-file)`, `<Plug>(didymus-review-next-hunk)`, `<Plug>(didymus-review-prev-thread)`, `<Plug>(didymus-review-prev-file)`, `<Plug>(didymus-review-prev-hunk)` | Normal |
 | `<Plug>(didymus-review-comment)` | Normal, visual |
 
@@ -279,14 +286,14 @@ require("didymus").setup({
     provider = "github", -- "github", "test" for tests, or a provider table
     icons = { active = "💬", resolved = "✅" }, -- the state of a thread. "" shows no icon.
     panel = { keys = { toggle_active = "a", refresh = "R", viewed = "v" } }, -- the files panel. false turns off a key
-    input = { -- the float of comment, reply and submit
-      width = 60, -- below 1 is a fraction of the window width
-      max_height = 10, -- the float grows to this height, then it scrolls
+    input = { -- the inline box of comment and reply, and the float of submit
+      width = 60, -- for the submit float: below 1 is a fraction of the window width
+      max_height = 10, -- the box grows to this height, then it scrolls
       -- post: comment or reply now, or submit. add: add to the pending review. cancel is in normal mode.
       keys = { post = "<C-s>", add = "<C-y>", cancel = "q" },
     },
-    thread = { -- the thread float of a thread that shows only in the panel
-      keys = { reply = "r", resolve = "x" }, -- false turns a key off
+    thread = { -- a focused inline thread, or a thread split
+      keys = { reply = "r", resolve = "x", fold = "z" }, -- false turns a key off
     },
   },
 })

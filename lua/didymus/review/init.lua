@@ -425,6 +425,24 @@ function M.fold(opts)
   end
 end
 
+--- Focus the thread at the cursor inline, so the user can move the cursor inside it, select text,
+--- yank, follow links, or trigger actions. If no thread is at the cursor and an inline editor is
+--- open, focus that editor.
+function M.focus()
+  local session = get_open_review()
+  if not session then
+    return
+  end
+  local editor = session:get_open_editor()
+  if editor and #threads.at_cursor(session.threads) == 0 then
+    editor:focus()
+    return
+  end
+  session:pick_thread_at_cursor(function(thread)
+    session:focus_thread(thread)
+  end)
+end
+
 ---@type table<string, boolean>
 local stop_kinds = { thread = true, file = true, hunk = true }
 
@@ -619,13 +637,11 @@ local function open_comment_input(session, path, range)
     text = failed.body
     session.failed_draft = nil
   end
-  input.open({
-    title = format_location(path, range),
-    range = { range.first, range.last },
+  session:open_comment_box(path, range, {
+    location = format_location(path, range),
     text = text,
-    width = options.width,
     max_height = options.max_height,
-    keys = { cancel = options.keys.cancel },
+    cancel_key = options.keys.cancel,
     actions = {
       {
         key = options.keys.post,
@@ -646,8 +662,7 @@ local function open_comment_input(session, path, range)
 end
 
 --- Add a comment on the current line, the selection or `range`. Post it at once, or add it to the
---- pending review. Check the
---- lines first. Then open the input float above them.
+--- pending review. Check the lines first. Then open the inline comment box under them.
 ---@param opts { range: integer[]? }? The first and the last line.
 function M.comment(opts)
   opts = opts or {}
@@ -660,6 +675,15 @@ function M.comment(opts)
   local buf = vim.api.nvim_win_get_buf(win)
   local file = check_comment(session, buf, range)
   if not file then
+    return
+  end
+  if
+    session:check_open_editor(function(editor)
+      return editor.kind == "comment"
+        and editor.path == file.path
+        and vim.deep_equal(editor.range, range)
+    end)
+  then
     return
   end
   local head_sha = session.change.head_sha
@@ -775,6 +799,7 @@ function M.viewed(opts)
   end)
 end
 
+---@param session didymus.review.Session
 ---@param thread didymus.review.Thread
 local function open_reply_input(session, thread)
   local options = config.options.review.input
@@ -784,12 +809,10 @@ local function open_reply_input(session, thread)
     text = failed.body
     session.failed_reply = nil
   end
-  input.open({
-    title = "Reply to " .. threads.get_location(thread),
+  session:open_reply_box(thread, {
     text = text,
-    width = options.width,
     max_height = options.max_height,
-    keys = { cancel = options.keys.cancel },
+    cancel_key = options.keys.cancel,
     -- A reply is a comment, so it has the actions and the keys of a comment.
     actions = {
       {
@@ -810,9 +833,8 @@ local function open_reply_input(session, thread)
   })
 end
 
---- Reply to the thread at the cursor, or to the thread of the open thread float. Post the reply at
---- once, or add it to the pending review. The input float opens at the cursor line of the window
---- under the thread float, such as the panel.
+--- Reply to the thread at the cursor, or to the focused inline thread. Post the reply at once, or
+--- add it to the pending review. The reply box opens inline at the bottom of the thread box.
 function M.reply()
   local session = get_open_review()
   if not session then
@@ -824,13 +846,12 @@ function M.reply()
         ("you cannot reply to the thread at %s"):format(threads.get_location(thread))
       )
     end
-    threads.close_float()
     open_reply_input(session, thread)
   end)
 end
 
---- Resolve the thread at the cursor. On a resolved thread, unresolve it. In the thread float, use
---- its thread.
+--- Resolve the thread at the cursor, or the focused inline thread. On a resolved thread, unresolve
+--- it.
 function M.resolve()
   local session = get_open_review()
   if not session then
@@ -843,7 +864,7 @@ function M.resolve()
     if not (resolved and thread.can_resolve or not resolved and thread.can_unresolve) then
       return show_warning(("you cannot %s the thread at %s"):format(action, location))
     end
-    threads.close_float()
+    session:close_focus_box()
     track(("%s the thread at %s"):format(action, location), function(done)
       session.provider:set_resolved(session.change, thread.id, resolved, done)
     end, function(err, new_thread)
@@ -912,7 +933,7 @@ local function open_submit_input(session, info)
   local options = config.options.review.input
   local text = session.failed_review_body
   session.failed_review_body = nil
-  threads.close_float()
+  session:close_focus_box()
   input.open({
     title = info.title:format(session.label),
     text = text,

@@ -10,6 +10,7 @@ local tree = {
     close = {},
     files = {},
     fold = { all = {} },
+    focus = {},
     next = stop_kinds,
     prev = stop_kinds,
     comment = {},
@@ -98,6 +99,9 @@ local review_actions = {
     end
     require("didymus.review").fold({ all = rest == "all" })
   end,
+  focus = function()
+    require("didymus.review").focus()
+  end,
   next = function(rest)
     require("didymus.review").next({ kind = non_empty(rest) })
   end,
@@ -152,8 +156,8 @@ local groups = {
   },
   review = {
     actions = review_actions,
-    usage = "Use :Didymus review open, close, files, fold, next, prev, comment, reply, resolve, "
-      .. "submit, discard, refresh or viewed.",
+    usage = "Use :Didymus review open, close, files, fold, focus, next, prev, comment, reply, "
+      .. "resolve, submit, discard, refresh or viewed.",
   },
   diff = {
     actions = diff_actions,

@@ -103,6 +103,22 @@ The `virt_lines` under row `r` count as the filler lines of row `r + 1`. The fil
 
 - Checked: Neovim 0.12.5
 
+### Multiple extmarks at the same `(row, col)` do not keep insertion order for `virt_lines`
+
+Neovim keeps extmarks in a marktree keyed by `(row, col)`. Three extmarks inserted at `(0, 0)` with ids `1, 2, 3` come back and render in order `1, 3, 2`, even with different `priority` values. To keep `virt_lines` in deterministic order on one row, combine them into one extmark and use lightweight tracking extmarks with no `virt_lines` for additional ids.
+
+- Proof: this command prints `{ { 1, "1" }, { 3, "3" }, { 2, "2" } }`.
+
+  ```sh
+  nvim --clean --headless -n -c 'lua local b = vim.api.nvim_get_current_buf()
+  vim.api.nvim_buf_set_lines(b, 0, -1, true, { "one" })
+  local ns = vim.api.nvim_create_namespace("t")
+  for i = 1, 3 do vim.api.nvim_buf_set_extmark(b, ns, 0, 0, { id = i, priority = i * 100, virt_lines = { { { tostring(i) } } } }) end
+  print(vim.inspect(vim.tbl_map(function(m) return { m[1], m[4].virt_lines[1][1][1] } end, vim.api.nvim_buf_get_extmarks(b, ns, 0, -1, { details = true }))))' -c 'qa!'
+  ```
+
+- Checked: Neovim 0.12.6
+
 ## Windows
 
 ### The `textoff` of a window changes only at the next redraw after a new sign column
@@ -196,6 +212,22 @@ A float with `hide = true` does not show, but each redraw still calls `on_win` f
 
   ```sh
   nvim --clean --headless -c 'lua local b = vim.api.nvim_create_buf(false, true) local w = vim.api.nvim_open_win(b, false, { relative = "editor", row = 0, col = 0, width = 10, height = 2, hide = true }) local n = 0 vim.api.nvim_set_decoration_provider(vim.api.nvim_create_namespace("t"), { on_win = function(_, win) if win == w then n = n + 1 end return false end }) vim.api.nvim__redraw({ flush = true, valid = false }) io.write("on_win calls for the hidden float: ", n, "\n")' -c qa
+  ```
+
+- Checked: Neovim 0.12.6
+
+### A `bufpos` window clamps to the top edge instead of hiding when its line scrolls off screen
+
+`nvim_open_win()` with `relative = "win"` and `bufpos = { row, col }` does not hide when `row` scrolls above `topline`. Neovim clamps the window to row 1 of the parent window, so it covers the top lines. To embed a window in a `virt_lines` slot, compute `row` from `screenpos()` and `getwininfo()`, and set `hide = true` on `WinScrolled`, `WinResized`, `BufWinEnter` and `TabEnter` when the slot is off screen.
+
+- Proof: this command prints `pos: { 1, 0 } hide: false` after `topline` moves past row 4.
+
+  ```sh
+  nvim --clean --headless -n -c 'lua local lines = {} for i = 1, 40 do lines[i] = "line " .. i end
+  vim.api.nvim_buf_set_lines(0, 0, -1, true, lines)
+  local w = vim.api.nvim_open_win(vim.api.nvim_create_buf(false, true), false, { relative = "win", win = 0, bufpos = { 4, 0 }, row = 1, col = 0, width = 10, height = 2 })
+  vim.fn.winrestview({ topline = 10, lnum = 10 }) vim.cmd("redraw")
+  print("pos:", vim.inspect(vim.api.nvim_win_get_position(w)), "hide:", vim.api.nvim_win_get_config(w).hide)' -c 'qa!'
   ```
 
 - Checked: Neovim 0.12.6
