@@ -147,11 +147,7 @@ local function choose(session, item)
   ---@type didymus.review.panel.Value
   local value = item.value
   if value.kind == "thread" then
-    if threads.get_line(value.thread) then
-      return session:open_thread(value.thread)
-    end
-    -- The thread has no line in the file. The float is the only place that shows it.
-    return threads.open_float(value.thread)
+    return session:open_thread(value.thread)
   end
   if value.kind ~= "file" then
     return

@@ -37,6 +37,7 @@ for _, action in ipairs({
   "open",
   "close",
   "files",
+  "focus",
   "reply",
   "submit",
   "discard",
