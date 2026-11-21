@@ -39,6 +39,7 @@ M.defaults = {
     layout = "inline", -- "inline" or "split"
     sides = "both", -- "both" or "head". Only `:Didymus diff side base` shows the base side.
     split = { width = 0.5 }, -- The width of the base window. Below 1, a fraction of the code window.
+    preload = 30, -- The most files that load in the background for the preview of the files panel.
   },
 }
 

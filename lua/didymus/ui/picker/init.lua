@@ -39,6 +39,13 @@
 ---@field actions? didymus.picker.Action[] Keys in the panel, such as `R` for refresh.
 ---@field position? "left"|"right" Default "left".
 ---@field width? number Below 1, a fraction of the editor width. Else columns. Default 40.
+---@field buffer_preview? didymus.picker.BufferPreview With it, the preview of a `location` shows a real buffer, not a copy.
+
+--- The preview of a panel with real buffers, so that the caller can decorate them.
+---@class didymus.picker.BufferPreview
+---@field get_buf fun(item: didymus.picker.Item, cb: fun()): integer? The loaded buffer for the `location` of `item`. Nil if it is not ready. Then the preview keeps its last buffer, and the caller calls `cb()` when the buffer is ready.
+---@field on_show fun(item: didymus.picker.Item, win: integer) Called after the preview shows `item` in `win`, in the same tick, so that a decoration shows in the first redraw.
+---@field on_hide fun() Called when the preview window closes.
 
 ---@class didymus.picker.Panel
 ---@field update fun(self) Call `items()` again and show the new items. Keep the cursor on the same item.

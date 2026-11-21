@@ -153,6 +153,28 @@ function Session:make_diff_view()
   end
 end
 
+--- The buffer of `path` for the preview of the files panel, if it is ready. Else nil, and `cb`
+--- comes when it is ready.
+---@param path string
+---@param cb fun()
+---@return integer?
+function Session:get_preview_buf(path, cb)
+  -- The panel opens before the diff view.
+  if not self.diff_view then
+    vim.schedule(cb)
+    return nil
+  end
+  return self.diff_view:get_preview_buf(path, cb)
+end
+
+--- Show the diff in the preview window of the files panel. Nil removes it.
+---@param win integer?
+function Session:preview_diff(win)
+  if self.diff_view then
+    self.diff_view:set_preview(win)
+  end
+end
+
 --- The reason that the diff is not the diff of the code host, or nil.
 ---@param status didymus.review.workspace.Status
 ---@return string?

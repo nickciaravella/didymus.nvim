@@ -428,6 +428,67 @@ T["panel()"]["the preview hides while the focus is in the code window"] = functi
   wait_for_preview_line(20)
 end
 
+T["panel()"]["with buffer_preview, a buffer that is not ready keeps the last buffer in the preview"] = function()
+  child.lua("_G.items = ...", {
+    {
+      preview_items[2],
+      { text = "list.json", location = { path = "tests/fixtures/github/list.json", line = 1 } },
+    },
+  })
+  child.lua([[
+    _G.shows, _G.hides, _G.ready = {}, 0, { ["tests/fixtures/picker/numbers.txt"] = true }
+    _G.code_win = vim.api.nvim_get_current_win()
+    _G.panel = require("didymus.ui.picker.snacks").panel({
+      title = "Panel",
+      items = function() return _G.items end,
+      on_choose = function() end,
+      buffer_preview = {
+        get_buf = function(item, cb)
+          local path = item.location.path
+          if not _G.ready[path] then
+            _G.pending = cb
+            return nil
+          end
+          local buf = vim.fn.bufadd(path)
+          vim.fn.bufload(buf)
+          return buf
+        end,
+        on_show = function(item, win)
+          local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(win)), ":t")
+          table.insert(_G.shows, { text = item.text, win = win, name = name })
+        end,
+        on_hide = function() _G.hides = _G.hides + 1 end,
+      },
+    })
+  ]])
+  wait_for_preview_line(20)
+  local win = preview_win()
+  local buf = child.fn.bufnr("tests/fixtures/picker/numbers.txt")
+  eq(child.api.nvim_win_get_buf(win), buf)
+  eq(
+    child.lua_get("_G.shows[#_G.shows]"),
+    { text = "numbers.txt", win = win, name = "numbers.txt" }
+  )
+
+  local show_count = child.lua_get("#_G.shows")
+  child.type_keys("j")
+  wait_for(function()
+    return child.lua_get("_G.pending ~= nil")
+  end, "get_buf() of list.json")
+  settle()
+  eq(child.api.nvim_win_get_buf(win), buf)
+  eq(child.lua_get("#_G.shows"), show_count)
+
+  child.lua("_G.ready['tests/fixtures/github/list.json'] = true; _G.pending()")
+  wait_for_preview_line(1)
+  eq(child.lua_get("_G.shows[#_G.shows]").name, "list.json")
+
+  child.lua("vim.api.nvim_set_current_win(_G.code_win)")
+  settle()
+  eq(preview_win(), 0)
+  eq(child.lua_get("_G.hides"), 1)
+end
+
 T["panel()"]["the user options of files go over the defaults"] = function()
   child.lua("_G.items = ...", { preview_items })
   child.lua([[

@@ -1,5 +1,6 @@
 --- A picker adapter with no UI, for end-to-end tests. It records each call. The functions
---- `choose()`, `cancel()` and `press()` act as the user on the last open picker.
+--- `choose()`, `cancel()`, `press()`, `preview()` and `hide_preview()` act as the user on the last
+--- open picker.
 
 local picker = require("didymus.ui.picker")
 
@@ -11,6 +12,8 @@ local picker = require("didymus.ui.picker")
 ---@field cursor integer The index of the item under the cursor.
 ---@field open boolean
 ---@field focus_count integer The number of `focus()` calls of a panel.
+---@field preview_win integer? The float of the preview, as the snacks sidebar has.
+---@field preview_count integer The number of previews. Only the `cb` of `get_buf()` of the newest one applies.
 
 local M = {}
 
@@ -31,6 +34,7 @@ local function record(kind, opts, config, items)
     cursor = 1,
     open = true,
     focus_count = 0,
+    preview_count = 0,
   }
   table.insert(M.calls, call)
   return call
@@ -68,7 +72,23 @@ function Panel:focus()
   self.call.focus_count = self.call.focus_count + 1
 end
 
+---@param call didymus.picker.test.Call
+local function hide_preview(call)
+  local win = call.preview_win
+  if not win then
+    return
+  end
+  call.preview_win = nil
+  if vim.api.nvim_win_is_valid(win) then
+    vim.api.nvim_win_close(win, true)
+  end
+  if call.opts.buffer_preview then
+    call.opts.buffer_preview.on_hide()
+  end
+end
+
 function Panel:close()
+  hide_preview(self.call)
   self.call.open = false
 end
 
@@ -150,6 +170,78 @@ function M.press(key, target)
     end
   end
   error(("no action for %q"):format(key), 2)
+end
+
+---@param call didymus.picker.test.Call
+---@param buf integer
+local function set_preview_buf(call, buf)
+  if call.preview_win and vim.api.nvim_win_is_valid(call.preview_win) then
+    vim.api.nvim_win_set_buf(call.preview_win, buf)
+  else
+    call.preview_win = vim.api.nvim_open_win(buf, false, {
+      relative = "editor",
+      row = 0,
+      col = 0,
+      width = 40,
+      height = 10,
+    })
+  end
+end
+
+---@return integer
+local function make_scratch_buf()
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].bufhidden = "wipe"
+  return buf
+end
+
+--- Show the item under the cursor in the preview float, as snacks does.
+---@param call didymus.picker.test.Call
+local function show_preview(call)
+  call.preview_count = call.preview_count + 1
+  local count = call.preview_count
+  local item = call.items[call.cursor]
+  local buffer_preview = call.opts.buffer_preview
+  local buf
+  if item and item.location and buffer_preview then
+    buf = buffer_preview.get_buf(item, function()
+      if call.open and call.preview_count == count then
+        show_preview(call)
+      end
+    end)
+    if not buf then
+      -- Keep the last buffer. A new float has no last buffer, so it is empty.
+      if not (call.preview_win and vim.api.nvim_win_is_valid(call.preview_win)) then
+        set_preview_buf(call, make_scratch_buf())
+      end
+      return
+    end
+  end
+  set_preview_buf(call, buf or make_scratch_buf())
+  local location = item and item.location
+  if location and location.line then
+    pcall(vim.api.nvim_win_set_cursor, call.preview_win, { location.line, 0 })
+  end
+  if buffer_preview and item then
+    buffer_preview.on_show(item, call.preview_win)
+  end
+end
+
+--- Show the item in the preview float of the last open panel, as a cursor move in the panel does.
+--- With `buffer_preview`, a `location` shows the buffer of `get_buf()`. If it is not ready, the
+--- float keeps its last buffer, and the `cb` of `get_buf()` shows the item later.
+---@param target (integer|string)? The index or the text of an item. Nil is the item under the cursor.
+---@return integer win The preview float.
+function M.preview(target)
+  local call = last_open("panel")
+  move(call, target)
+  show_preview(call)
+  return call.preview_win
+end
+
+--- Close the preview float of the last open panel, as a move of the focus out of the panel does.
+function M.hide_preview()
+  hide_preview(last_open("panel"))
 end
 
 return M

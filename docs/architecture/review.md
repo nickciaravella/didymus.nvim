@@ -350,6 +350,7 @@ The MVP needs no diff provider. The patch from the code host gives the first hun
 ---@field actions? didymus.picker.Action[] Keys in the panel, such as `R` for refresh.
 ---@field position? "left"|"right" Default "left".
 ---@field width? number Below 1, a fraction of the editor width. Else columns. Default 40.
+---@field buffer_preview? didymus.picker.BufferPreview `get_buf(item, cb)`, `on_show(item, win)` and `on_hide()`. With it, the preview of a `location` shows the buffer of `get_buf()`. If `get_buf()` gives nil, the preview keeps its last buffer until `cb()`.
 
 ---@class didymus.picker.Panel
 ---@field update fun(self) Call `items()` again and show the new items. Keep the cursor on the same item.
@@ -369,6 +370,8 @@ The MVP needs no diff provider. The patch from the code host gives the first hun
 4. The `test` adapter records the calls, and lets end-to-end tests choose an item or press the key of an action. It is the same idea as the test backend of the agent. See [`TESTING.md`](../TESTING.md#the-test-picker).
 5. `on_choose` of the panel does not move the focus. The caller opens the file in its code window, because the review session owns the tabpage.
 6. When the cursor moves in the panel, the code window shows the item: `preview` first, else `location` at its line. A row with neither, such as a header, shows no preview. The preview shows only while the panel has the focus. `<CR>` opens the real file.
+   - The files panel sets `buffer_preview`, so that the diff shows in the preview. See [the diff preview](diff.md#preview).
+   - With `buffer_preview`, the adapter shows the buffer that the diff view preloads. See [the preload](diff.md#preload).
 7. The keys of the actions work only in the list of the panel, not in its search input.
 8. The snacks panel is a split, so it shows only in the tabpage where it opened.
 9. `picker.confirm()` in `ui/picker/init.lua` asks a question with the select role and the `choice` kind. The workspace flow uses it in place of `vim.fn.confirm()`.

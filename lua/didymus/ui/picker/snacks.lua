@@ -86,6 +86,47 @@ local function preview(ctx)
   ctx.preview:reset()
 end
 
+--- The preview of a panel with `buffer_preview`: the real buffer of a `location`, so that the
+--- caller can decorate it. snacks shows a copy of a file that is not loaded.
+---@class didymus.picker.snacks.BufferPreview
+---@field opts didymus.picker.BufferPreview
+---@field shown boolean True after a preview, until the preview window closes.
+---@field count integer The number of previews. Only the `cb` of `get_buf()` of the newest one applies.
+local BufferPreview = {}
+BufferPreview.__index = BufferPreview
+
+---@param ctx table The context of a snacks previewer.
+function BufferPreview:show(ctx)
+  self.count = self.count + 1
+  local item = ctx.item.didymus_item
+  if item.location and not ctx.item.preview then
+    local count, snacks_picker = self.count, ctx.picker
+    local buf = self.opts.get_buf(item, function()
+      if self.count == count and not snacks_picker.closed then
+        snacks_picker.preview:show(snacks_picker, { force = true })
+      end
+    end)
+    if not buf then
+      -- Keep the last buffer and its decoration. A redraw must not show a buffer before its
+      -- decoration, or the code window under the float.
+      return
+    end
+    ctx.item.buf = buf
+  end
+  preview(ctx)
+  self.shown = true
+  self.opts.on_show(item, ctx.win)
+end
+
+--- Tell `on_hide` that the preview hid, if its window closed.
+---@param snacks_picker table
+function BufferPreview:check_hidden(snacks_picker)
+  if self.shown and not snacks_picker.preview.win:valid() then
+    self.shown = false
+    self.opts.on_hide()
+  end
+end
+
 --- A preview in the main window is a float over the code. Show it only for an item with a preview,
 --- and only while the picker has the focus.
 local function update_main_preview(snacks_picker)
@@ -183,6 +224,8 @@ function M.panel(opts, config)
     keys[action.key] = name
   end
 
+  local buffer_preview = opts.buffer_preview
+    and setmetatable({ opts = opts.buffer_preview, shown = false, count = 0 }, BufferPreview)
   local snacks_picker = require_snacks_picker().pick(merge_options(opts.kind, config, {
     title = opts.title,
     -- The options of the snacks explorer, so that the panel stays open next to the code.
@@ -191,7 +234,9 @@ function M.panel(opts, config)
       preview = "main",
       layout = { position = opts.position or "left", width = width, min_width = width },
     },
-    preview = preview,
+    preview = buffer_preview and function(ctx)
+      buffer_preview:show(ctx)
+    end or preview,
     on_change = update_main_preview,
     auto_close = false,
     jump = { close = false },
@@ -220,6 +265,23 @@ function M.panel(opts, config)
   snacks_picker.list.win:on("WinEnter", function()
     update_main_preview(snacks_picker)
   end, { buf = true })
+  if buffer_preview then
+    -- The preview window closes when it hides. snacks hides it in its `WinEnter` handler, so the
+    -- `WinClosed` of the preview window does not fire. Check after each change of the windows.
+    local group =
+      vim.api.nvim_create_augroup("didymus.picker.snacks.preview." .. snacks_picker.id, {})
+    vim.api.nvim_create_autocmd({ "WinEnter", "WinClosed" }, {
+      group = group,
+      callback = function()
+        vim.schedule(function()
+          buffer_preview:check_hidden(snacks_picker)
+          if snacks_picker.closed then
+            pcall(vim.api.nvim_del_augroup_by_id, group)
+          end
+        end)
+      end,
+    })
+  end
   return setmetatable({ picker = snacks_picker }, Panel)
 end
 

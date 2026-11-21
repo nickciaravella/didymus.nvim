@@ -1,14 +1,15 @@
 --- A diff provider with no tool, for end-to-end tests. Tests give it the hunks of each path in
 --- `hunks_by_path`. `render()` puts one extmark at the stop of each hunk, with the layout and the
---- sides in its text, so that a test can check the screen. A deleted file has the hunks of
---- `hunks.get_deleted_file_hunks()`.
+--- sides in its text, so that a test can check the screen. `show_prepared()` puts the same marks. A
+--- deleted file has the hunks of `hunks.get_deleted_file_hunks()`.
 
 local hunks = require("didymus.diff.hunks")
 
 ---@class didymus.diff.provider.Test: didymus.diff.Provider
 ---@field hunks_by_path table<string, didymus.diff.Hunk[]> The hunks of each head path.
 ---@field delays table<string, integer> The time in milliseconds before `attach()` of a path calls `cb`.
----@field errors table<string, string> The next call of `attach` or `render` fails with this error.
+---@field prepare_delays table<string, integer> The time in milliseconds before `prepare()` of a path calls `cb`.
+---@field errors table<string, string> The next call of `attach`, `render`, `prepare` or `show_prepared` fails with this error.
 ---@field calls table[] One record of plain data for each call, such as `{ method = "attach", buf = 3, path = "a.lua" }`.
 local M = {
   capabilities = {
@@ -19,6 +20,7 @@ local M = {
   },
   hunks_by_path = {},
   delays = {},
+  prepare_delays = {},
   errors = {},
   calls = {},
 }
@@ -26,6 +28,7 @@ local M = {
 ---@class didymus.diff.provider.test.Attached
 ---@field path string
 ---@field hunks didymus.diff.Hunk[]? Nil until `attach()` calls `cb`.
+---@field prepared boolean? True after `prepare()` calls `cb` with no error.
 
 ---@type table<integer, didymus.diff.provider.test.Attached>
 local attached = {}
@@ -171,6 +174,66 @@ function M:render(display, cb)
   vim.schedule(function()
     cb(nil)
   end)
+end
+
+---@param buf integer
+---@param cb fun(err: string?)
+function M:prepare(buf, cb)
+  local state = attached[buf]
+  record({ method = "prepare", buf = buf, path = state and state.path })
+  if fail("prepare", cb) then
+    return
+  end
+  local function finish()
+    if attached[buf] ~= state or not (state and state.hunks) then
+      cb("the buffer is not attached")
+      return
+    end
+    state.prepared = true
+    cb(nil)
+  end
+  local delay = state and self.prepare_delays[state.path]
+  if delay then
+    vim.defer_fn(finish, delay)
+  else
+    vim.schedule(finish)
+  end
+end
+
+---@param buf integer
+---@return boolean
+function M:is_prepared(buf)
+  local state = attached[buf]
+  return state ~= nil and state.prepared == true
+end
+
+---@param display didymus.diff.Display
+---@return string? err
+function M:show_prepared(display)
+  record({
+    method = "show_prepared",
+    layout = display.layout,
+    sides = display.sides,
+    path = display.file.path,
+    head_win = display.head_win,
+    head_buf = display.head_buf,
+  })
+  local err = M.errors.show_prepared
+  if err then
+    M.errors.show_prepared = nil
+    return err
+  end
+  local win, buf = display.head_win, display.head_buf
+  if not (win and buf and M:is_prepared(buf)) then
+    return ("%s is not prepared"):format(display.file.path)
+  end
+  put_marks(
+    win,
+    buf,
+    "head",
+    attached[buf].hunks,
+    ("diff %s %s"):format(display.layout, display.sides)
+  )
 end
 
 function M.health()
