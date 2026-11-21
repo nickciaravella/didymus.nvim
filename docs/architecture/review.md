@@ -12,6 +12,9 @@ The facts in this section were checked on 2026-11-08 with `gh` 2.103.2 and the l
 | --- | --- | --- |
 | octo.nvim | PRs, threads and reviews in scratch buffers. | No real file, so no LSP. No agent. |
 | snacks.gh (in snacks.nvim) | PR and issue pickers, a diff picker with comments. | Scratch buffers of the diff. No agent. |
+| [atlas.nvim](https://github.com/emrearmagan/atlas.nvim) | PRs, issues, threads, reviews and diffs across GitHub, GitLab, Bitbucket, Azure DevOps and Jira. Optional detached worktree for LSP. | Read-only diff buffers, no separate base or head side, no built-in agent and no pluggable providers or diff viewers. |
+
+Checked `atlas.nvim` at commit `e3035ad` on 2026-11-21. Its MIT source is a good reference for detached worktrees, multi-host providers and pure-Neovim inline diffs.
 
 ### `gh` commands
 
