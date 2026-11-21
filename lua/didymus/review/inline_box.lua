@@ -587,6 +587,35 @@ function InlineBox:setup_interactions(opts)
   end
 end
 
+--- Configure markdown rendering for a read-only focused thread window. Keeps rendered markdown under
+--- the cursor (including for render-markdown.nvim if loaded).
+---@param buf integer
+---@param win integer
+local function configure_readonly_markdown(buf, win)
+  vim.wo[win][0].conceallevel = 3
+  vim.wo[win][0].concealcursor = "nvc"
+  local render_markdown = package.loaded["render-markdown"]
+  if render_markdown and type(render_markdown.render) == "function" then
+    -- `FileType markdown` caches the default buffer config before `render()` runs. Clear it so
+    -- the per-buffer override (`anti_conceal = { enabled = false }`) takes effect.
+    local rm_state = package.loaded["render-markdown.state"]
+    if rm_state and type(rm_state.cache) == "table" then
+      rm_state.cache[buf] = nil
+    end
+    pcall(render_markdown.render, {
+      buf = buf,
+      win = win,
+      config = {
+        anti_conceal = { enabled = false },
+        win_options = {
+          conceallevel = { rendered = 3 },
+          concealcursor = { rendered = "nvc" },
+        },
+      },
+    })
+  end
+end
+
 --- Open an inline box embedded in `virt_lines` space, or a bottom split when `opts.split` is true.
 ---@param opts didymus.review.InlineBoxOpts
 ---@return didymus.review.InlineBox?
@@ -594,14 +623,17 @@ function M.open(opts)
   local lines = opts.lines and #opts.lines > 0 and opts.lines or { "" }
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].bufhidden = "wipe"
+  vim.api.nvim_buf_set_lines(buf, 0, -1, true, lines)
   if opts.mode == "edit" then
     vim.bo[buf].autocomplete = false
     -- blink.cmp and snacks.nvim read `b:completion`. Set before filetype so user FileType autocmds can override.
     vim.b[buf].completion = false
-  end
-  vim.api.nvim_buf_set_lines(buf, 0, -1, true, lines)
-  vim.bo[buf].filetype = "markdown"
-  if opts.mode == "focus" then
+    -- Use a custom filetype with treesitter markdown highlights so plugins such as
+    -- render-markdown.nvim do not conceal raw markdown while editing.
+    vim.bo[buf].filetype = "didymus_input"
+    pcall(vim.treesitter.start, buf, "markdown")
+  else
+    vim.bo[buf].filetype = "markdown"
     vim.bo[buf].modifiable = false
     vim.bo[buf].readonly = true
   end
@@ -651,6 +683,11 @@ function M.open(opts)
     local bar = self.footer ~= "" and (" %s  (%s) "):format(self.title, self.footer)
       or (" %s "):format(self.title)
     vim.wo[self.win][0].winbar = bar:gsub("%%", "%%%%")
+    if self.mode == "focus" then
+      configure_readonly_markdown(buf, self.win)
+    else
+      vim.wo[self.win][0].conceallevel = 0
+    end
   else
     -- Draw the spacer first so `get_anchor()` has the exact row, offset and box width.
     self.on_change()
@@ -694,13 +731,17 @@ function M.open(opts)
     vim.wo[self.win][0].wrap = true
     vim.wo[self.win][0].linebreak = true
     vim.wo[self.win][0].winfixbuf = true
-    vim.wo[self.win][0].conceallevel = 0
     -- One-cell left margin aligns the buffer text with `│ ` in `virt_lines`.
     vim.wo[self.win][0].statuscolumn = " "
     vim.wo[self.win][0].winhighlight = ("Normal:Normal,FloatBorder:%s,FloatTitle:%s,FloatFooter:Comment"):format(
       self.border_hl,
       self.title_hl
     )
+    if self.mode == "focus" then
+      configure_readonly_markdown(buf, self.win)
+    else
+      vim.wo[self.win][0].conceallevel = 0
+    end
 
     -- Re-measure height after wrapping inside the window.
     local desired = self:get_desired_height()

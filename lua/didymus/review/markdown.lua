@@ -70,21 +70,24 @@ function M.truncate_chunks(chunks, max_width)
   return result
 end
 
---- Collect highlight spans for each 1-based line from the treesitter markdown parser.
+--- Collect highlight spans and conceal ranges for each 1-based line from the treesitter markdown
+--- parser.
 ---@param source string Lines joined with `\n`, with a trailing `\n`.
 ---@param line_count integer
 ---@return table<integer, { start_col: integer, end_col: integer, hl: string, prio: integer, order: integer }[]>
+---@return table<integer, { start_col: integer, end_col: integer, replacement: string }[]>
 local function parse_spans(source, line_count)
   local spans_by_line = {}
+  local conceals_by_line = {}
   local ok, parser = pcall(vim.treesitter.get_string_parser, source, "markdown")
   if not ok or not parser then
-    return spans_by_line
+    return spans_by_line, conceals_by_line
   end
   local parse_ok = pcall(function()
     parser:parse(true)
   end)
   if not parse_ok then
-    return spans_by_line
+    return spans_by_line, conceals_by_line
   end
 
   local order = 0
@@ -96,83 +99,154 @@ local function parse_spans(source, line_count)
     end
     for id, node, metadata in query:iter_captures(tstree:root(), source) do
       local capture = query.captures[id]
-      if capture and not ignored_captures[capture] and not vim.startswith(capture, "_") then
-        order = order + 1
+      if capture and not vim.startswith(capture, "_") then
         local capture_meta = metadata and metadata[id]
-        local prio = tonumber(
-          (capture_meta and capture_meta.priority) or (metadata and metadata.priority)
-        ) or 100
-        local hl = ("@%s.%s"):format(capture, lang)
+        local conceal = (capture_meta and capture_meta.conceal) or (metadata and metadata.conceal)
         local sr, sc, er, ec = node:range()
         local first_row = math.max(0, sr)
         local last_row = math.min(line_count - 1, ec == 0 and er - 1 or er)
-        for row = first_row, last_row do
-          local line_num = row + 1
-          local col_start = row == sr and sc or 0
-          local col_end = row == er and ec or math.huge
-          if col_end > col_start then
-            spans_by_line[line_num] = spans_by_line[line_num] or {}
-            table.insert(spans_by_line[line_num], {
-              start_col = col_start,
-              end_col = col_end,
-              hl = hl,
-              prio = prio,
-              order = order,
-            })
+
+        -- Conceal markdown syntax delimiters (`**`, `` ` ``, link URLs, code fences), but keep the
+        -- code block language label visible.
+        if (capture == "conceal" or conceal ~= nil) and capture ~= "label" then
+          for row = first_row, last_row do
+            local line_num = row + 1
+            local col_start = row == sr and sc or 0
+            local col_end = row == er and ec or math.huge
+            if col_end > col_start then
+              conceals_by_line[line_num] = conceals_by_line[line_num] or {}
+              table.insert(conceals_by_line[line_num], {
+                start_col = col_start,
+                end_col = col_end,
+                replacement = type(conceal) == "string" and conceal or "",
+              })
+            end
+          end
+        end
+
+        if not ignored_captures[capture] then
+          order = order + 1
+          local prio = tonumber(
+            (capture_meta and capture_meta.priority) or (metadata and metadata.priority)
+          ) or 100
+          local hl = ("@%s.%s"):format(capture, lang)
+          for row = first_row, last_row do
+            local line_num = row + 1
+            local col_start = row == sr and sc or 0
+            local col_end = row == er and ec or math.huge
+            if col_end > col_start then
+              spans_by_line[line_num] = spans_by_line[line_num] or {}
+              table.insert(spans_by_line[line_num], {
+                start_col = col_start,
+                end_col = col_end,
+                hl = hl,
+                prio = prio,
+                order = order,
+              })
+            end
           end
         end
       end
     end
   end)
-  return spans_by_line
+  return spans_by_line, conceals_by_line
 end
 
---- Build `[text, hl][]` chunks for one line from its overlapping highlight spans.
+--- Build `[text, hl][]` chunks for one line from its overlapping highlight spans and conceal
+--- ranges. Returns nil if a non-empty line was completely concealed (such as a closing code fence).
 ---@param line string
 ---@param spans { start_col: integer, end_col: integer, hl: string, prio: integer, order: integer }[]?
----@return [string, string?][]
-local function apply_spans(line, spans)
-  if line == "" or not spans or #spans == 0 then
-    return { { line } }
+---@param conceals { start_col: integer, end_col: integer, replacement: string }[]?
+---@param override_hl string?
+---@return [string, string?][]?
+local function apply_spans(line, spans, conceals, override_hl)
+  if line == "" then
+    return { { "", override_hl } }
   end
   local len = #line
   local hls = {}
   local prios = {}
   local orders = {}
-  for _, span in ipairs(spans) do
-    local first = math.max(1, span.start_col + 1)
-    local last = math.min(len, span.end_col)
-    for byte = first, last do
-      local old_prio = prios[byte]
-      if
-        not old_prio
-        or span.prio > old_prio
-        or (span.prio == old_prio and span.order > orders[byte])
-      then
-        hls[byte] = span.hl
-        prios[byte] = span.prio
-        orders[byte] = span.order
+  if override_hl then
+    for byte = 1, len do
+      hls[byte] = override_hl
+    end
+  elseif spans then
+    for _, span in ipairs(spans) do
+      local first = math.max(1, span.start_col + 1)
+      local last = math.min(len, span.end_col)
+      for byte = first, last do
+        local old_prio = prios[byte]
+        if
+          not old_prio
+          or span.prio > old_prio
+          or (span.prio == old_prio and span.order > orders[byte])
+        then
+          hls[byte] = span.hl
+          prios[byte] = span.prio
+          orders[byte] = span.order
+        end
+      end
+    end
+  end
+
+  local concealed = {}
+  local replacements = {}
+  if conceals then
+    for _, item in ipairs(conceals) do
+      local first = math.max(1, item.start_col + 1)
+      local last = math.min(len, item.end_col)
+      for byte = first, last do
+        concealed[byte] = true
+      end
+      if item.replacement ~= "" and first <= len then
+        replacements[first] = { text = item.replacement, hl = hls[first] }
       end
     end
   end
 
   local chunks = {}
-  local run_start = 1
-  local run_hl = hls[1]
-  for byte = 2, len + 1 do
-    local hl = byte <= len and hls[byte] or nil
-    if byte > len or hl ~= run_hl then
-      table.insert(chunks, { line:sub(run_start, byte - 1), run_hl })
-      run_start = byte
-      run_hl = hl
+  local function push_text(text, hl)
+    if text == "" then
+      return
     end
+    local last = chunks[#chunks]
+    if last and last[2] == hl then
+      last[1] = last[1] .. text
+    else
+      table.insert(chunks, { text, hl })
+    end
+  end
+
+  local byte = 1
+  while byte <= len do
+    if concealed[byte] then
+      local rep = replacements[byte]
+      if rep then
+        push_text(rep.text, rep.hl)
+      end
+      byte = byte + 1
+    else
+      local run_start = byte
+      local run_hl = hls[byte]
+      byte = byte + 1
+      while byte <= len and not concealed[byte] and hls[byte] == run_hl do
+        byte = byte + 1
+      end
+      push_text(line:sub(run_start, byte - 1), run_hl)
+    end
+  end
+
+  if #chunks == 0 then
+    return nil
   end
   return chunks
 end
 
---- Highlight markdown `text` into one array of `[text, hl]` chunks for each line.
+--- Render markdown `text` into one array of `[text, hl]` chunks for each visible line, hiding
+--- markdown delimiters (`**`, `` ` ``, link URLs, code fences) via treesitter `@conceal`.
 ---@param text string
----@param opts { tabstop: integer?, hl: string? }? With `hl`, skip treesitter and use `hl` for all text.
+---@param opts { tabstop: integer?, hl: string? }? With `hl`, apply `hl` to all text (for resolved threads).
 ---@return [string, string?][][]
 function M.highlight(text, opts)
   opts = opts or {}
@@ -183,19 +257,17 @@ function M.highlight(text, opts)
     lines[index] = M.expand_tabs((raw:gsub("%s+$", "")), tabstop)
   end
 
-  if opts.hl then
-    local result = {}
-    for index, line in ipairs(lines) do
-      result[index] = { { line, opts.hl } }
-    end
-    return result
-  end
-
   local source = table.concat(lines, "\n") .. "\n"
-  local spans_by_line = parse_spans(source, #lines)
+  local spans_by_line, conceals_by_line = parse_spans(source, #lines)
   local result = {}
   for index, line in ipairs(lines) do
-    result[index] = apply_spans(line, spans_by_line[index])
+    local chunks = apply_spans(line, spans_by_line[index], conceals_by_line[index], opts.hl)
+    if chunks then
+      table.insert(result, chunks)
+    end
+  end
+  if #result == 0 then
+    return { { { "", opts.hl } } }
   end
   return result
 end

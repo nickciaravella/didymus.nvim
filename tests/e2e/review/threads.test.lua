@@ -379,8 +379,10 @@ T["unfolded threads highlight markdown with built-in treesitter parsers"] = func
   for _, chunk in ipairs(chunks) do
     by_text[chunk[1]] = chunk[2]
   end
-  eq(by_text["`count`"], "@markup.raw.markdown_inline")
-  eq(by_text["**num**"], "@markup.strong.markdown_inline")
+  eq(by_text["count"], "@markup.raw.markdown_inline")
+  eq(by_text["num"], "@markup.strong.markdown_inline")
+  eq(by_text["`count`"], nil)
+  eq(by_text["**num**"], nil)
 end
 
 T[":Didymus review focus lets the user move cursor, select, yank, fold and return to code"] = function()

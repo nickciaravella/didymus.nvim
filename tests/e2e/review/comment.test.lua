@@ -142,8 +142,9 @@ T["add to review shows the comment as pending in the panel and at the line"] = f
       "filetype",
       { buf = child.api.nvim_win_get_buf(assert(inline_win())) }
     ),
-    "markdown"
+    "didymus_input"
   )
+  eq(child.api.nvim_get_option_value("conceallevel", { win = assert(inline_win()) }), 0)
 
   child.type_keys("Looks good.", "<C-y>")
   helpers.wait_for_threads(child, 2)

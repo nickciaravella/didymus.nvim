@@ -5,20 +5,25 @@ local T = MiniTest.new_set()
 
 T["highlight()"] = MiniTest.new_set()
 
-T["highlight()"]["highlights inline code and bold with built-in markdown treesitter"] = function()
-  local lines = markdown.highlight("Use `count` and **num**.")
+T["highlight()"]["renders inline code, bold and links by concealing markdown delimiters"] = function()
+  local lines = markdown.highlight("Use `count` and **num** and [docs](https://example.com).")
   eq(#lines, 1)
   local by_text = {}
+  local text = {}
   for _, chunk in ipairs(lines[1]) do
     by_text[chunk[1]] = chunk[2]
+    table.insert(text, chunk[1])
   end
-  eq(by_text["`count`"], "@markup.raw.markdown_inline")
-  eq(by_text["**num**"], "@markup.strong.markdown_inline")
+  eq(table.concat(text), "Use count and num and docs.")
+  eq(by_text["count"], "@markup.raw.markdown_inline")
+  eq(by_text["num"], "@markup.strong.markdown_inline")
+  eq(by_text["docs"], "@markup.link.label.markdown_inline")
 end
 
-T["highlight()"]["highlights fenced lua code blocks with the lua parser"] = function()
+T["highlight()"]["renders fenced lua code blocks with language label and hides fences"] = function()
   local lines = markdown.highlight("```lua\nlocal x = 1\n```")
-  eq(#lines, 3)
+  eq(#lines, 2)
+  eq(lines[1], { { "lua", "@label.markdown" } })
   local by_text = {}
   for _, chunk in ipairs(lines[2]) do
     by_text[chunk[1]] = chunk[2]
@@ -27,9 +32,9 @@ T["highlight()"]["highlights fenced lua code blocks with the lua parser"] = func
   eq(by_text["1"], "@number.lua")
 end
 
-T["highlight()"]["uses the override highlight when given"] = function()
+T["highlight()"]["uses the override highlight when given and still conceals delimiters"] = function()
   eq(markdown.highlight("**bold**\nnext", { hl = "DidymusThreadResolved" }), {
-    { { "**bold**", "DidymusThreadResolved" } },
+    { { "bold", "DidymusThreadResolved" } },
     { { "next", "DidymusThreadResolved" } },
   })
 end
