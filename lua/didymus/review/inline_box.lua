@@ -411,6 +411,17 @@ function InlineBox:focus()
   end
 end
 
+--- Leave the inline box and return focus to the host window, keeping the box open as a draft.
+function InlineBox:leave()
+  if not self:is_open() then
+    return
+  end
+  local host_win = self.get_host_win()
+  if host_win and vim.api.nvim_win_is_valid(host_win) then
+    vim.api.nvim_set_current_win(host_win)
+  end
+end
+
 --- Close the inline box, restore focus to the host window if needed, and clear spacers.
 ---@param cb fun(...)?
 ---@param ... any
@@ -484,7 +495,7 @@ function InlineBox:setup_interactions(opts)
       end, map_opts)
     end
     vim.keymap.set("n", "<Esc>", function()
-      self:close()
+      self:leave()
     end, map_opts)
 
     -- Completion plugins can set buffer mappings on InsertEnter. Set the submit mappings after them.

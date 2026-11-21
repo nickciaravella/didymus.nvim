@@ -187,7 +187,8 @@ At the last or the first stop, a message shows, and the cursor does not move. `<
 | --- | --- |
 | `<C-s>` | Comment now: post the comment at once. GitHub does this only if you have no pending review. |
 | `<C-y>` | Add to review: add the comment to your pending review. If you have no pending review, didymus starts one. A pending review that you started on github.com also works. |
-| `q` or `<Esc>`, in normal mode | Cancel. |
+| `<Esc>`, in normal mode | Leave the box and keep your draft open. |
+| `q`, in normal mode | Cancel and discard the draft. |
 
 An open inline editor stays alive if you leave it, scroll away or open another file. It hides while off screen and shows again when you return. Only one inline editor can be open at a time.
 
@@ -205,7 +206,7 @@ If GitHub does not add the comment, the error shows. The next `comment` on the s
 
 `reply` and `resolve` use the focused inline thread, else the thread at the cursor line. If more than one thread is at the line, the picker asks which one.
 
-`reply` unfolds the thread and opens an inline markdown box attached to the bottom of the thread box (or a bottom split for a deleted file). It has the keys of `comment`: `<C-s>` (reply now) posts the reply at once, and `<C-y>` (add to review) adds it to your pending review. `q` or `<Esc>` in normal mode cancels. GitHub posts a reply at once only if you have no pending review. A reply in your pending review has the `[pending]` tag, until you submit the review. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
+`reply` unfolds the thread and opens an inline markdown box attached to the bottom of the thread box (or a bottom split for a deleted file). It has the keys of `comment`: `<C-s>` (reply now) posts the reply at once, and `<C-y>` (add to review) adds it to your pending review. `<Esc>` in normal mode leaves the box open as a draft, and `q` cancels. GitHub posts a reply at once only if you have no pending review. A reply in your pending review has the `[pending]` tag, until you submit the review. If GitHub does not add the reply, the error shows. The next `reply` to the same thread starts with your text.
 
 After a resolve, the thread is dim in the panel and at its line, and it is folded. If GitHub does not let you do the action, a message shows. For example, GitHub does not let you resolve a thread of your pending review.
 

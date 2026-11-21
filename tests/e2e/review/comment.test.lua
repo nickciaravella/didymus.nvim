@@ -217,10 +217,10 @@ T["an open inline comment stays alive when leaving, hides off screen, and blocks
   child.api.nvim_win_set_cursor(0, { 2, 0 })
   child.cmd("Didymus review comment")
   wait_for_input()
-  child.type_keys("Draft text.", "<Esc>")
+  child.type_keys("Draft text.", "<Esc>", "<Esc>")
 
-  -- Leaving the inline box keeps it open.
-  child.api.nvim_set_current_win(code_win)
+  -- `<Esc>` in normal mode leaves the box back to the code window, keeping the draft open.
+  eq(child.api.nvim_get_current_win(), code_win)
   local win = assert(inline_win())
   eq(child.api.nvim_win_get_config(win).hide, false)
 

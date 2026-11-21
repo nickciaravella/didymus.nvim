@@ -219,9 +219,9 @@ T["a second reply at another thread refuses while an inline reply is open"] = fu
   child.api.nvim_win_set_cursor(0, { 3, 0 })
   child.cmd("Didymus review reply")
   wait_for_reply_box()
-  child.type_keys("In progress.", "<Esc>")
+  child.type_keys("In progress.", "<Esc>", "<Esc>")
 
-  child.api.nvim_set_current_win(code_win)
+  eq(child.api.nvim_get_current_win(), code_win)
   child.api.nvim_win_set_cursor(0, { 19, 0 })
   child.cmd("Didymus review reply")
   eq(
