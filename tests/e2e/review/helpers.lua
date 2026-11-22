@@ -183,13 +183,15 @@ function M.thread_marks(child)
           end, line))
         end, mark[4].virt_lines),
       }
+    end, vim.tbl_filter(function(mark)
+      return mark[4].virt_lines ~= nil
     end, vim.api.nvim_buf_get_extmarks(
       0,
       require("didymus.review.threads").namespace,
       0,
       -1,
       { details = true }
-    ))
+    )))
   ]])
 end
 

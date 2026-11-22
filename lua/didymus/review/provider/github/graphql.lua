@@ -34,7 +34,7 @@ query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
 ]]
 
 --- The fields of a review comment.
-local comment_fields = "author { login } body state"
+local comment_fields = "author { login } body state createdAt"
 
 --- The fields of a review thread, with its first comments.
 local thread_fields = [[

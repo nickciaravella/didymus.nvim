@@ -4,6 +4,7 @@
 local DiffView = require("didymus.diff.view")
 local config = require("didymus.config")
 local diff_target = require("didymus.review.diff_target")
+local inline_box = require("didymus.review.inline_box")
 local panel = require("didymus.review.panel")
 local patch = require("didymus.review.patch")
 local picker = require("didymus.ui.picker")
@@ -49,6 +50,8 @@ local workspace = require("didymus.review.workspace")
 ---@field private thread_paths table<string, string> The path of each file with threads, by its real path.
 ---@field diff_view didymus.diff.View The diff of the change in the code window.
 ---@field private workspace_checked boolean True after the check for local changes in the diff.
+---@field inline_box didymus.review.InlineBox? The open inline focus or edit box.
+---@field private slot_anchors table<integer, didymus.review.InlineAnchor> The anchor of the inline box, by buffer.
 local Session = {}
 Session.__index = Session
 
@@ -74,6 +77,7 @@ function Session.new(opts)
     folds = {},
     draw_scheduled = false,
     workspace_checked = false,
+    slot_anchors = {},
   }, Session)
   -- An unlisted scratch buffer, so that the close leaves no "[No Name]" buffer.
   local buf = vim.api.nvim_create_buf(false, true)
@@ -92,6 +96,8 @@ function Session.new(opts)
       end
       vim.api.nvim_del_augroup_by_id(self.group)
       vim.api.nvim_set_decoration_provider(threads.namespace, {})
+      self:close_inline_box()
+      inline_box.clear_context()
       self.diff_view:close()
       self:hide_files()
       threads.clear()
@@ -285,15 +291,17 @@ end
 
 function Session:scope_threads()
   if self:is_open() then
-    threads.scope(vim.api.nvim_tabpage_list_wins(self.tabpage))
+    local wins = vim.api.nvim_tabpage_list_wins(self.tabpage)
+    threads.scope(wins)
+    inline_box.scope_context(wins)
   end
 end
 
 ---@param win integer
 ---@return integer
 local function get_win_text_width(win)
-  local info = vim.fn.getwininfo(win)[1]
-  return info.width - info.textoff
+  -- Thread cards use `virt_lines_leftcol = true` and `col = 0`, spanning the full window width.
+  return vim.fn.getwininfo(win)[1].width
 end
 
 --- The text width of the narrowest window of the review tabpage that shows `buf`. With no such
@@ -345,28 +353,83 @@ function Session:check_text_widths()
           self:draw_threads(buf)
         end
       end
+      if self.inline_box and self.inline_box:is_open() then
+        self.inline_box:sync(false)
+      end
     end)
   end
 end
 
---- Draw the threads in `buf`, if it shows a file with threads.
+---@return didymus.review.threads.InlineSlot?
+function Session:get_inline_slot()
+  local box = self.inline_box
+  if box and box:is_active() and not box.split then
+    return {
+      kind = box.kind,
+      path = box.path,
+      thread_id = box.thread_id,
+      range = box.range,
+      height = box.height,
+    }
+  end
+end
+
+--- The open inline editor, if any.
+---@return didymus.review.InlineBox?
+function Session:get_open_editor()
+  local box = self.inline_box
+  if box and box:is_open() and box.mode == "edit" then
+    return box
+  end
+end
+
+--- Close the focused read-only thread box, if one is open. Keep any open inline editor.
+function Session:close_focus_box()
+  local box = self.inline_box
+  if box and box:is_open() and box.mode == "focus" then
+    box:close()
+  end
+end
+
+--- Close any open inline box (focus or edit).
+function Session:close_inline_box()
+  local box = self.inline_box
+  if box and box:is_open() then
+    box:close()
+  end
+end
+
+--- Draw the threads in `buf`, if it shows a file with threads or the active inline box.
 ---@param buf integer
 function Session:draw_threads(buf)
   local name = vim.api.nvim_buf_get_name(buf)
   local real_path = name ~= "" and vim.uv.fs_realpath(name)
   local path = real_path and self.thread_paths[real_path]
+  local slot = self:get_inline_slot()
+  if
+    not path
+    and slot
+    and real_path
+    and vim.uv.fs_realpath(self:get_full_path(slot.path)) == real_path
+  then
+    path = slot.path
+  end
   if path then
-    threads.draw(buf, path, self.threads, {
+    self.slot_anchors[buf] = threads.draw(buf, path, self.threads, {
       width = self:get_text_width(buf),
       is_folded = function(thread)
         return self:is_folded(thread)
       end,
+      inline_slot = slot,
     })
+  else
+    self.slot_anchors[buf] = nil
   end
 end
 
---- Draw the threads in all loaded buffers of files with threads.
+--- Draw the threads in all loaded buffers of files with threads or the active inline box.
 function Session:draw_all_threads()
+  self.slot_anchors = {}
   threads.clear()
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(buf) then
@@ -375,13 +438,14 @@ function Session:draw_all_threads()
   end
 end
 
---- As on github.com, a resolved thread starts folded, and an active thread starts unfolded.
+--- As on github.com, a resolved thread starts folded, and an active head thread starts unfolded.
+--- Outdated and base-side threads start folded at the top of the file.
 ---@param thread didymus.review.Thread
 ---@return boolean
 function Session:is_folded(thread)
   local folded = self.folds[thread.id]
   if folded == nil then
-    return thread.resolved
+    return thread.resolved or thread.outdated or thread.side == "base"
   end
   return folded
 end
@@ -462,6 +526,13 @@ function Session:set_threads(list)
     end
   end
   self:draw_all_threads()
+  if self.inline_box and self.inline_box:is_open() then
+    if self.inline_box.thread_id and not self:get_thread(self.inline_box.thread_id) then
+      self.inline_box:close()
+    else
+      self.inline_box:sync(false)
+    end
+  end
   if self:is_panel_open() then
     self.panel:update()
   end
@@ -557,15 +628,18 @@ function Session:get_pending_comments()
   return result
 end
 
---- Call `cb` with the thread at the cursor: the thread of the open thread float, else the thread
+--- Call `cb` with the thread at the cursor: the thread of the focused inline box, else the thread
 --- with a mark on the cursor line. If more than one thread is at the line, ask which one.
 ---@param cb fun(thread: didymus.review.Thread)
 function Session:pick_thread_at_cursor(cb)
-  local float_thread_id = threads.get_float_thread_id()
-  local float_thread = float_thread_id and self:get_thread(float_thread_id)
-  -- The select closes the float. So with the float open, a second `thread` must focus the float,
-  -- and not ask again.
-  local found = float_thread and { float_thread } or threads.at_cursor(self.threads)
+  if self.inline_box and self.inline_box:is_focused() and self.inline_box.thread_id then
+    local thread = self:get_thread(self.inline_box.thread_id)
+    if thread then
+      cb(thread)
+      return
+    end
+  end
+  local found = threads.at_cursor(self.threads)
   local line = vim.api.nvim_win_get_cursor(0)[1]
   if #found == 0 then
     vim.notify(("didymus: no thread at line %d"):format(line), vim.log.levels.WARN)
@@ -628,6 +702,19 @@ end
 --- Fold or unfold the threads at the cursor line, with no question. If one of them is unfolded,
 --- fold all of them.
 function Session:toggle_fold()
+  if
+    self.inline_box
+    and self.inline_box:is_focused()
+    and self.inline_box.mode == "focus"
+    and self.inline_box.thread_id
+  then
+    local thread = self:get_thread(self.inline_box.thread_id)
+    self.inline_box:close()
+    if thread then
+      self:set_folded({ thread }, true)
+    end
+    return
+  end
   local found = threads.at_cursor(self.threads)
   local line = vim.api.nvim_win_get_cursor(0)[1]
   if #found == 0 then
@@ -650,7 +737,7 @@ function Session:toggle_all_folds()
     vim.notify(("didymus: %s has no threads at a line"):format(self.label), vim.log.levels.WARN)
     return
   end
-  self:set_folded(self.threads, self:has_unfolded(shown))
+  self:set_folded(shown, self:has_unfolded(shown))
 end
 
 ---@param win integer
@@ -735,14 +822,401 @@ function Session:open_file(path, line, opts)
   return true
 end
 
---- Open the file of `thread` at the line of the thread, unfold the thread, and show it.
+--- True if `path` exists in the checkout and is not a deleted file of the change.
+---@param path string
+---@return boolean
+function Session:has_file_buffer(path)
+  local file = self:get_file(path)
+  if file and file.status == "deleted" then
+    return false
+  end
+  return vim.uv.fs_stat(self:get_full_path(path)) ~= nil
+end
+
+--- The non-floating window in the current tabpage that shows `path`.
+---@param path string
+---@param preferred_win integer?
+---@return integer?
+function Session:get_host_win(path, preferred_win)
+  if not self:is_open() then
+    return nil
+  end
+  local full_path = self:get_full_path(path)
+  local cur_tab = vim.api.nvim_get_current_tabpage()
+  for _, win in ipairs({ preferred_win, self.code_win }) do
+    if
+      win
+      and vim.api.nvim_win_is_valid(win)
+      and vim.api.nvim_win_get_tabpage(win) == cur_tab
+      and vim.api.nvim_win_get_config(win).relative == ""
+      and shows_file(win, full_path)
+    then
+      return win
+    end
+  end
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(cur_tab)) do
+    if vim.api.nvim_win_get_config(win).relative == "" and shows_file(win, full_path) then
+      return win
+    end
+  end
+end
+
+--- Build the keys for a focused thread box or split.
+---@param thread didymus.review.Thread
+---@param allow_fold boolean
+---@return didymus.review.InlineThreadKeys
+function Session:make_thread_keys(thread, allow_fold)
+  local keys = config.options.review.thread.keys
+  return {
+    reply = {
+      key = keys.reply,
+      fn = function()
+        require("didymus.review").reply()
+      end,
+    },
+    resolve = {
+      key = keys.resolve,
+      name = thread.resolved and "unresolve" or "resolve",
+      fn = function()
+        require("didymus.review").resolve()
+      end,
+    },
+    fold = allow_fold and {
+      key = keys.fold,
+      fn = function()
+        require("didymus.review").fold()
+      end,
+    } or nil,
+    source = { key = keys.source },
+  }
+end
+
+--- Warn if an inline editor is already open. Return true if blocked.
+---@param same_target fun(editor: didymus.review.InlineBox): boolean
+---@return boolean blocked
+function Session:check_open_editor(same_target)
+  local editor = self:get_open_editor()
+  if not editor then
+    return false
+  end
+  if same_target(editor) then
+    editor:focus()
+    return true
+  end
+  vim.notify(
+    ("didymus: another comment is already open at %s. Submit or cancel it first."):format(
+      editor.location
+    ),
+    vim.log.levels.WARN
+  )
+  return true
+end
+
+--- Focus `thread` inline in its file (or in a bottom split if the file is deleted).
+---@param thread didymus.review.Thread
+function Session:focus_thread(thread)
+  if
+    self:check_open_editor(function(editor)
+      return editor.kind == "reply" and editor.thread_id == thread.id
+    end)
+  then
+    return
+  end
+  self:close_focus_box()
+
+  local has_file = self:has_file_buffer(thread.path)
+  if not has_file then
+    self:focus()
+    local split_lines, split_dividers, split_headers =
+      threads.get_lines(thread, { include_tags = true })
+    inline_box.open({
+      mode = "focus",
+      kind = "focus",
+      split = true,
+      path = thread.path,
+      thread_id = thread.id,
+      location = threads.get_location(thread),
+      title = threads.get_title(thread),
+      lines = split_lines,
+      dividers = split_dividers,
+      headers = split_headers,
+      render_rendered = function(box_width)
+        return threads.render_thread_rows(thread, {
+          box_width = box_width,
+          tabstop = vim.o.tabstop,
+          include_tags = true,
+        })
+      end,
+      render_raw = function()
+        return threads.get_lines(thread, { include_tags = true })
+      end,
+      max_height = math.max(4, math.floor(vim.o.lines * 0.4)),
+      thread_keys = self:make_thread_keys(thread, false),
+      on_attach = function(box)
+        self.inline_box = box
+      end,
+      on_change = function() end,
+      on_close = function()
+        if self.inline_box and self.inline_box.closed then
+          self.inline_box = nil
+        end
+      end,
+      get_host_win = function()
+        return vim.api.nvim_win_is_valid(self.code_win) and self.code_win or nil
+      end,
+      get_anchor = function()
+        return nil
+      end,
+    })
+    return
+  end
+
+  local line = threads.get_line(thread) or 1
+  local preferred_win = self:get_host_win(thread.path, vim.api.nvim_get_current_win())
+  if preferred_win then
+    vim.api.nvim_set_current_win(preferred_win)
+    set_cursor(preferred_win, line)
+  elseif not self:open_file(thread.path, line) then
+    return
+  end
+  preferred_win = vim.api.nvim_get_current_win()
+  local host_buf = vim.api.nvim_win_get_buf(preferred_win)
+  local include_tags = threads.get_line(thread) == nil
+  local initial_width = self:get_text_width(host_buf)
+  local initial_rows = threads.render_thread_rows(thread, {
+    box_width = initial_width,
+    tabstop = vim.bo[host_buf].tabstop,
+    include_tags = include_tags,
+  })
+  self.folds[thread.id] = false
+
+  inline_box.open({
+    mode = "focus",
+    kind = "focus",
+    path = thread.path,
+    thread_id = thread.id,
+    location = threads.get_location(thread),
+    title = "",
+    border = inline_box.borders.box,
+    border_hl = thread.resolved and "DidymusThreadResolvedBorder" or "DidymusThreadBorder",
+    initial_height = #initial_rows,
+    render_rendered = function(box_width)
+      local tabstop = vim.api.nvim_buf_is_valid(host_buf) and vim.bo[host_buf].tabstop
+        or vim.o.tabstop
+      return threads.render_thread_rows(thread, {
+        box_width = box_width,
+        tabstop = tabstop,
+        include_tags = include_tags,
+      })
+    end,
+    render_raw = function()
+      return threads.get_lines(thread, { include_tags = include_tags })
+    end,
+    max_height = math.max(4, vim.o.lines - 6),
+    thread_keys = self:make_thread_keys(thread, true),
+    on_attach = function(box)
+      self.inline_box = box
+    end,
+    on_change = function()
+      self:draw_all_threads()
+    end,
+    on_close = function()
+      if self.inline_box and self.inline_box.closed then
+        self.inline_box = nil
+      end
+    end,
+    get_host_win = function()
+      return self:get_host_win(thread.path, preferred_win)
+    end,
+    get_anchor = function()
+      local win = self:get_host_win(thread.path, preferred_win)
+      return win and self.slot_anchors[vim.api.nvim_win_get_buf(win)] or nil
+    end,
+    open_host = function()
+      if self:open_file(thread.path, line) then
+        return self.code_win
+      end
+    end,
+  })
+end
+
+--- Open an inline reply box attached to the bottom of `thread` (or a bottom split for deleted files).
+---@param thread didymus.review.Thread
+---@param opts { text: string?, actions: didymus.review.InlineBoxAction[], cancel_key: string|false, max_height: integer }
+function Session:open_reply_box(thread, opts)
+  if
+    self:check_open_editor(function(editor)
+      return editor.kind == "reply" and editor.thread_id == thread.id
+    end)
+  then
+    return
+  end
+  self:close_focus_box()
+
+  local location = threads.get_location(thread)
+  local lines = opts.text and vim.split(opts.text, "\n") or { "" }
+  local has_file = self:has_file_buffer(thread.path)
+
+  if not has_file then
+    self:focus()
+    inline_box.open({
+      mode = "edit",
+      kind = "reply",
+      split = true,
+      path = thread.path,
+      thread_id = thread.id,
+      location = location,
+      title = "Reply to " .. location,
+      lines = lines,
+      max_height = opts.max_height,
+      actions = opts.actions,
+      cancel_key = opts.cancel_key,
+      on_attach = function(box)
+        self.inline_box = box
+      end,
+      on_change = function() end,
+      on_close = function()
+        if self.inline_box and self.inline_box.closed then
+          self.inline_box = nil
+        end
+      end,
+      get_host_win = function()
+        return vim.api.nvim_win_is_valid(self.code_win) and self.code_win or nil
+      end,
+      get_anchor = function()
+        return nil
+      end,
+    })
+    return
+  end
+
+  local line = threads.get_line(thread) or 1
+  local preferred_win = self:get_host_win(thread.path, vim.api.nvim_get_current_win())
+  if preferred_win then
+    vim.api.nvim_set_current_win(preferred_win)
+  elseif not self:open_file(thread.path, line) then
+    return
+  end
+  preferred_win = vim.api.nvim_get_current_win()
+  self.folds[thread.id] = false
+
+  inline_box.open({
+    mode = "edit",
+    kind = "reply",
+    path = thread.path,
+    thread_id = thread.id,
+    location = location,
+    title = "Reply",
+    title_hl = thread.resolved and "DidymusThreadResolvedBorder" or "DidymusThreadTitle",
+    border = inline_box.borders.reply,
+    border_hl = thread.resolved and "DidymusThreadResolvedBorder" or "DidymusThreadBorder",
+    lines = lines,
+    max_height = opts.max_height,
+    actions = opts.actions,
+    cancel_key = opts.cancel_key,
+    on_attach = function(box)
+      self.inline_box = box
+    end,
+    on_change = function()
+      self:draw_all_threads()
+    end,
+    on_close = function()
+      if self.inline_box and self.inline_box.closed then
+        self.inline_box = nil
+      end
+    end,
+    get_host_win = function()
+      return self:get_host_win(thread.path, preferred_win)
+    end,
+    get_anchor = function()
+      local win = self:get_host_win(thread.path, preferred_win)
+      return win and self.slot_anchors[vim.api.nvim_win_get_buf(win)] or nil
+    end,
+    open_host = function()
+      if self:open_file(thread.path, line) then
+        return self.code_win
+      end
+    end,
+  })
+end
+
+--- Open an inline comment box under `range.last` of `path`.
+---@param path string
+---@param range didymus.review.Range
+---@param opts { location: string, text: string?, actions: didymus.review.InlineBoxAction[], cancel_key: string|false, max_height: integer }
+function Session:open_comment_box(path, range, opts)
+  if
+    self:check_open_editor(function(editor)
+      return editor.kind == "comment"
+        and editor.path == path
+        and vim.deep_equal(editor.range, range)
+    end)
+  then
+    return
+  end
+  self:close_focus_box()
+
+  local preferred_win = self:get_host_win(path, vim.api.nvim_get_current_win())
+  if not preferred_win then
+    if not self:open_file(path, range.last) then
+      return
+    end
+    preferred_win = self.code_win
+  end
+  local lines = opts.text and vim.split(opts.text, "\n") or { "" }
+
+  inline_box.open({
+    mode = "edit",
+    kind = "comment",
+    path = path,
+    range = range,
+    location = opts.location,
+    title = ("New comment (%s)"):format(opts.location),
+    border = inline_box.borders.box,
+    lines = lines,
+    max_height = opts.max_height,
+    actions = opts.actions,
+    cancel_key = opts.cancel_key,
+    on_attach = function(box)
+      self.inline_box = box
+    end,
+    on_change = function()
+      self:draw_all_threads()
+    end,
+    on_close = function()
+      if self.inline_box and self.inline_box.closed then
+        self.inline_box = nil
+      end
+    end,
+    get_host_win = function()
+      return self:get_host_win(path, preferred_win)
+    end,
+    get_anchor = function()
+      local win = self:get_host_win(path, preferred_win)
+      return win and self.slot_anchors[vim.api.nvim_win_get_buf(win)] or nil
+    end,
+    open_host = function()
+      if self:open_file(path, range.last) then
+        return self.code_win
+      end
+    end,
+  })
+end
+
+--- Open the file of `thread` at its line, unfold the thread, and show it. For threads with no head
+--- line (outdated, base side, file level), focus them inline at the top of the file (or in a bottom
+--- split for deleted files).
 ---@param thread didymus.review.Thread
 function Session:open_thread(thread)
   local line = threads.get_line(thread)
-  if line and self:open_file(thread.path, line) then
-    self:set_folded({ thread }, false)
-    show_threads_under(self.code_win, vim.api.nvim_win_get_cursor(self.code_win)[1])
+  if line then
+    if self:open_file(thread.path, line) then
+      self:set_folded({ thread }, false)
+      show_threads_under(self.code_win, vim.api.nvim_win_get_cursor(self.code_win)[1])
+    end
+    return
   end
+  self:focus_thread(thread)
 end
 
 ---@class didymus.review.CursorPosition
@@ -903,6 +1377,7 @@ function Session:close()
   if not self:is_open() then
     return
   end
+  self:close_inline_box()
   self:hide_files()
   -- Neovim cannot close the last tabpage.
   if #vim.api.nvim_list_tabpages() == 1 then

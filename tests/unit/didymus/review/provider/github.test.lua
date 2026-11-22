@@ -309,6 +309,14 @@ local function get_threads(change)
   return reply.result
 end
 
+T["get_threads()"]["maps comment createdAt to created_at"] = function()
+  mock_threads("threads_graphql", function(pages)
+    pages[1].data.node.reviewThreads.nodes[1].comments.nodes[1].createdAt = "2026-11-21T14:30:00Z"
+  end)
+  local threads = get_threads(threads_change)
+  eq(threads[1].comments[1].created_at, "2026-11-21T14:30:00Z")
+end
+
 T["get_threads()"]["gives the threads of all pages, and all comments of a long thread"] = function()
   mock_threads("threads_graphql")
   local threads = get_threads(threads_change)

@@ -247,6 +247,7 @@ local function to_comment(comment)
     author = get_login(comment.author),
     body = ((comment.body or ""):gsub("\r\n", "\n")),
     pending = comment.state == "PENDING",
+    created_at = comment.createdAt,
   }
 end
 

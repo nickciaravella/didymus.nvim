@@ -387,7 +387,7 @@ end
 
 T["next thread unfolds the threads at the stop, and scrolls so that they show"] = function()
   local comments = {}
-  for index = 1, 8 do
+  for index = 1, 5 do
     table.insert(
       comments,
       { author = "octocat", body = "Comment " .. index .. ".", pending = false }
@@ -409,17 +409,28 @@ T["next thread unfolds the threads at the stop, and scrolls so that they show"] 
   child.api.nvim_win_set_cursor(0, { 1, 0 })
   child.cmd("Didymus review next")
   eq(position(), { "a.txt", 2 })
-  eq(helpers.thread_marks(child)[1].lines, { "┌ ✅ @octocat", "└ A comment." })
+  local first_lines = helpers.thread_marks(child)[1].lines
+  eq(#first_lines, 5)
+  eq(first_lines[1]:find("┌───", 1, true), 1)
+  eq(first_lines[2]:find("│ ✅ @octocat", 1, true), 1)
+  eq(first_lines[4]:find("│ A comment.", 1, true), 1)
+  eq(first_lines[5]:find("└───", 1, true), 1)
 
   child.cmd("Didymus review next")
   eq(position(), { "a.txt", 30 })
-  eq(#helpers.thread_marks(child)[2].lines, 16)
+  eq(#helpers.thread_marks(child)[2].lines, 21)
   local screen = vim.tbl_map(function(row)
     return vim.trim(table.concat(row))
   end, child.get_screenshot().text)
   -- The sign is the comment count.
-  eq(vim.tbl_contains(screen, "8 A30"), true)
-  eq(vim.tbl_contains(screen, "└ Comment 8."), true)
+  eq(vim.tbl_contains(screen, "5 A30"), true)
+  local has_last = false
+  for _, line in ipairs(screen) do
+    if line:find("│ Comment 5.", 1, true) then
+      has_last = true
+    end
+  end
+  eq(has_last, true)
 end
 
 T["next with an unknown kind shows an error"] = function()

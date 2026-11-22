@@ -32,4 +32,14 @@ T["wrap()"]["keeps an empty line"] = function()
   eq(threads.wrap("", 10), { "" })
 end
 
+T["format_time()"] = MiniTest.new_set()
+
+T["format_time()"]["formats ISO-8601 timestamps and ignores invalid values"] = function()
+  local formatted = threads.format_time("2026-11-21T14:30:00Z")
+  eq(type(formatted), "string")
+  eq(formatted:match("^%d%d%d%d%-%d%d%-%d%d %d%d:%d%d$") ~= nil, true)
+  eq(threads.format_time(nil), nil)
+  eq(threads.format_time("not-a-date"), nil)
+end
+
 return T

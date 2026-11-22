@@ -253,8 +253,9 @@ T["a comment after a new head shows the reason, but a reply works"] = function()
   child.cmd("Didymus review reply")
   wait_for(function()
     return float_win() ~= nil
-  end, "the input float")
-  eq(child.api.nvim_win_get_config(float_win()).title[1][1], " Reply to file.txt:3 ")
+  end, "the inline reply box")
+  local title = child.api.nvim_win_get_config(float_win()).title
+  eq(title[2][1], " Reply ")
 end
 
 T["R in the panel refreshes"] = function()
