@@ -431,6 +431,49 @@ T[":Didymus review focus lets the user move cursor, select, yank, fold and retur
   eq(marks()[1], { 1, { "💬 @octocat First line." } })
 end
 
+T[":Didymus review focus keeps compact divider height on multi-comment threads"] = function()
+  open_review({
+    make_thread("multi", "file.txt", {
+      range = { first = 2, last = 2 },
+      comments = {
+        { author = "octocat", body = "Why two?", pending = false },
+        { author = "hubot", body = "Because.", pending = true },
+      },
+    }),
+  })
+  choose("M file.txt +3 -3 1 thread")
+  local code_buf = child.api.nvim_get_current_buf()
+  -- Unfocused: top border + body 1 + divider + body 2 + bottom border = 5 virt_lines.
+  eq(#line_marks()[1][2], 5)
+
+  child.api.nvim_win_set_cursor(0, { 2, 0 })
+  child.cmd("Didymus review focus")
+
+  local win = assert(inline_win())
+  local buf = child.api.nvim_win_get_buf(win)
+  -- Focused: inner height is 3 (body 1 + single divider line + body 2), matching the 5 outer rows.
+  eq(child.api.nvim_win_get_height(win), 3)
+  local spacer_marks = child.api.nvim_buf_get_extmarks(
+    code_buf,
+    child.lua_get([[require("didymus.review.threads").namespace]]),
+    0,
+    -1,
+    { details = true }
+  )
+  eq(#spacer_marks[1][4].virt_lines, 5)
+  local div_marks = child.api.nvim_buf_get_extmarks(
+    buf,
+    child.lua_get([[require("didymus.review.inline_box").divider_namespace]]),
+    0,
+    -1,
+    { details = true }
+  )
+  eq(#div_marks, 1)
+  eq(div_marks[1][2], 1)
+  eq(div_marks[1][4].virt_text[2], { "@hubot", "DidymusThread" })
+  eq(div_marks[1][4].virt_text[3], { " [pending]", "DidymusThreadPending" })
+end
+
 T[":Didymus review fold folds and unfolds the threads at the cursor line"] = function()
   open_review()
   choose("M file.txt +3 -3 4 threads")

@@ -926,6 +926,7 @@ function Session:focus_thread(thread)
   local has_file = self:has_file_buffer(thread.path)
   if not has_file then
     self:focus()
+    local split_lines, split_dividers = threads.get_lines(thread, { include_first_author = true })
     inline_box.open({
       mode = "focus",
       kind = "focus",
@@ -934,7 +935,8 @@ function Session:focus_thread(thread)
       thread_id = thread.id,
       location = threads.get_location(thread),
       title = threads.get_title(thread),
-      lines = threads.get_lines(thread, { include_first_author = true }),
+      lines = split_lines,
+      dividers = split_dividers,
       max_height = math.max(4, math.floor(vim.o.lines * 0.4)),
       thread_keys = self:make_thread_keys(thread, false),
       on_attach = function(box)
@@ -967,6 +969,7 @@ function Session:focus_thread(thread)
   preferred_win = vim.api.nvim_get_current_win()
   self.folds[thread.id] = false
 
+  local focus_lines, focus_dividers = threads.get_lines(thread)
   inline_box.open({
     mode = "focus",
     kind = "focus",
@@ -977,7 +980,8 @@ function Session:focus_thread(thread)
     title_hl = thread.resolved and "DidymusThreadResolved" or "DidymusThread",
     border = inline_box.borders.box,
     border_hl = thread.resolved and "DidymusThreadResolved" or "DidymusThreadBorder",
-    lines = threads.get_lines(thread),
+    lines = focus_lines,
+    dividers = focus_dividers,
     max_height = math.max(4, math.floor(vim.o.lines * 0.5)),
     thread_keys = self:make_thread_keys(thread, true),
     on_attach = function(box)

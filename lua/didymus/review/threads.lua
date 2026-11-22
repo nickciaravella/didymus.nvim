@@ -644,18 +644,36 @@ function M.get_title(thread)
   return title
 end
 
+---@class didymus.review.CommentDivider
+---@field row integer 0-based line in the focused buffer.
+---@field author string
+---@field pending boolean
+---@field resolved boolean
+
 --- The comments of a thread as markdown lines, for the focused inline view and the split fallback.
+--- Subsequent comments are separated by a single thematic-break line (`***`) overlaid with the
+--- author divider, so focusing keeps the same compact layout and height as the unfocused box.
 ---@param thread didymus.review.Thread
 ---@param opts { include_first_author: boolean? }? Default false because the box border shows the first author.
----@return string[]
+---@return string[] lines
+---@return didymus.review.CommentDivider[] dividers
 function M.get_lines(thread, opts)
   local include_first = opts and opts.include_first_author or false
   local lines = {}
+  ---@type didymus.review.CommentDivider[]
+  local dividers = {}
   for index, comment in ipairs(thread.comments) do
     if index > 1 then
-      vim.list_extend(lines, { "", "---", "" })
-    end
-    if index > 1 or include_first then
+      -- `***` is always a thematic break in CommonMark (never a Setext heading underline), so it
+      -- isolates adjacent comments in one line without needing extra blank lines around it.
+      table.insert(lines, "***")
+      table.insert(dividers, {
+        row = #lines - 1,
+        author = comment.author,
+        pending = comment.pending,
+        resolved = thread.resolved,
+      })
+    elseif include_first then
       local author = ("**@%s**"):format(comment.author)
       table.insert(lines, comment.pending and author .. " *pending*" or author)
       table.insert(lines, "")
@@ -663,7 +681,7 @@ function M.get_lines(thread, opts)
     local body = comment.body:gsub("^%s*\n", ""):gsub("%s+$", "")
     vim.list_extend(lines, vim.split(body, "\n"))
   end
-  return #lines > 0 and lines or { "" }
+  return #lines > 0 and lines or { "" }, dividers
 end
 
 return M
