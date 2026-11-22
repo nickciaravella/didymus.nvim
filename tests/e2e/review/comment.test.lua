@@ -220,10 +220,13 @@ T["an open inline comment stays alive when leaving, hides off screen, and blocks
   wait_for_input()
   child.type_keys("Draft text.", "<Esc>", "<Esc>")
 
-  -- `<Esc>` in normal mode leaves the box back to the code window, keeping the draft open.
+  -- `<Esc>` in normal mode leaves the box back to the code window, keeping the draft open and
+  -- rendering its markdown while unfocused.
   eq(child.api.nvim_get_current_win(), code_win)
   local win = assert(inline_win())
   eq(child.api.nvim_win_get_config(win).hide, false)
+  eq(child.api.nvim_get_option_value("conceallevel", { win = win }), 3)
+  eq(child.api.nvim_get_option_value("concealcursor", { win = win }), "nvc")
 
   -- Triggering a comment at another line refuses with a warning.
   child.api.nvim_win_set_cursor(0, { 4, 0 })
@@ -252,9 +255,10 @@ T["an open inline comment stays alive when leaving, hides off screen, and blocks
     return child.api.nvim_win_get_config(win).hide == false
   end, "the restored inline box")
 
-  -- Re-running comment at the same line focuses the open editor with its draft text.
+  -- Re-running comment at the same line focuses the open editor with raw markdown again.
   child.cmd("Didymus review comment")
   eq(child.api.nvim_get_current_win(), win)
+  eq(child.api.nvim_get_option_value("conceallevel", { win = win }), 0)
   eq(child.api.nvim_buf_get_lines(child.api.nvim_win_get_buf(win), 0, -1, true), { "Draft text." })
   child.type_keys("<Esc>", "q")
   eq(inline_win(), nil)

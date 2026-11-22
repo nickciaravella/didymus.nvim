@@ -190,7 +190,7 @@ At the last or the first stop, a message shows, and the cursor does not move. `<
 | `<Esc>`, in normal mode | Leave the box and keep your draft open. |
 | `q`, in normal mode | Cancel and discard the draft. |
 
-An open inline editor stays alive if you leave it, scroll away or open another file. It hides while off screen and shows again when you return. Only one inline editor can be open at a time.
+An open inline editor stays alive if you leave it, scroll away or open another file. While focused, it shows raw markdown source with syntax highlights. While unfocused, it renders the markdown until you enter it again. It hides while off screen and shows again when you return. Only one inline editor can be open at a time.
 
 The new thread shows in the panel and at the line. A comment in your pending review has the `[pending]` tag. It stays pending until you submit the review.
 

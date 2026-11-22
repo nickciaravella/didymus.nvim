@@ -70,6 +70,56 @@ function M.truncate_chunks(chunks, max_width)
   return result
 end
 
+--- AST node types that are markdown syntax delimiters to conceal even if `highlights.scm` (such as
+--- nvim-treesitter) does not tag them with `conceal`.
+local concealed_node_types = {
+  fenced_code_block_delimiter = true,
+  code_span_delimiter = true,
+  emphasis_delimiter = true,
+  strikethrough_delimiter = true,
+}
+
+--- Record a conceal range across all 1-based lines covered by `(sr, sc) .. (er, ec)`.
+---@param conceals_by_line table<integer, { start_col: integer, end_col: integer, replacement: string }[]>
+---@param line_count integer
+---@param sr integer
+---@param sc integer
+---@param er integer
+---@param ec integer
+---@param replacement string
+local function add_conceal(conceals_by_line, line_count, sr, sc, er, ec, replacement)
+  local first_row = math.max(0, sr)
+  local last_row = math.min(line_count - 1, ec == 0 and er - 1 or er)
+  for row = first_row, last_row do
+    local line_num = row + 1
+    local col_start = row == sr and sc or 0
+    local col_end = row == er and ec or math.huge
+    if col_end > col_start then
+      conceals_by_line[line_num] = conceals_by_line[line_num] or {}
+      table.insert(conceals_by_line[line_num], {
+        start_col = col_start,
+        end_col = col_end,
+        replacement = replacement,
+      })
+    end
+  end
+end
+
+--- Walk `node` and conceal any markdown syntax delimiter nodes (such as code fences).
+---@param node TSNode
+---@param conceals_by_line table<integer, { start_col: integer, end_col: integer, replacement: string }[]>
+---@param line_count integer
+local function collect_delimiter_conceals(node, conceals_by_line, line_count)
+  if concealed_node_types[node:type()] then
+    local sr, sc, er, ec = node:range()
+    add_conceal(conceals_by_line, line_count, sr, sc, er, ec, "")
+    return
+  end
+  for child in node:iter_children() do
+    collect_delimiter_conceals(child, conceals_by_line, line_count)
+  end
+end
+
 --- Collect highlight spans and conceal ranges for each 1-based line from the treesitter markdown
 --- parser.
 ---@param source string Lines joined with `\n`, with a trailing `\n`.
@@ -93,6 +143,9 @@ local function parse_spans(source, line_count)
   local order = 0
   parser:for_each_tree(function(tstree, ltree)
     local lang = ltree:lang()
+    if lang == "markdown" or lang == "markdown_inline" then
+      collect_delimiter_conceals(tstree:root(), conceals_by_line, line_count)
+    end
     local query = vim.treesitter.query.get(lang, "highlights")
     if not query then
       return
@@ -109,19 +162,15 @@ local function parse_spans(source, line_count)
         -- Conceal markdown syntax delimiters (`**`, `` ` ``, link URLs, code fences), but keep the
         -- code block language label visible.
         if (capture == "conceal" or conceal ~= nil) and capture ~= "label" then
-          for row = first_row, last_row do
-            local line_num = row + 1
-            local col_start = row == sr and sc or 0
-            local col_end = row == er and ec or math.huge
-            if col_end > col_start then
-              conceals_by_line[line_num] = conceals_by_line[line_num] or {}
-              table.insert(conceals_by_line[line_num], {
-                start_col = col_start,
-                end_col = col_end,
-                replacement = type(conceal) == "string" and conceal or "",
-              })
-            end
-          end
+          add_conceal(
+            conceals_by_line,
+            line_count,
+            sr,
+            sc,
+            er,
+            ec,
+            type(conceal) == "string" and conceal or ""
+          )
         end
 
         if not ignored_captures[capture] then

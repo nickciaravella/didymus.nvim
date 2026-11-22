@@ -222,6 +222,8 @@ T["a second reply at another thread refuses while an inline reply is open"] = fu
   child.type_keys("In progress.", "<Esc>", "<Esc>")
 
   eq(child.api.nvim_get_current_win(), code_win)
+  local win = assert(inline_win())
+  eq(child.api.nvim_get_option_value("conceallevel", { win = win }), 3)
   child.api.nvim_win_set_cursor(0, { 19, 0 })
   child.cmd("Didymus review reply")
   eq(
@@ -230,6 +232,12 @@ T["a second reply at another thread refuses while an inline reply is open"] = fu
     ),
     true
   )
+
+  -- Re-entering the draft reply restores raw markdown editing.
+  child.api.nvim_win_set_cursor(0, { 3, 0 })
+  child.cmd("Didymus review reply")
+  eq(child.api.nvim_get_current_win(), win)
+  eq(child.api.nvim_get_option_value("conceallevel", { win = win }), 0)
 end
 
 T["reply now posts the reply at once, with no pending tag"] = function()
