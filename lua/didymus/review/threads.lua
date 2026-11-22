@@ -41,7 +41,9 @@ local function set_highlights()
   local thread_hl = vim.api.nvim_get_hl(0, { name = "DidymusThread", link = false })
   local resolved_hl = vim.api.nvim_get_hl(0, { name = "DidymusThreadResolved", link = false })
   local comment_hl = vim.api.nvim_get_hl(0, { name = "Comment", link = false })
-  local card_bg = normal.bg and shade_bg(normal.bg, 7) or nil
+  local card_bg = normal.bg
+      and (vim.o.background == "light" and "#fbf1c7" or shade_bg(normal.bg, 7))
+    or nil
 
   vim.api.nvim_set_hl(0, "DidymusThreadBg", { bg = card_bg, default = true })
   vim.api.nvim_set_hl(0, "DidymusThreadAuthor", { fg = thread_hl.fg, bold = true, default = true })
