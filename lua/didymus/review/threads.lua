@@ -1,7 +1,7 @@
 --- The inline threads: a sign at the line of each head thread, and the thread under the line (or
 --- above line 1 for outdated, base-side and file-level threads), folded or unfolded in a 4-sided
---- box with markdown treesitter highlights. The marks show only in the windows of the review
---- tabpage. It does not call the provider. See docs/architecture/review.md#inline-threads.
+--- box with markdown highlights and a subtle background. The marks show only in the windows of the
+--- review tabpage. It does not call the provider. See docs/architecture/review.md#inline-threads.
 
 local config = require("didymus.config")
 local markdown = require("didymus.review.markdown")
@@ -11,11 +11,76 @@ local M = {}
 --- The one namespace of the review.
 M.namespace = vim.api.nvim_create_namespace("didymus.review")
 
+--- Shift an RGB color slightly darker by `delta` per channel (or slightly lighter if near black).
+---@param color integer
+---@param delta integer
+---@return integer
+local function shade_bg(color, delta)
+  local r = math.floor(color / 65536) % 256
+  local g = math.floor(color / 256) % 256
+  local b = color % 256
+  if math.max(r, g, b) < 10 then
+    r = math.min(255, r + delta + 1)
+    g = math.min(255, g + delta + 1)
+    b = math.min(255, b + delta + 1)
+  else
+    r = math.max(0, r - delta)
+    g = math.max(0, g - delta)
+    b = math.max(0, b - delta)
+  end
+  return r * 65536 + g * 256 + b
+end
+
 local function set_highlights()
   vim.api.nvim_set_hl(0, "DidymusThread", { link = "DiagnosticInfo", default = true })
   vim.api.nvim_set_hl(0, "DidymusThreadResolved", { link = "Comment", default = true })
   vim.api.nvim_set_hl(0, "DidymusThreadPending", { link = "DiagnosticHint", default = true })
-  vim.api.nvim_set_hl(0, "DidymusThreadBorder", { link = "DidymusThread", default = true })
+  vim.api.nvim_set_hl(0, "DidymusThreadTime", { link = "Comment", default = true })
+
+  local normal = vim.api.nvim_get_hl(0, { name = "Normal", link = false })
+  local thread_hl = vim.api.nvim_get_hl(0, { name = "DidymusThread", link = false })
+  local resolved_hl = vim.api.nvim_get_hl(0, { name = "DidymusThreadResolved", link = false })
+  local comment_hl = vim.api.nvim_get_hl(0, { name = "Comment", link = false })
+  local card_bg = normal.bg and shade_bg(normal.bg, 7) or nil
+
+  vim.api.nvim_set_hl(0, "DidymusThreadBg", { bg = card_bg, default = true })
+  vim.api.nvim_set_hl(0, "DidymusThreadAuthor", { fg = thread_hl.fg, bold = true, default = true })
+  vim.api.nvim_set_hl(
+    0,
+    "DidymusThreadResolvedAuthor",
+    { fg = resolved_hl.fg, bold = true, default = true }
+  )
+  if card_bg then
+    vim.api.nvim_set_hl(
+      0,
+      "DidymusThreadBorder",
+      { fg = thread_hl.fg, bg = card_bg, default = true }
+    )
+    vim.api.nvim_set_hl(
+      0,
+      "DidymusThreadResolvedBorder",
+      { fg = resolved_hl.fg, bg = card_bg, default = true }
+    )
+    vim.api.nvim_set_hl(
+      0,
+      "DidymusThreadTitle",
+      { fg = thread_hl.fg, bg = card_bg, default = true }
+    )
+    vim.api.nvim_set_hl(
+      0,
+      "DidymusThreadFooter",
+      { fg = comment_hl.fg, bg = card_bg, default = true }
+    )
+  else
+    vim.api.nvim_set_hl(0, "DidymusThreadBorder", { link = "DidymusThread", default = true })
+    vim.api.nvim_set_hl(
+      0,
+      "DidymusThreadResolvedBorder",
+      { link = "DidymusThreadResolved", default = true }
+    )
+    vim.api.nvim_set_hl(0, "DidymusThreadTitle", { link = "DidymusThread", default = true })
+    vim.api.nvim_set_hl(0, "DidymusThreadFooter", { link = "Comment", default = true })
+  end
 end
 set_highlights()
 -- A color scheme clears the highlight groups.
@@ -42,6 +107,46 @@ function M.get_line(thread)
   if thread.side == "head" and not thread.outdated and thread.range then
     return thread.range.last
   end
+end
+
+--- Format an ISO-8601 timestamp (such as `"2026-11-21T14:30:00Z"`) as local `"YYYY-MM-DD HH:MM"`.
+--- Returns nil if `iso` is nil or does not match an ISO-8601 date-time.
+---@param iso string?
+---@return string?
+function M.format_time(iso)
+  if type(iso) ~= "string" then
+    return nil
+  end
+  local y, m, d, hour, min, sec, tz =
+    iso:match("^(%d%d%d%d)%-(%d%d)%-(%d%d)[T ](%d%d):(%d%d):(%d%d)(.*)$")
+  if not y then
+    return nil
+  end
+  local ts = os.time({
+    year = tonumber(y),
+    month = tonumber(m),
+    day = tonumber(d),
+    hour = tonumber(hour),
+    min = tonumber(min),
+    sec = tonumber(sec),
+    isdst = false,
+  })
+  if not ts then
+    return nil
+  end
+  local tz_offset = 0
+  local sign, tzh, tzm = tz:match("^([+-])(%d%d):?(%d%d)")
+  if sign then
+    tz_offset = (tonumber(tzh) * 3600 + tonumber(tzm) * 60) * (sign == "+" and 1 or -1)
+  end
+  if tz:sub(1, 1) == "Z" or sign then
+    local now = os.time()
+    local utc_now = os.date("!*t", now)
+    utc_now.isdst = false
+    local local_offset = os.difftime(now, os.time(utc_now))
+    ts = ts - tz_offset + local_offset
+  end
+  return os.date("%Y-%m-%d %H:%M", ts) --[[@as string]]
 end
 
 --- Tags for a thread that shows above line 1 (outdated, base side, or file level).
@@ -100,7 +205,41 @@ function M.get_summary(thread, text_hl, opts)
   return segments
 end
 
---- Plain header text for the title of a focused inline thread box.
+--- Styled header chunks for one comment: optional status emoji (first comment), bold author,
+--- state tags, and lighter local date/time.
+---@param thread didymus.review.Thread
+---@param comment didymus.review.Comment
+---@param index integer 1-based comment index.
+---@param include_tags boolean? Include `[outdated]`, `[base]`, `[file]` on the first comment.
+---@return [string, string?][]
+local function get_comment_header_chunks(thread, comment, index, include_tags)
+  local dim = thread.resolved and "DidymusThreadResolved" or nil
+  local icons = config.options.review.icons
+  local icon = thread.resolved and icons.resolved or icons.active
+  local chunks = {}
+  if index == 1 and icon ~= "" then
+    table.insert(chunks, { icon .. " ", dim })
+  end
+  table.insert(chunks, {
+    "@" .. comment.author,
+    thread.resolved and "DidymusThreadResolvedAuthor" or "DidymusThreadAuthor",
+  })
+  if comment.pending then
+    table.insert(chunks, { " [pending]", dim or "DidymusThreadPending" })
+  end
+  if index == 1 and include_tags then
+    for _, tag in ipairs(get_state_tags(thread)) do
+      table.insert(chunks, { tag[1], dim or tag[2] })
+    end
+  end
+  local formatted_time = M.format_time(comment.created_at)
+  if formatted_time then
+    table.insert(chunks, { "  " .. formatted_time, "DidymusThreadTime" })
+  end
+  return chunks
+end
+
+--- Plain header text for the title of a split view or summary.
 ---@param thread didymus.review.Thread
 ---@return string
 function M.get_header_text(thread)
@@ -146,113 +285,65 @@ function M.wrap(text, width)
   end, markdown.wrap_chunks({ { text } }, width))
 end
 
---- The keys that the user mapped to each `<Plug>` mapping of didymus, in `buf` or global. A key is
---- in the notation of `keytrans()`, such as `<Space>rr`.
----@param buf integer
----@return table<string, string>
-local function get_mapped_keys(buf)
-  local keys = {}
-  local maps = vim.list_extend(vim.api.nvim_buf_get_keymap(buf, "n"), vim.api.nvim_get_keymap("n"))
-  for _, map in ipairs(maps) do
-    if map.rhs and vim.startswith(map.rhs, "<Plug>(didymus-") and not keys[map.rhs] then
-      keys[map.rhs] = map.lhsraw and vim.fn.keytrans(map.lhsraw) or map.lhs
-    end
+--- Stack `DidymusThreadBg` underneath `hl` so every cell in a thread card has the subtle card
+--- background while higher-priority highlights (such as code blocks) stay on top.
+---@param hl didymus.review.markdown.Hl?
+---@return didymus.review.markdown.Hl
+local function with_card_bg(hl)
+  if not hl then
+    return "DidymusThreadBg"
   end
-  return keys
+  if type(hl) == "string" then
+    return { "DidymusThreadBg", hl }
+  end
+  local combined = { "DidymusThreadBg" }
+  vim.list_extend(combined, hl)
+  return combined
 end
 
---- The keys of the user for the actions on `thread`. Nil if the user mapped no key, or if the line
---- is wider than `width`.
----@param thread didymus.review.Thread
----@param keys table<string, string> From `get_mapped_keys()`.
----@param width integer
----@param dim string? The highlight of a resolved thread.
----@return [string, string?][]?
-local function get_keys_chunks(thread, keys, width, dim)
-  local actions = {
-    { plug = "<Plug>(didymus-review-reply)", name = "reply" },
-    {
-      plug = "<Plug>(didymus-review-resolve)",
-      name = thread.resolved and "unresolve" or "resolve",
-    },
-    { plug = "<Plug>(didymus-review-fold)", name = "fold" },
-    { plug = "<Plug>(didymus-review-focus)", name = "focus" },
-  }
-  local chunks = {}
-  for _, action in ipairs(actions) do
-    local key = keys[action.plug]
-    if key then
-      table.insert(chunks, { (#chunks > 0 and "  " or "") .. key, dim or "DidymusThread" })
-      table.insert(chunks, { " " .. action.name, dim or "Comment" })
-    end
-  end
-  if #chunks > 0 and markdown.chunks_width(chunks) <= width then
-    return chunks
-  end
-end
-
---- Compute box indent, outer width (including borders), and inner text width.
+--- Compute box indent (always 0 so boxes extend left to the line numbers), outer width (including
+--- borders), and inner text width.
 ---@param text_width integer
----@param raw_indent integer
 ---@return integer indent
 ---@return integer box_width
 ---@return integer inner_width
-local function get_box_geometry(text_width, raw_indent)
-  local indent = math.max(0, math.min(raw_indent, text_width - 8))
-  local box_width = math.max(6, text_width - indent)
+local function get_box_geometry(text_width)
+  local box_width = math.max(6, text_width)
   local inner_width = math.max(1, box_width - 4)
-  return indent, box_width, inner_width
+  return 0, box_width, inner_width
 end
 
---- Build a horizontal border rule: `┌─ <chunks> ───┐`, `├─ <chunks> ───┤`, or `└───┘`.
----@param indent_str string
+--- Build a smooth horizontal border rule: `┌───┐`, `├───┤`, or `└───┘`.
 ---@param left_char string
 ---@param right_char string
----@param chunks [string, string?][]?
 ---@param box_width integer
 ---@param border_hl string
----@return [string, string?][]
-local function make_rule_line(indent_str, left_char, right_char, chunks, box_width, border_hl)
-  local line = {}
-  if indent_str ~= "" then
-    table.insert(line, { indent_str })
-  end
-  if chunks and #chunks > 0 and box_width >= 6 then
-    local max_label = box_width - 5
-    local fitted = markdown.truncate_chunks(chunks, max_label)
-    local used = markdown.chunks_width(fitted)
-    local fill = math.max(0, max_label - used)
-    table.insert(line, { left_char .. "─ ", border_hl })
-    vim.list_extend(line, fitted)
-    table.insert(line, { " " .. ("─"):rep(fill) .. right_char, border_hl })
-  else
-    table.insert(
-      line,
-      { left_char .. ("─"):rep(math.max(0, box_width - 2)) .. right_char, border_hl }
-    )
-  end
-  return line
+---@return didymus.review.markdown.Chunk[]
+local function make_rule_line(left_char, right_char, box_width, border_hl)
+  return {
+    {
+      left_char .. ("─"):rep(math.max(0, box_width - 2)) .. right_char,
+      with_card_bg(border_hl),
+    },
+  }
 end
 
 --- Build a boxed body line padded to the right border: `│ <chunks>   │`.
----@param indent_str string
 ---@param chunks didymus.review.markdown.Chunk[]
 ---@param inner_width integer
 ---@param border_hl string
 ---@return didymus.review.markdown.Chunk[]
-local function make_body_line(indent_str, chunks, inner_width, border_hl)
-  local line = {}
-  if indent_str ~= "" then
-    table.insert(line, { indent_str })
-  end
-  table.insert(line, { "│ ", border_hl })
+local function make_body_line(chunks, inner_width, border_hl)
+  local line = { { "│ ", with_card_bg(border_hl) } }
   local fitted = markdown.truncate_chunks(chunks, inner_width)
-  vim.list_extend(line, fitted)
+  for _, chunk in ipairs(fitted) do
+    table.insert(line, { chunk[1], with_card_bg(chunk[2]) })
+  end
   local pad = math.max(0, inner_width - markdown.chunks_width(fitted))
   if pad > 0 then
-    table.insert(line, { (" "):rep(pad) })
+    table.insert(line, { (" "):rep(pad), "DidymusThreadBg" })
   end
-  table.insert(line, { " │", border_hl })
+  table.insert(line, { " │", with_card_bg(border_hl) })
   return line
 end
 
@@ -267,53 +358,31 @@ local function make_spacer_lines(count)
 end
 
 ---@class didymus.review.threads.UnfoldOpts
----@field indent integer
 ---@field box_width integer
 ---@field inner_width integer
 ---@field tabstop integer
----@field keys table<string, string> From `get_mapped_keys()`.
 ---@field omit_bottom boolean? True when an inline reply box attaches directly below.
 ---@field include_tags boolean? True for top-of-file threads (`[outdated]`, `[base]`, `[file]`).
 
---- The `virt_lines` of an unfolded thread: all comments in a 4-sided box, with markdown highlights
---- and the keys of the user in the bottom border.
+--- The `virt_lines` of an unfolded thread: smooth 4-sided box, comment headers (status emoji,
+--- bold author, tags, lighter datetime) just under the border/divider, and rendered markdown bodies.
 ---@param thread didymus.review.Thread
 ---@param opts didymus.review.threads.UnfoldOpts
----@return [string, string?][][]
+---@return didymus.review.markdown.Chunk[][]
 local function get_unfolded_lines(thread, opts)
   local dim = thread.resolved and "DidymusThreadResolved" or nil
-  local border_hl = dim or "DidymusThreadBorder"
-  local icons = config.options.review.icons
-  local icon = thread.resolved and icons.resolved or icons.active
-  local indent_str = (" "):rep(opts.indent)
+  local border_hl = thread.resolved and "DidymusThreadResolvedBorder" or "DidymusThreadBorder"
   local lines = {}
 
+  table.insert(lines, make_rule_line("┌", "┐", opts.box_width, border_hl))
+
   for index, comment in ipairs(thread.comments) do
-    local header = {}
-    if index == 1 and icon ~= "" then
-      table.insert(header, { icon .. " ", dim })
-    end
-    table.insert(header, { "@" .. comment.author, dim or "DidymusThread" })
-    if comment.pending then
-      table.insert(header, { " [pending]", dim or "DidymusThreadPending" })
-    end
-    if index == 1 and opts.include_tags then
-      for _, tag in ipairs(get_state_tags(thread)) do
-        table.insert(header, { tag[1], dim or tag[2] })
-      end
+    if index > 1 then
+      table.insert(lines, make_rule_line("├", "┤", opts.box_width, border_hl))
     end
 
-    if index == 1 then
-      table.insert(
-        lines,
-        make_rule_line(indent_str, "┌", "┐", header, opts.box_width, border_hl)
-      )
-    else
-      table.insert(
-        lines,
-        make_rule_line(indent_str, "├", "┤", header, opts.box_width, border_hl)
-      )
-    end
+    local header = get_comment_header_chunks(thread, comment, index, opts.include_tags)
+    table.insert(lines, make_body_line(header, opts.inner_width, border_hl))
 
     -- Keep the indent of the first line, because it can be code.
     local body = comment.body:gsub("^%s*\n", ""):gsub("%s+$", "")
@@ -324,17 +393,15 @@ local function get_unfolded_lines(thread, opts)
         width = opts.inner_width,
       })
       for _, rendered_line in ipairs(rendered_lines) do
-        table.insert(lines, make_body_line(indent_str, rendered_line, opts.inner_width, border_hl))
+        table.insert(lines, make_body_line(rendered_line, opts.inner_width, border_hl))
       end
     else
-      table.insert(lines, make_body_line(indent_str, { { "" } }, opts.inner_width, border_hl))
+      table.insert(lines, make_body_line({ { "" } }, opts.inner_width, border_hl))
     end
   end
 
   if not opts.omit_bottom then
-    local keys_max_width = math.max(0, opts.box_width - 5)
-    local keys = get_keys_chunks(thread, opts.keys, keys_max_width, dim)
-    table.insert(lines, make_rule_line(indent_str, "└", "┘", keys, opts.box_width, border_hl))
+    table.insert(lines, make_rule_line("└", "┘", opts.box_width, border_hl))
   end
 
   return lines
@@ -367,8 +434,6 @@ function M.draw(buf, path, threads, opts)
   local slot = opts.inline_slot
   ---@type didymus.review.InlineAnchor?
   local slot_anchor
-  ---@type table<string, string>?
-  local keys
 
   -- Pass 1: top-of-file threads (`virt_lines_above` on row 0).
   -- Combine `virt_lines` into one extmark per (row, above), because Neovim's marktree does not
@@ -378,7 +443,7 @@ function M.draw(buf, path, threads, opts)
   local above_offset = 0
   for index, thread in ipairs(threads) do
     if thread.path == path and M.get_line(thread) == nil then
-      local indent, box_width, inner_width = get_box_geometry(opts.width, 0)
+      local indent, box_width, inner_width = get_box_geometry(opts.width)
       local virt_lines
       if slot and slot.kind == "focus" and slot.thread_id == thread.id then
         local outer = slot.height + 2
@@ -395,13 +460,10 @@ function M.draw(buf, path, threads, opts)
         virt_lines = make_spacer_lines(outer)
         drawn_widths[buf] = opts.width
       elseif slot and slot.kind == "reply" and slot.thread_id == thread.id then
-        keys = keys or get_mapped_keys(buf)
         local thread_lines = get_unfolded_lines(thread, {
-          indent = indent,
           box_width = box_width,
           inner_width = inner_width,
           tabstop = vim.bo[buf].tabstop,
-          keys = keys,
           omit_bottom = true,
           include_tags = true,
         })
@@ -421,13 +483,10 @@ function M.draw(buf, path, threads, opts)
       elseif opts.is_folded(thread) or #thread.comments == 0 then
         virt_lines = { M.get_summary(thread, "DidymusThread", { extra_tags = true }) }
       else
-        keys = keys or get_mapped_keys(buf)
         virt_lines = get_unfolded_lines(thread, {
-          indent = indent,
           box_width = box_width,
           inner_width = inner_width,
           tabstop = vim.bo[buf].tabstop,
-          keys = keys,
           include_tags = true,
         })
         drawn_widths[buf] = opts.width
@@ -451,7 +510,7 @@ function M.draw(buf, path, threads, opts)
   end
 
   -- Pass 2: head-line threads under their line, grouped by line for deterministic `virt_lines` order.
-  ---@type table<integer, { ids: integer[], virt_lines: [string, string?][][], comment_count: integer, resolved: boolean }>
+  ---@type table<integer, { ids: integer[], virt_lines: didymus.review.markdown.Chunk[][], comment_count: integer, resolved: boolean }>
   local by_line = {}
   local line_order = {}
   for index, thread in ipairs(threads) do
@@ -465,10 +524,7 @@ function M.draw(buf, path, threads, opts)
         by_line[line] = group
         table.insert(line_order, line)
       end
-      local raw_indent = vim.api.nvim_buf_call(buf, function()
-        return vim.fn.indent(line)
-      end)
-      local indent, box_width, inner_width = get_box_geometry(opts.width, raw_indent)
+      local indent, box_width, inner_width = get_box_geometry(opts.width)
       local offset = #group.virt_lines
       local virt_lines
       if slot and slot.kind == "focus" and slot.thread_id == thread.id then
@@ -486,13 +542,10 @@ function M.draw(buf, path, threads, opts)
         virt_lines = make_spacer_lines(outer)
         drawn_widths[buf] = opts.width
       elseif slot and slot.kind == "reply" and slot.thread_id == thread.id then
-        keys = keys or get_mapped_keys(buf)
         local thread_lines = get_unfolded_lines(thread, {
-          indent = indent,
           box_width = box_width,
           inner_width = inner_width,
           tabstop = vim.bo[buf].tabstop,
-          keys = keys,
           omit_bottom = true,
         })
         local outer = slot.height + 2
@@ -509,17 +562,12 @@ function M.draw(buf, path, threads, opts)
         virt_lines = vim.list_extend(thread_lines, make_spacer_lines(outer))
         drawn_widths[buf] = opts.width
       elseif opts.is_folded(thread) or #thread.comments == 0 then
-        local summary = M.get_summary(thread, "DidymusThread")
-        table.insert(summary, 1, { (" "):rep(indent) })
-        virt_lines = { summary }
+        virt_lines = { M.get_summary(thread, "DidymusThread") }
       else
-        keys = keys or get_mapped_keys(buf)
         virt_lines = get_unfolded_lines(thread, {
-          indent = indent,
           box_width = box_width,
           inner_width = inner_width,
           tabstop = vim.bo[buf].tabstop,
-          keys = keys,
         })
         drawn_widths[buf] = opts.width
       end
@@ -535,10 +583,7 @@ function M.draw(buf, path, threads, opts)
   -- Pass 3: spacer for a new comment box under its target line (appended after existing threads on that line).
   if slot and slot.kind == "comment" and slot.path == path and slot.range then
     local line = math.min(slot.range.last, line_count)
-    local raw_indent = vim.api.nvim_buf_call(buf, function()
-      return vim.fn.indent(line)
-    end)
-    local indent, box_width = get_box_geometry(opts.width, raw_indent)
+    local indent, box_width = get_box_geometry(opts.width)
     local group = by_line[line]
     local offset = group and #group.virt_lines or 0
     local outer = slot.height + 2
@@ -646,42 +691,52 @@ end
 
 ---@class didymus.review.CommentDivider
 ---@field row integer 0-based line in the focused buffer.
----@field author string
----@field pending boolean
 ---@field resolved boolean
 
---- The comments of a thread as markdown lines, for the focused inline view and the split fallback.
---- Subsequent comments are separated by a single thematic-break line (`***`) overlaid with the
---- author divider, so focusing keeps the same compact layout and height as the unfocused box.
+---@class didymus.review.CommentHeader
+---@field row integer 0-based line in the focused buffer.
+---@field chunks [string, string?][]
+
+--- The comments of a thread as lines for the focused inline view and the split fallback, with
+--- styled header metadata (status emoji, bold author, tags, lighter datetime) and smooth
+--- single-line `***` dividers between replies so focusing keeps the exact layout and height of the
+--- unfocused thread box.
 ---@param thread didymus.review.Thread
----@param opts { include_first_author: boolean? }? Default false because the box border shows the first author.
+---@param opts { include_tags: boolean? }? Include `[outdated]`, `[base]`, `[file]` on the first comment.
 ---@return string[] lines
 ---@return didymus.review.CommentDivider[] dividers
+---@return didymus.review.CommentHeader[] headers
 function M.get_lines(thread, opts)
-  local include_first = opts and opts.include_first_author or false
+  local include_tags = opts and opts.include_tags or false
   local lines = {}
   ---@type didymus.review.CommentDivider[]
   local dividers = {}
+  ---@type didymus.review.CommentHeader[]
+  local headers = {}
   for index, comment in ipairs(thread.comments) do
     if index > 1 then
       -- `***` is always a thematic break in CommonMark (never a Setext heading underline), so it
-      -- isolates adjacent comments in one line without needing extra blank lines around it.
+      -- isolates adjacent comments in one line without extra blank lines.
       table.insert(lines, "***")
       table.insert(dividers, {
         row = #lines - 1,
-        author = comment.author,
-        pending = comment.pending,
         resolved = thread.resolved,
       })
-    elseif include_first then
-      local author = ("**@%s**"):format(comment.author)
-      table.insert(lines, comment.pending and author .. " *pending*" or author)
-      table.insert(lines, "")
     end
+    local header_chunks = get_comment_header_chunks(thread, comment, index, include_tags)
+    local header_parts = {}
+    for _, chunk in ipairs(header_chunks) do
+      table.insert(header_parts, chunk[1])
+    end
+    table.insert(lines, table.concat(header_parts))
+    table.insert(headers, {
+      row = #lines - 1,
+      chunks = header_chunks,
+    })
     local body = comment.body:gsub("^%s*\n", ""):gsub("%s+$", "")
     vim.list_extend(lines, vim.split(body, "\n"))
   end
-  return #lines > 0 and lines or { "" }, dividers
+  return #lines > 0 and lines or { "" }, dividers, headers
 end
 
 return M

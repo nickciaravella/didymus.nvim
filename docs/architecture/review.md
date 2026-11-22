@@ -175,22 +175,24 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 
 ```text
 2 local count = 2
-  ┌─ 💬 @octocat ────────────────────────────────────────────┐
-  │ Why two?                                                 │
-  ├─ @hubot [pending] ───────────────────────────────────────┤
-  │ Because.                                                 │
-  └─ <Space>rr reply  <Space>rx resolve  <Space>rz fold ─────┘
+┌──────────────────────────────────────────────────────────┐
+│ 💬 @octocat  2026-11-21 14:30                            │
+│ Why two?                                                 │
+├──────────────────────────────────────────────────────────┤
+│ @hubot [pending]  2026-11-21 14:35                       │
+│ Because.                                                 │
+└──────────────────────────────────────────────────────────┘
   local total = count * 2
-  ✅ @hubot Rename this.
+✅ @hubot Rename this.
 ```
 
-1. A folded thread is one line: the text of its panel row (with `[base]` or `[file]` for top-of-file threads).
-2. An unfolded thread shows all comments in a 4-sided box (`┌─┐`, `│ │`, `├─┤`, `└─┘`), aligned to the line indent and the text width of the code window. `DidymusThreadBorder` highlights the border. A pending comment has `[pending]` after its author. Comment bodies render markdown with built-in `markdown` and `markdown_inline` treesitter parsers (and `render-markdown.nvim` marks when installed) so unfocused threads match focused read-only threads. A resolved thread is dim.
+1. A folded thread is one line: the text of its panel row (with `[base]` or `[file]` for top-of-file threads), aligned flush with the line numbers.
+2. An unfolded thread shows all comments in a smooth 4-sided box (`┌──┐`, `│ │`, `├──┤`, `└──┘`) with a subtle darker card background (`DidymusThreadBg`), aligned flush with the line numbers across the text width of the code window. `DidymusThreadBorder` highlights the border. Each comment begins with a header line inside the box: status emoji (on the first comment), bold author (`DidymusThreadAuthor`), optional `[pending]` and state tags, and lighter local date and time (`DidymusThreadTime`). Comment bodies render markdown with built-in `markdown` and `markdown_inline` treesitter parsers (and `render-markdown.nvim` marks when installed) so unfocused threads match focused read-only threads. A resolved thread is dim.
 3. The session keeps the fold state that the user set, by thread id, so a refresh keeps it. With no state, a resolved, outdated or base-side thread is folded, and an active head-side or file-level thread is unfolded. A resolve or an unresolve removes the state, so the thread folds or unfolds with its new state.
 4. `fold` folds or unfolds the threads at the cursor line, with no question, because `next` treats them as one stop. Inside a focused thread, `fold` closes focus and folds that thread. `fold all` does the same for all head-line threads of the session. With no thread, a warning shows.
 5. `next thread`, `prev thread` and the `<CR>` of the panel unfold the threads at the line. `file` and `hunk` do not.
 6. After an unfold at a line, the window scrolls so that the threads under the line show, if they fit. The cursor line stays in the window, also with `'scrolloff'`. `nvim_win_text_height()` counts the `virt_lines` under a line as a part of the next line.
-7. The bottom border of an unfolded thread shows the keys that the user mapped to `<Plug>(didymus-review-reply)`, `<Plug>(didymus-review-resolve)`, `<Plug>(didymus-review-fold)` and `<Plug>(didymus-review-focus)`, as `keytrans()` writes them. A buffer mapping comes before a global mapping. A resolved thread shows `unresolve`. The keys show only if they fit. didymus sets no keys in the review buffers, because they are the normal buffers of the user, also in other tabpages.
+7. Both unfocused and focused read-only thread boxes have smooth top and bottom borders with no key hints. Inside a focused thread or inline editor, `?` in normal mode opens a shortcuts popup. didymus sets no keys in the review buffers, because they are the normal buffers of the user, also in other tabpages.
 
 #### Wrap
 

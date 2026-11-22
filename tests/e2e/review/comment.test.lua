@@ -174,10 +174,11 @@ T["add to review shows the comment as pending in the panel and at the line"] = f
     { " Looks good." },
     { " [pending]", "DidymusThreadPending" },
   })
-  -- A new thread is active, so it is unfolded in a 4-sided box.
+  -- A new thread is active, so it is unfolded in a smooth 4-sided box.
   eq(marks()[1][1], 2)
-  eq(marks()[1][2][1]:find("┌─ 💬 @reviewer [pending] ", 1, true) ~= nil, true)
-  eq(marks()[1][2][2]:find("│ Looks good.", 1, true) ~= nil, true)
+  eq(marks()[1][2][1]:find("┌───", 1, true), 1)
+  eq(marks()[1][2][2]:find("│ 💬 @reviewer [pending]", 1, true), 1)
+  eq(marks()[1][2][3]:find("│ Looks good.", 1, true), 1)
   eq(has_message("didymus: added a pending comment at file.txt:3"), true)
 end
 
@@ -280,8 +281,9 @@ T["comment now posts the comment, with no pending tag"] = function()
   eq(helpers.picker_calls(child, "panel")[1].items[3].text, "Active threads")
   eq(panel_rows()[2], "💬 @reviewer Looks good.")
   eq(marks()[1][1], 2)
-  eq(marks()[1][2][1]:find("┌─ 💬 @reviewer ", 1, true) ~= nil, true)
-  eq(marks()[1][2][1]:find("[pending]", 1, true), nil)
+  eq(marks()[1][2][1]:find("┌───", 1, true), 1)
+  eq(marks()[1][2][2]:find("│ 💬 @reviewer", 1, true), 1)
+  eq(marks()[1][2][2]:find("[pending]", 1, true), nil)
   eq(has_message("didymus: posted a comment at file.txt:3"), true)
 end
 
@@ -303,7 +305,7 @@ T["a comment on the selection in visual mode is a range comment"] = function()
   local thread = provider_threads()[2]
   eq({ thread.range, thread.comments[1].body }, { { first = 16, last = 17 }, "Two lines." })
   eq(marks()[1][1], 16)
-  eq(marks()[1][2][2]:find("│ Two lines.", 1, true) ~= nil, true)
+  eq(marks()[1][2][3]:find("│ Two lines.", 1, true), 1)
 end
 
 T["a comment on a command range, and a cancel, add no comment"] = function()

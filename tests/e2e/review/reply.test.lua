@@ -62,15 +62,19 @@ local function inline_win()
 end
 
 --- The mode, title, footer and lines of the open inline box or split.
----@return { mode: string, title: string, footer: string?, lines: string[], split: boolean }
+---@return { mode: string, title: string?, footer: string?, lines: string[], split: boolean }
 local function inline_content()
   local win = assert(inline_win(), "no inline box")
   local cfg = child.api.nvim_win_get_config(win)
   local buf = child.api.nvim_win_get_buf(win)
   local mode = child.lua_get("require('didymus.review').current().inline_box.mode")
   local is_split = cfg.relative == ""
-  local title = is_split and child.api.nvim_get_option_value("winbar", { win = win })
-    or (cfg.title[2] and cfg.title[2][1] or cfg.title[1][1])
+  local title
+  if is_split then
+    title = child.api.nvim_get_option_value("winbar", { win = win })
+  elseif cfg.title then
+    title = cfg.title[2] and cfg.title[2][1] or cfg.title[1][1]
+  end
   local footer = not is_split
       and cfg.footer
       and (cfg.footer[2] and cfg.footer[2][1] or cfg.footer[1][1])
@@ -253,12 +257,14 @@ T["reply now posts the reply at once, with no pending tag"] = function()
   eq(session_thread("old").comments[2], comment)
   eq(has_message("didymus: posted a reply at file.txt:19"), true)
   local lines = mark_lines()
-  eq(#lines, 5)
-  eq(lines[1]:find("┌─ 💬 @octocat ", 1, true) ~= nil, true)
-  eq(lines[2]:find("│ A comment.", 1, true) ~= nil, true)
-  eq(lines[3]:find("├─ @reviewer ", 1, true) ~= nil, true)
-  eq(lines[4]:find("│ Posted.", 1, true) ~= nil, true)
-  eq(lines[5]:find("└─", 1, true) ~= nil, true)
+  eq(#lines, 7)
+  eq(lines[1]:find("┌───", 1, true), 1)
+  eq(lines[2]:find("│ 💬 @octocat", 1, true), 1)
+  eq(lines[3]:find("│ A comment.", 1, true), 1)
+  eq(lines[4]:find("├───", 1, true), 1)
+  eq(lines[5]:find("│ @reviewer", 1, true), 1)
+  eq(lines[6]:find("│ Posted.", 1, true), 1)
+  eq(lines[7]:find("└───", 1, true), 1)
 end
 
 T["if the code host refuses a reply now, the message shows, and the text stays"] = function()
@@ -287,15 +293,15 @@ end
 
 T["reply and resolve work on an unfolded thread. A resolve folds it, and an unresolve unfolds it"] = function()
   open_review()
-  eq(#mark_lines(), 3)
+  eq(#mark_lines(), 4)
   child.cmd("Didymus review reply")
   eq(wait_for_reply_box().title, " Reply ")
   child.type_keys("Thanks.", "<C-y>")
   wait_for(function()
     return #session_thread("old").comments == 2
   end, "the reply in the session")
-  eq(#mark_lines(), 5)
-  eq(mark_lines()[3]:find("├─ @reviewer [pending] ", 1, true) ~= nil, true)
+  eq(#mark_lines(), 7)
+  eq(mark_lines()[5]:find("│ @reviewer [pending]", 1, true), 1)
 
   child.cmd("Didymus review resolve")
   wait_for(function()
@@ -306,7 +312,8 @@ T["reply and resolve work on an unfolded thread. A resolve folds it, and an unre
   wait_for(function()
     return not session_thread("old").resolved
   end, "the unresolved thread")
-  eq(mark_lines()[1]:find("┌─ 💬 @octocat ", 1, true) ~= nil, true)
+  eq(mark_lines()[1]:find("┌───", 1, true), 1)
+  eq(mark_lines()[2]:find("│ 💬 @octocat", 1, true), 1)
 end
 
 T["resolve resolves the thread, and the panel shows it dim. resolve again unresolves it"] = function()
@@ -379,7 +386,7 @@ T["the keys of a focused inline thread reply and resolve"] = function()
   local code_win = child.api.nvim_get_current_win()
   choose("💬 @octocat Please rename this variable. [outdated]")
   eq(child.api.nvim_get_current_win(), inline_win())
-  eq(inline_content().footer, " r reply  x resolve  z fold  q close ")
+  eq(inline_content().footer, nil)
 
   child.type_keys("r")
   eq(wait_for_reply_box().title, " Reply ")
@@ -395,7 +402,11 @@ T["the keys of a focused inline thread reply and resolve"] = function()
   end, "the resolved thread")
 
   choose("✅ @octocat Please rename this variable. [outdated]")
-  eq(inline_content().footer, " r reply  x unresolve  z fold  q close ")
+  child.type_keys("?")
+  local help_text =
+    table.concat(child.api.nvim_buf_get_lines(child.api.nvim_win_get_buf(0), 0, -1, true), "\n")
+  eq(help_text:find("unresolve thread", 1, true) ~= nil, true)
+  child.type_keys("q")
 end
 
 T["a key set to false is off, and the commands also work in a focused inline thread"] = function()
@@ -409,7 +420,12 @@ T["a key set to false is off, and the commands also work in a focused inline thr
     }),
   })
   choose("💬 @octocat Please rename this variable. [outdated]")
-  eq(inline_content().footer, " x resolve  z fold  q close ")
+  child.type_keys("?")
+  local help_text =
+    table.concat(child.api.nvim_buf_get_lines(child.api.nvim_win_get_buf(0), 0, -1, true), "\n")
+  eq(help_text:find("reply to thread", 1, true), nil)
+  eq(help_text:find("resolve thread", 1, true) ~= nil, true)
+  child.type_keys("q")
   eq(child.fn.maparg("r", "n"), "")
 
   child.cmd("Didymus review reply")

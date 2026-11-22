@@ -126,7 +126,7 @@ local function inline_win()
 end
 
 --- The lines and title of the open inline box (or split).
----@return { lines: string[], title: string, footer: string?, split: boolean }
+---@return { lines: string[], title: string?, footer: string?, split: boolean }
 local function inline_content()
   local win = assert(inline_win(), "no inline box")
   local cfg = child.api.nvim_win_get_config(win)
@@ -135,7 +135,7 @@ local function inline_content()
   local title
   if is_split then
     title = child.api.nvim_get_option_value("winbar", { win = win })
-  else
+  elseif cfg.title then
     title = cfg.title[2] and cfg.title[2][1] or cfg.title[1][1]
   end
   local footer = not is_split
@@ -288,10 +288,11 @@ T["to choose a thread goes to its line in the code window, and unfolds the threa
   eq(inline_win(), nil)
   local resolved_mark = line_marks()[2]
   eq(resolved_mark[1], 4)
-  eq(#resolved_mark[2], 3)
-  eq(resolved_mark[2][1]:find("    ┌─ ✅ @hubot ", 1, true) ~= nil, true)
-  eq(resolved_mark[2][2]:find("    │ Rename this.", 1, true) ~= nil, true)
-  eq(resolved_mark[2][3]:find("    └─", 1, true) ~= nil, true)
+  eq(#resolved_mark[2], 4)
+  eq(resolved_mark[2][1]:find("┌───", 1, true), 1)
+  eq(resolved_mark[2][2]:find("│ ✅ @hubot", 1, true), 1)
+  eq(resolved_mark[2][3]:find("│ Rename this.", 1, true), 1)
+  eq(resolved_mark[2][4]:find("└───", 1, true), 1)
 end
 
 T["an active thread is unfolded with all its comments, and a resolved thread is folded"] = function()
@@ -330,17 +331,18 @@ T["outdated, base-side and file threads show above line 1, and choose focuses th
   local top_lines = marks()[1][2]
   eq(top_lines[1], "💬 @octocat Old note. [outdated]")
   eq(top_lines[2], "💬 @octocat Was two. [base]")
-  -- Active file-level thread starts unfolded in a 4-sided box.
-  eq(top_lines[3]:find("┌─ 💬 @hubot [file] ", 1, true) ~= nil, true)
-  eq(top_lines[4]:find("│ File note.", 1, true) ~= nil, true)
+  -- Active file-level thread starts unfolded in a smooth 4-sided box with header under top line.
+  eq(top_lines[3]:find("┌───", 1, true), 1)
+  eq(top_lines[4]:find("│ 💬 @hubot [file]", 1, true), 1)
+  eq(top_lines[5]:find("│ File note.", 1, true), 1)
 
   -- Choosing an outdated thread from the panel focuses it inline at top of file.
   choose("💬 @octocat Old note. [outdated]")
   eq(child.api.nvim_get_current_win(), inline_win())
   eq(inline_content(), {
-    lines = { "Old note." },
-    title = " 💬 @octocat [outdated] ",
-    footer = " r reply  x resolve  z fold  q close ",
+    lines = { "💬 @octocat [outdated]", "Old note." },
+    title = nil,
+    footer = nil,
     split = false,
   })
   child.type_keys("q")
@@ -351,7 +353,7 @@ T["outdated, base-side and file threads show above line 1, and choose focuses th
   eq(child.api.nvim_get_current_win(), inline_win())
   local split_info = inline_content()
   eq(split_info.split, true)
-  eq(split_info.lines, { "**@octocat**", "", "Why delete?" })
+  eq(split_info.lines, { "💬 @octocat [base]", "Why delete?" })
   eq(split_info.title:find("old.txt:1 (base)", 1, true) ~= nil, true)
   child.type_keys("q")
   eq(inline_win(), nil)
@@ -366,21 +368,33 @@ T["unfolded threads highlight markdown with built-in treesitter parsers"] = func
           author = "octocat",
           body = "Use `count` instead of **num**.",
           pending = false,
+          created_at = "2026-11-21T14:30:00Z",
         },
       },
     }),
   })
   choose("M file.txt +3 -3 1 thread")
-  local chunks = child.lua_get(
+  local virt_lines = child.lua_get(
     [=[vim.api.nvim_buf_get_extmarks(0,
-    require("didymus.review.threads").namespace, { 1, 0 }, { 1, -1 }, { details = true })[1][4].virt_lines[2]]=]
+    require("didymus.review.threads").namespace, { 1, 0 }, { 1, -1 }, { details = true })[1][4].virt_lines]=]
   )
+  -- Row 2 is the comment header (emoji, bold author, lighter datetime) on the subtle card bg.
+  local header_by_text = {}
+  for _, chunk in ipairs(virt_lines[2]) do
+    header_by_text[chunk[1]] = chunk[2]
+  end
+  eq(header_by_text["@octocat"], { "DidymusThreadBg", "DidymusThreadAuthor" })
+  local formatted_time =
+    child.lua_get([[require("didymus.review.threads").format_time("2026-11-21T14:30:00Z")]])
+  eq(header_by_text["  " .. formatted_time], { "DidymusThreadBg", "DidymusThreadTime" })
+
+  -- Row 3 is the rendered markdown body on the subtle card bg.
   local by_text = {}
-  for _, chunk in ipairs(chunks) do
+  for _, chunk in ipairs(virt_lines[3]) do
     by_text[chunk[1]] = chunk[2]
   end
-  eq(by_text["count"], "@markup.raw.markdown_inline")
-  eq(by_text["num"], "@markup.strong.markdown_inline")
+  eq(by_text["count"], { "DidymusThreadBg", "@markup.raw.markdown_inline" })
+  eq(by_text["num"], { "DidymusThreadBg", "@markup.strong.markdown_inline" })
   eq(by_text["`count`"], nil)
   eq(by_text["**num**"], nil)
 end
@@ -402,9 +416,9 @@ T[":Didymus review focus lets the user move cursor, select, yank, fold and retur
   local win = assert(inline_win())
   eq(child.api.nvim_get_current_win(), win)
   eq(inline_content(), {
-    lines = { "First line.", "Copy this snippet." },
-    title = " 💬 @octocat ",
-    footer = " r reply  x resolve  z fold  q close ",
+    lines = { "💬 @octocat", "First line.", "Copy this snippet." },
+    title = nil,
+    footer = nil,
     split = false,
   })
   -- Code below line 2 is pushed down by virt_lines, not covered.
@@ -412,8 +426,8 @@ T[":Didymus review focus lets the user move cursor, select, yank, fold and retur
   eq(has_text(screen, "three"), true)
   eq(has_text(screen, "First line."), true)
 
-  -- Move cursor inside the thread, visually select the second line, and yank into register a.
-  child.type_keys("j", "V", '"ay')
+  -- Move cursor inside the thread (skip header + first line), visually select the snippet, and yank.
+  child.type_keys("jj", "V", '"ay')
   eq(child.fn.getreg("a"), "Copy this snippet.\n")
 
   -- q closes focus and returns to the code window.
@@ -436,23 +450,33 @@ T[":Didymus review focus keeps compact divider height on multi-comment threads"]
     make_thread("multi", "file.txt", {
       range = { first = 2, last = 2 },
       comments = {
-        { author = "octocat", body = "Why two?", pending = false },
-        { author = "hubot", body = "Because.", pending = true },
+        {
+          author = "octocat",
+          body = "Why two?",
+          pending = false,
+          created_at = "2026-11-21T14:30:00Z",
+        },
+        {
+          author = "hubot",
+          body = "Because.",
+          pending = true,
+          created_at = "2026-11-21T14:35:00Z",
+        },
       },
     }),
   })
   choose("M file.txt +3 -3 1 thread")
   local code_buf = child.api.nvim_get_current_buf()
-  -- Unfocused: top border + body 1 + divider + body 2 + bottom border = 5 virt_lines.
-  eq(#line_marks()[1][2], 5)
+  -- Unfocused: top + header 1 + body 1 + divider + header 2 + body 2 + bottom = 7 virt_lines.
+  eq(#line_marks()[1][2], 7)
 
   child.api.nvim_win_set_cursor(0, { 2, 0 })
   child.cmd("Didymus review focus")
 
   local win = assert(inline_win())
   local buf = child.api.nvim_win_get_buf(win)
-  -- Focused: inner height is 3 (body 1 + single divider line + body 2), matching the 5 outer rows.
-  eq(child.api.nvim_win_get_height(win), 3)
+  -- Focused: inner height is 5 (header 1 + body 1 + smooth divider + header 2 + body 2), matching 7 outer rows.
+  eq(child.api.nvim_win_get_height(win), 5)
   local spacer_marks = child.api.nvim_buf_get_extmarks(
     code_buf,
     child.lua_get([[require("didymus.review.threads").namespace]]),
@@ -460,7 +484,7 @@ T[":Didymus review focus keeps compact divider height on multi-comment threads"]
     -1,
     { details = true }
   )
-  eq(#spacer_marks[1][4].virt_lines, 5)
+  eq(#spacer_marks[1][4].virt_lines, 7)
   local div_marks = child.api.nvim_buf_get_extmarks(
     buf,
     child.lua_get([[require("didymus.review.inline_box").divider_namespace]]),
@@ -468,37 +492,48 @@ T[":Didymus review focus keeps compact divider height on multi-comment threads"]
     -1,
     { details = true }
   )
-  eq(#div_marks, 1)
-  eq(div_marks[1][2], 1)
-  eq(div_marks[1][4].virt_text[2], { "@hubot", "DidymusThread" })
-  eq(div_marks[1][4].virt_text[3], { " [pending]", "DidymusThreadPending" })
+  -- One smooth divider overlay on row 2 plus author/tag/time highlights on rows 0 and 3.
+  local has_divider, has_author, has_time = false, false, false
+  for _, mark in ipairs(div_marks) do
+    if mark[2] == 2 and mark[4].virt_text then
+      has_divider = true
+    end
+    if mark[2] == 3 and mark[4].hl_group == "DidymusThreadAuthor" then
+      has_author = true
+    end
+    if mark[2] == 3 and mark[4].hl_group == "DidymusThreadTime" then
+      has_time = true
+    end
+  end
+  eq({ has_divider, has_author, has_time }, { true, true, true })
 end
 
 T[":Didymus review fold folds and unfolds the threads at the cursor line"] = function()
   open_review()
   choose("M file.txt +3 -3 4 threads")
   eq(line_marks()[1][1], 1)
-  eq(#line_marks()[1][2], 6)
-  eq(line_marks()[2], { 4, { "    ✅ @hubot Rename this." } })
+  eq(#line_marks()[1][2], 8)
+  eq(line_marks()[2], { 4, { "✅ @hubot Rename this." } })
 
   child.api.nvim_win_set_cursor(0, { 2, 0 })
   child.cmd("Didymus review fold")
   eq(line_marks()[1], { 1, { "💬 @octocat Why TWO?" } })
   child.cmd("Didymus review fold")
-  eq(#line_marks()[1][2], 6)
-  eq(line_marks()[1][2][1]:find("┌─ 💬 @octocat ", 1, true) ~= nil, true)
-  eq(line_marks()[1][2][2]:find("│ Why TWO?", 1, true) ~= nil, true)
+  eq(#line_marks()[1][2], 8)
+  eq(line_marks()[1][2][1]:find("┌───", 1, true), 1)
+  eq(line_marks()[1][2][2]:find("│ 💬 @octocat", 1, true), 1)
+  eq(line_marks()[1][2][3]:find("│ Why TWO?", 1, true), 1)
 
   child.api.nvim_win_set_cursor(0, { 5, 0 })
   child.cmd("Didymus review fold")
-  eq(#line_marks()[2][2], 3)
-  -- A resolved thread is dim.
+  eq(#line_marks()[2][2], 4)
+  -- A resolved thread is dim and sits on the subtle card background.
   local chunks = child.lua_get(
     [=[vim.api.nvim_buf_get_extmarks(0,
-    require("didymus.review.threads").namespace, { 4, 0 }, { 4, -1 }, { details = true })[1][4].virt_lines[2]]=]
+    require("didymus.review.threads").namespace, { 4, 0 }, { 4, -1 }, { details = true })[1][4].virt_lines[3]]=]
   )
-  eq(chunks[2], { "│ ", "DidymusThreadResolved" })
-  eq(chunks[3], { "Rename this.", "DidymusThreadResolved" })
+  eq(chunks[1], { "│ ", { "DidymusThreadBg", "DidymusThreadResolvedBorder" } })
+  eq(chunks[2], { "Rename this.", { "DidymusThreadBg", "DidymusThreadResolved" } })
 end
 
 T["fold on a line with two threads folds or unfolds both, with no question"] = function()
@@ -517,11 +552,13 @@ T["fold on a line with two threads folds or unfolds both, with no question"] = f
   eq(marks(), { { 1, { "💬 @octocat A comment.", "✅ @hubot Second." } } })
   child.cmd("Didymus review fold")
   local unfolded = marks()[1][2]
-  eq(#unfolded, 6)
-  eq(unfolded[1]:find("┌─ 💬 @octocat ", 1, true) ~= nil, true)
-  eq(unfolded[2]:find("│ A comment.", 1, true) ~= nil, true)
-  eq(unfolded[4]:find("┌─ ✅ @hubot ", 1, true) ~= nil, true)
-  eq(unfolded[5]:find("│ Second.", 1, true) ~= nil, true)
+  eq(#unfolded, 8)
+  eq(unfolded[1]:find("┌───", 1, true), 1)
+  eq(unfolded[2]:find("│ 💬 @octocat", 1, true), 1)
+  eq(unfolded[3]:find("│ A comment.", 1, true), 1)
+  eq(unfolded[5]:find("┌───", 1, true), 1)
+  eq(unfolded[6]:find("│ ✅ @hubot", 1, true), 1)
+  eq(unfolded[7]:find("│ Second.", 1, true), 1)
   eq(helpers.picker_calls(child, "select"), {})
 end
 
@@ -529,14 +566,11 @@ T["fold all folds all threads if one is unfolded, else it unfolds all threads"] 
   open_review()
   choose("M file.txt +3 -3 4 threads")
   child.cmd("Didymus review fold all")
-  eq(
-    line_marks(),
-    { { 1, { "💬 @octocat Why TWO?" } }, { 4, { "    ✅ @hubot Rename this." } } }
-  )
+  eq(line_marks(), { { 1, { "💬 @octocat Why TWO?" } }, { 4, { "✅ @hubot Rename this." } } })
   child.cmd("Didymus review fold all")
   local all_unfolded = line_marks()
-  eq(#all_unfolded[1][2], 6)
-  eq(#all_unfolded[2][2], 3)
+  eq(#all_unfolded[1][2], 8)
+  eq(#all_unfolded[2][2], 4)
 
   -- A refresh keeps the folds.
   child.cmd("Didymus review refresh")
@@ -555,9 +589,11 @@ T["the mappings fold the thread at the cursor, and all threads"] = function()
   child.type_keys("<F3>")
   eq(line_marks()[1], { 1, { "💬 @octocat Why TWO?" } })
   child.type_keys("<F4>")
-  -- The bottom border shows the mapping of fold.
-  eq(line_marks()[1][2][6]:find("└─ <F3> fold ", 1, true) ~= nil, true)
-  eq(line_marks()[2][2][3]:find("    └─ <F3> fold ", 1, true) ~= nil, true)
+  -- Both bottom borders stay smooth with no key hints.
+  eq(line_marks()[1][2][8]:find("└─+", 1), 1)
+  eq(line_marks()[1][2][8]:find("fold", 1, true), nil)
+  eq(line_marks()[2][2][4]:find("└─+", 1), 1)
+  eq(line_marks()[2][2][4]:find("fold", 1, true), nil)
 end
 
 T["fold with no thread at the cursor, no thread at a line or no review shows a warning"] = function()
@@ -585,28 +621,34 @@ T["fold with an unknown argument shows an error"] = function()
   )
 end
 
-T["an unfolded thread shows the keys of the user, if they fit"] = function()
-  child.lua([[
-    vim.keymap.set("n", "<Leader>rr", "<Plug>(didymus-review-reply)")
-    vim.keymap.set("n", "<Leader>rx", "<Plug>(didymus-review-resolve)")
-    vim.keymap.set("n", "<Leader>rf", "<Plug>(didymus-review-fold)")
-  ]])
+T["? inside a focused thread opens a shortcuts popup and returns focus on close"] = function()
   open_review()
   choose("M file.txt +3 -3 4 threads")
-  child.api.nvim_win_set_cursor(0, { 5, 0 })
-  child.cmd("Didymus review fold")
-  eq(line_marks()[1][2][6]:find([[└─ \rr reply  \rx resolve  \rf fold ]], 1, true) ~= nil, true)
-  eq(
-    line_marks()[2][2][3]:find([[    └─ \rr reply  \rx unresolve  \rf fold ]], 1, true) ~= nil,
-    true
-  )
+  child.api.nvim_win_set_cursor(0, { 2, 0 })
+  child.cmd("Didymus review focus")
+  local thread_win = assert(inline_win())
+  eq(inline_content().footer, nil)
 
-  -- In a narrow window, the keys do not fit in the bottom border.
-  child.cmd("vsplit")
-  child.cmd("vertical resize 30")
-  helpers.wait_for_wrap(child)
-  eq(line_marks()[1][2][6]:find("reply", 1, true), nil)
-  eq(line_marks()[2][2][2]:find("│ Rename", 1, true) ~= nil, true)
+  -- Press `?` in normal mode to open the shortcuts popup without closing the thread.
+  child.type_keys("?")
+  local help_win = child.api.nvim_get_current_win()
+  eq(help_win ~= thread_win, true)
+  eq(child.api.nvim_win_is_valid(thread_win), true)
+  local help_lines = table.concat(
+    child.api.nvim_buf_get_lines(child.api.nvim_win_get_buf(help_win), 0, -1, true),
+    "\n"
+  )
+  eq(help_lines:find("reply to thread", 1, true) ~= nil, true)
+  eq(help_lines:find("resolve thread", 1, true) ~= nil, true)
+  eq(help_lines:find("fold thread", 1, true) ~= nil, true)
+  eq(help_lines:find("close thread focus", 1, true) ~= nil, true)
+
+  -- Pressing `?` or `q` closes the popup and returns focus to the thread.
+  child.type_keys("?")
+  eq(child.api.nvim_win_is_valid(help_win), false)
+  eq(child.api.nvim_get_current_win(), thread_win)
+  child.type_keys("q")
+  eq(inline_win(), nil)
 end
 
 T["a long comment wraps at the text width, and again after a resize"] = function()

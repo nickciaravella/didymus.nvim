@@ -926,7 +926,8 @@ function Session:focus_thread(thread)
   local has_file = self:has_file_buffer(thread.path)
   if not has_file then
     self:focus()
-    local split_lines, split_dividers = threads.get_lines(thread, { include_first_author = true })
+    local split_lines, split_dividers, split_headers =
+      threads.get_lines(thread, { include_tags = true })
     inline_box.open({
       mode = "focus",
       kind = "focus",
@@ -937,6 +938,7 @@ function Session:focus_thread(thread)
       title = threads.get_title(thread),
       lines = split_lines,
       dividers = split_dividers,
+      headers = split_headers,
       max_height = math.max(4, math.floor(vim.o.lines * 0.4)),
       thread_keys = self:make_thread_keys(thread, false),
       on_attach = function(box)
@@ -969,19 +971,20 @@ function Session:focus_thread(thread)
   preferred_win = vim.api.nvim_get_current_win()
   self.folds[thread.id] = false
 
-  local focus_lines, focus_dividers = threads.get_lines(thread)
+  local focus_lines, focus_dividers, focus_headers =
+    threads.get_lines(thread, { include_tags = threads.get_line(thread) == nil })
   inline_box.open({
     mode = "focus",
     kind = "focus",
     path = thread.path,
     thread_id = thread.id,
     location = threads.get_location(thread),
-    title = threads.get_header_text(thread),
-    title_hl = thread.resolved and "DidymusThreadResolved" or "DidymusThread",
+    title = "",
     border = inline_box.borders.box,
-    border_hl = thread.resolved and "DidymusThreadResolved" or "DidymusThreadBorder",
+    border_hl = thread.resolved and "DidymusThreadResolvedBorder" or "DidymusThreadBorder",
     lines = focus_lines,
     dividers = focus_dividers,
+    headers = focus_headers,
     max_height = math.max(4, math.floor(vim.o.lines * 0.5)),
     thread_keys = self:make_thread_keys(thread, true),
     on_attach = function(box)
@@ -1077,9 +1080,9 @@ function Session:open_reply_box(thread, opts)
     thread_id = thread.id,
     location = location,
     title = "Reply",
-    title_hl = thread.resolved and "DidymusThreadResolved" or "DidymusThread",
+    title_hl = thread.resolved and "DidymusThreadResolvedBorder" or "DidymusThreadTitle",
     border = inline_box.borders.reply,
-    border_hl = thread.resolved and "DidymusThreadResolved" or "DidymusThreadBorder",
+    border_hl = thread.resolved and "DidymusThreadResolvedBorder" or "DidymusThreadBorder",
     lines = lines,
     max_height = opts.max_height,
     actions = opts.actions,

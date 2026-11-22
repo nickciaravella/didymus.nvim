@@ -87,8 +87,10 @@ end
 
 --- Namespace for highlighting the commented lines while a new comment box is open.
 M.context_namespace = vim.api.nvim_create_namespace("didymus.review.inline_context")
---- Namespace for author divider overlays inside focused multi-comment threads.
+--- Namespace for smooth divider overlays and comment headers inside focused threads.
 M.divider_namespace = vim.api.nvim_create_namespace("didymus.review.inline_divider")
+--- Namespace for shortcut popup highlights.
+M.help_namespace = vim.api.nvim_create_namespace("didymus.review.inline_help")
 
 local box_border = { "┌", "─", "┐", "│", "┘", "─", "└", "│" }
 local reply_border = { "├", "─", "┤", "│", "┘", "─", "└", "│" }
@@ -125,12 +127,13 @@ M.borders = {
 ---@field thread_id string?
 ---@field range didymus.review.Range?
 ---@field location string
----@field title string
+---@field title string?
 ---@field title_hl string?
 ---@field border string[]?
 ---@field border_hl string?
 ---@field lines string[]?
 ---@field dividers didymus.review.CommentDivider[]?
+---@field headers didymus.review.CommentHeader[]?
 ---@field max_height integer
 ---@field split boolean? True for a bottom split under the code window (for deleted files).
 ---@field actions didymus.review.InlineBoxAction[]?
@@ -160,6 +163,10 @@ M.borders = {
 ---@field private border string[]
 ---@field private border_hl string
 ---@field private dividers didymus.review.CommentDivider[]
+---@field private headers didymus.review.CommentHeader[]
+---@field private help_items { key: string, desc: string }[]
+---@field private help_win integer?
+---@field private opening_help boolean
 ---@field private footer string
 ---@field private on_change fun()
 ---@field private on_close fun()?
@@ -211,30 +218,50 @@ end
 ---@param opts didymus.review.InlineBoxOpts
 ---@return string
 local function build_footer(opts)
+  if opts.mode ~= "edit" then
+    return ""
+  end
   local parts = {}
+  for _, action in ipairs(opts.actions or {}) do
+    if action.key then
+      table.insert(parts, ("%s %s"):format(action.key, action.name))
+    end
+  end
+  if opts.cancel_key ~= false then
+    table.insert(parts, ("%s cancel"):format(opts.cancel_key or "q"))
+  end
+  return table.concat(parts, "  ")
+end
+
+---@param opts didymus.review.InlineBoxOpts
+---@return { key: string, desc: string }[]
+local function build_help_items(opts)
+  local items = {}
   if opts.mode == "edit" then
     for _, action in ipairs(opts.actions or {}) do
       if action.key then
-        table.insert(parts, ("%s %s"):format(action.key, action.name))
+        table.insert(items, { key = action.key, desc = action.name })
       end
     end
+    table.insert(items, { key = "<Esc>", desc = "leave box (keep draft)" })
     if opts.cancel_key ~= false then
-      table.insert(parts, ("%s cancel"):format(opts.cancel_key or "q"))
+      table.insert(items, { key = opts.cancel_key or "q", desc = "cancel draft" })
     end
   else
     local tk = opts.thread_keys or {}
     if tk.reply and tk.reply.key then
-      table.insert(parts, ("%s reply"):format(tk.reply.key))
+      table.insert(items, { key = tk.reply.key, desc = "reply to thread" })
     end
     if tk.resolve and tk.resolve.key then
-      table.insert(parts, ("%s %s"):format(tk.resolve.key, tk.resolve.name))
+      table.insert(items, { key = tk.resolve.key, desc = tk.resolve.name .. " thread" })
     end
     if tk.fold and tk.fold.key then
-      table.insert(parts, ("%s fold"):format(tk.fold.key))
+      table.insert(items, { key = tk.fold.key, desc = "fold thread" })
     end
-    table.insert(parts, "q close")
+    table.insert(items, { key = "q / <Esc>", desc = "close thread focus" })
   end
-  return table.concat(parts, "  ")
+  table.insert(items, { key = "?", desc = "show or close shortcuts" })
+  return items
 end
 
 --- Compute the 1-based screen row of the top of the spacer slot in `host_win`, or nil if off screen.
@@ -374,22 +401,6 @@ function InlineBox:compute_win_config(host_win, anchor)
   end
   local width = math.max(1, anchor.box_width - 2)
   local inner_height = math.max(1, visible_outer - 2)
-  local title_prefix = "─"
-  local title = (" %s "):format(self.title)
-  local max_title_width = math.max(0, width - 1)
-  if vim.fn.strdisplaywidth(title) > max_title_width then
-    local chars = vim.fn.split(title, [[\zs]])
-    local kept, used = {}, 0
-    for _, char in ipairs(chars) do
-      local w = vim.fn.strdisplaywidth(char)
-      if used + w > max_title_width then
-        break
-      end
-      table.insert(kept, char)
-      used = used + w
-    end
-    title = table.concat(kept)
-  end
   local config = {
     relative = "win",
     win = host_win,
@@ -398,13 +409,33 @@ function InlineBox:compute_win_config(host_win, anchor)
     width = width,
     height = inner_height,
     border = self.border,
-    title = { { title_prefix, self.border_hl }, { title, self.title_hl } },
-    title_pos = "left",
     hide = false,
   }
+  if self.title and self.title ~= "" then
+    local title_prefix = "─"
+    local title = (" %s "):format(self.title)
+    local max_title_width = math.max(0, width - 1)
+    if vim.fn.strdisplaywidth(title) > max_title_width then
+      local chars = vim.fn.split(title, [[\zs]])
+      local kept, used = {}, 0
+      for _, char in ipairs(chars) do
+        local w = vim.fn.strdisplaywidth(char)
+        if used + w > max_title_width then
+          break
+        end
+        table.insert(kept, char)
+        used = used + w
+      end
+      title = table.concat(kept)
+    end
+    config.title = { { title_prefix, self.border_hl }, { title, self.title_hl } }
+    config.title_pos = "left"
+  else
+    config.title = nil
+  end
   local footer = self.footer ~= "" and (" %s "):format(self.footer) or ""
   if footer ~= "" and vim.fn.strdisplaywidth(footer) + 1 <= width then
-    config.footer = { { "─", self.border_hl }, { footer, "Comment" } }
+    config.footer = { { "─", self.border_hl }, { footer, "DidymusThreadFooter" } }
     config.footer_pos = "left"
   else
     config.footer = nil
@@ -412,9 +443,10 @@ function InlineBox:compute_win_config(host_win, anchor)
   return config
 end
 
---- Overlay compact author dividers on `***` separator lines so focused threads match unfocused ones.
+--- Overlay smooth horizontal dividers on `***` separator lines and style comment header lines
+--- (bold author, tags, lighter datetime) so focused threads match unfocused threads.
 function InlineBox:draw_dividers()
-  if not self:is_open() or #self.dividers == 0 then
+  if not self:is_open() or (#self.dividers == 0 and #self.headers == 0) then
     return
   end
   vim.api.nvim_buf_clear_namespace(self.buf, M.divider_namespace, 0, -1)
@@ -422,28 +454,134 @@ function InlineBox:draw_dividers()
   local line_count = vim.api.nvim_buf_line_count(self.buf)
   for _, divider in ipairs(self.dividers) do
     if divider.row < line_count then
-      local dim = divider.resolved and "DidymusThreadResolved" or nil
-      local border_hl = dim or self.border_hl
-      local chunks = {
-        { "─ ", border_hl },
-        { "@" .. divider.author, dim or "DidymusThread" },
-      }
-      if divider.pending then
-        table.insert(chunks, { " [pending]", dim or "DidymusThreadPending" })
-      end
-      local used = 0
-      for _, chunk in ipairs(chunks) do
-        used = used + vim.fn.strdisplaywidth(chunk[1])
-      end
-      local fill = math.max(0, inner_width - used - 1)
-      table.insert(chunks, { " " .. ("─"):rep(fill), border_hl })
+      local border_hl = divider.resolved and "DidymusThreadResolvedBorder" or self.border_hl
       vim.api.nvim_buf_set_extmark(self.buf, M.divider_namespace, divider.row, 0, {
-        virt_text = chunks,
+        virt_text = { { ("─"):rep(inner_width), border_hl } },
         virt_text_pos = "overlay",
         priority = 5000,
       })
     end
   end
+  for _, header in ipairs(self.headers) do
+    if header.row < line_count then
+      local col = 0
+      for _, chunk in ipairs(header.chunks) do
+        local len = #chunk[1]
+        if chunk[2] and len > 0 then
+          vim.api.nvim_buf_set_extmark(self.buf, M.divider_namespace, header.row, col, {
+            end_row = header.row,
+            end_col = col + len,
+            hl_group = chunk[2],
+            priority = 5000,
+          })
+        end
+        col = col + len
+      end
+    end
+  end
+end
+
+--- Close the shortcuts popup if it is open, optionally returning focus to `self.win`.
+---@param refocus boolean?
+function InlineBox:close_help(refocus)
+  local help_win = self.help_win
+  self.help_win = nil
+  if refocus and self:is_open() then
+    vim.api.nvim_set_current_win(self.win)
+  end
+  if help_win and vim.api.nvim_win_is_valid(help_win) then
+    vim.api.nvim_win_close(help_win, true)
+  end
+end
+
+--- Open or close a floating popup listing the active shortcuts for this inline box.
+function InlineBox:toggle_help()
+  if self.help_win and vim.api.nvim_win_is_valid(self.help_win) then
+    self:close_help(true)
+    return
+  end
+  if not self:is_open() or #self.help_items == 0 then
+    return
+  end
+
+  local key_width = 0
+  for _, item in ipairs(self.help_items) do
+    key_width = math.max(key_width, vim.fn.strdisplaywidth(item.key))
+  end
+
+  local lines = {}
+  local max_width = vim.fn.strdisplaywidth(" Shortcuts ") + 2
+  for _, item in ipairs(self.help_items) do
+    local pad = (" "):rep(key_width - vim.fn.strdisplaywidth(item.key))
+    local line = (" %s%s  %s "):format(item.key, pad, item.desc)
+    table.insert(lines, line)
+    max_width = math.max(max_width, vim.fn.strdisplaywidth(line))
+  end
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].bufhidden = "wipe"
+  vim.api.nvim_buf_set_lines(buf, 0, -1, true, lines)
+  vim.bo[buf].modifiable = false
+  vim.bo[buf].readonly = true
+
+  for index, item in ipairs(self.help_items) do
+    vim.api.nvim_buf_set_extmark(buf, M.help_namespace, index - 1, 1, {
+      end_row = index - 1,
+      end_col = 1 + #item.key,
+      hl_group = "DidymusThreadAuthor",
+    })
+  end
+
+  local width = math.min(max_width, math.max(10, vim.o.columns - 4))
+  local height = math.min(#lines, math.max(1, vim.o.lines - 4))
+  local row = math.max(0, math.floor((vim.o.lines - height - 2) / 2))
+  local col = math.max(0, math.floor((vim.o.columns - width - 2) / 2))
+
+  self.opening_help = true
+  local ok, help_win = pcall(vim.api.nvim_open_win, buf, true, {
+    relative = "editor",
+    row = row,
+    col = col,
+    width = width,
+    height = height,
+    style = "minimal",
+    border = box_border,
+    title = { { " Shortcuts ", "DidymusThreadTitle" } },
+    title_pos = "center",
+    zindex = 60,
+  })
+  self.opening_help = false
+  if not ok then
+    vim.api.nvim_buf_delete(buf, { force = true })
+    return
+  end
+
+  self.help_win = help_win
+  vim.wo[help_win][0].winhighlight =
+    "Normal:DidymusThreadBg,FloatBorder:DidymusThreadBorder,FloatTitle:DidymusThreadTitle"
+
+  local map_opts = { buffer = buf, nowait = true }
+  local function close_and_refocus()
+    self:close_help(true)
+  end
+  vim.keymap.set("n", "q", close_and_refocus, map_opts)
+  vim.keymap.set("n", "<Esc>", close_and_refocus, map_opts)
+  vim.keymap.set("n", "?", close_and_refocus, map_opts)
+
+  vim.api.nvim_create_autocmd("WinLeave", {
+    group = self.group,
+    buffer = buf,
+    callback = function()
+      vim.schedule(function()
+        if self.help_win == help_win then
+          self:close_help(false)
+          if self.mode == "focus" and not self.split and not self:is_focused() then
+            self:close()
+          end
+        end
+      end)
+    end,
+  })
 end
 
 --- Update position, size, and visibility of `self.win` to match the `virt_lines` slot.
@@ -550,6 +688,7 @@ function InlineBox:close(cb, ...)
     return
   end
   self.closed = true
+  self:close_help(false)
   if self.group then
     pcall(vim.api.nvim_del_augroup_by_id, self.group)
   end
@@ -617,6 +756,9 @@ function InlineBox:setup_interactions(opts)
     vim.keymap.set("n", "<Esc>", function()
       self:leave()
     end, map_opts)
+    vim.keymap.set("n", "?", function()
+      self:toggle_help()
+    end, map_opts)
 
     -- Completion plugins can set buffer mappings on InsertEnter. Set the submit mappings after them.
     vim.api.nvim_create_autocmd("InsertEnter", {
@@ -644,7 +786,7 @@ function InlineBox:setup_interactions(opts)
       group = self.group,
       buffer = self.buf,
       callback = function()
-        if not self.closed then
+        if not self.closed and not self.opening_help then
           show_rendered_markdown(self.buf, self.win, function()
             if not self.closed then
               self:update_height()
@@ -669,6 +811,9 @@ function InlineBox:setup_interactions(opts)
     end
     vim.keymap.set("n", "q", close_focus, map_opts)
     vim.keymap.set("n", "<Esc>", close_focus, map_opts)
+    vim.keymap.set("n", "?", function()
+      self:toggle_help()
+    end, map_opts)
 
     local tk = opts.thread_keys or {}
     if tk.reply and tk.reply.key then
@@ -702,7 +847,17 @@ function InlineBox:setup_interactions(opts)
         group = self.group,
         buffer = self.buf,
         callback = function()
+          if self.opening_help then
+            return
+          end
           vim.schedule(function()
+            if
+              self.help_win
+              and vim.api.nvim_win_is_valid(self.help_win)
+              and vim.api.nvim_get_current_win() == self.help_win
+            then
+              return
+            end
             self:close()
           end)
         end,
@@ -768,11 +923,15 @@ function M.open(opts)
     win = -1,
     height = initial_height,
     max_height = opts.max_height,
-    title = opts.title,
-    title_hl = opts.title_hl or "DidymusThread",
+    title = opts.title or "",
+    title_hl = opts.title_hl or "DidymusThreadTitle",
     border = opts.border or box_border,
     border_hl = opts.border_hl or "DidymusThreadBorder",
     dividers = opts.dividers or {},
+    headers = opts.headers or {},
+    help_items = build_help_items(opts),
+    help_win = nil,
+    opening_help = false,
     footer = build_footer(opts),
     on_change = opts.on_change,
     on_close = opts.on_close,
@@ -842,10 +1001,12 @@ function M.open(opts)
         width = math.max(1, anchor.box_width - 2),
         height = math.max(1, math.min(self.height, math.max(1, info.height - 2))),
         border = self.border,
-        title = { { "─", self.border_hl }, { (" %s "):format(self.title), self.title_hl } },
-        title_pos = "left",
         hide = false,
       }
+      if self.title and self.title ~= "" then
+        cfg.title = { { "─", self.border_hl }, { (" %s "):format(self.title), self.title_hl } }
+        cfg.title_pos = "left"
+      end
     end
     cfg.style = "minimal"
     self.win = vim.api.nvim_open_win(buf, true, cfg)
@@ -855,9 +1016,9 @@ function M.open(opts)
     vim.wo[self.win][0].wrap = true
     vim.wo[self.win][0].linebreak = true
     vim.wo[self.win][0].winfixbuf = true
-    -- One-cell left margin aligns the buffer text with `│ ` in `virt_lines`.
-    vim.wo[self.win][0].statuscolumn = " "
-    vim.wo[self.win][0].winhighlight = ("Normal:Normal,FloatBorder:%s,FloatTitle:%s,FloatFooter:Comment"):format(
+    -- One-cell left margin aligns the buffer text with `│ ` in `virt_lines` and shares the card bg.
+    vim.wo[self.win][0].statuscolumn = "%#DidymusThreadBg# "
+    vim.wo[self.win][0].winhighlight = ("Normal:DidymusThreadBg,FloatBorder:%s,FloatTitle:%s,FloatFooter:DidymusThreadFooter"):format(
       self.border_hl,
       self.title_hl
     )

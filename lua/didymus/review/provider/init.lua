@@ -59,6 +59,7 @@
 ---@field author string
 ---@field body string Markdown.
 ---@field pending boolean
+---@field created_at string? ISO-8601 UTC timestamp, such as `"2026-11-21T21:45:00Z"`.
 
 ---@alias didymus.review.Verdict "approve"|"comment"|"request_changes"
 
