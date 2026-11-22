@@ -30,7 +30,7 @@ M.defaults = {
     },
     thread = {
       -- In a focused inline thread, or in a thread split. False turns a key off.
-      keys = { reply = "r", resolve = "x", fold = "z" },
+      keys = { reply = "r", resolve = "x", fold = "z", source = "s" },
     },
   },
   diff = {

@@ -87,8 +87,10 @@ end
 
 --- Namespace for highlighting the commented lines while a new comment box is open.
 M.context_namespace = vim.api.nvim_create_namespace("didymus.review.inline_context")
---- Namespace for smooth divider overlays and comment headers inside focused threads.
+--- Namespace for smooth divider overlays and comment headers in raw source mode.
 M.divider_namespace = vim.api.nvim_create_namespace("didymus.review.inline_divider")
+--- Namespace for Path B pre-rendered markdown highlights and inline padding in focused threads.
+M.render_namespace = vim.api.nvim_create_namespace("didymus.review.inline_render")
 --- Namespace for shortcut popup highlights.
 M.help_namespace = vim.api.nvim_create_namespace("didymus.review.inline_help")
 
@@ -119,6 +121,7 @@ M.borders = {
 ---@field reply? { key: string|false, fn: fun() }
 ---@field resolve? { key: string|false, name: string, fn: fun() }
 ---@field fold? { key: string|false, fn: fun() }
+---@field source? { key: string|false }
 
 ---@class didymus.review.InlineBoxOpts
 ---@field mode "focus"|"edit"
@@ -132,8 +135,11 @@ M.borders = {
 ---@field border string[]?
 ---@field border_hl string?
 ---@field lines string[]?
+---@field initial_height integer?
 ---@field dividers didymus.review.CommentDivider[]?
 ---@field headers didymus.review.CommentHeader[]?
+---@field render_rendered (fun(box_width: integer): didymus.review.RenderedRow[])?
+---@field render_raw (fun(): string[], didymus.review.CommentDivider[], didymus.review.CommentHeader[])?
 ---@field max_height integer
 ---@field split boolean? True for a bottom split under the code window (for deleted files).
 ---@field actions didymus.review.InlineBoxAction[]?
@@ -164,6 +170,10 @@ M.borders = {
 ---@field private border_hl string
 ---@field private dividers didymus.review.CommentDivider[]
 ---@field private headers didymus.review.CommentHeader[]
+---@field private render_rendered (fun(box_width: integer): didymus.review.RenderedRow[])?
+---@field private render_raw (fun(): string[], didymus.review.CommentDivider[], didymus.review.CommentHeader[])?
+---@field private show_raw boolean
+---@field private rendered_width integer?
 ---@field private help_items { key: string, desc: string }[]
 ---@field private help_win integer?
 ---@field private opening_help boolean
@@ -257,6 +267,9 @@ local function build_help_items(opts)
     end
     if tk.fold and tk.fold.key then
       table.insert(items, { key = tk.fold.key, desc = "fold thread" })
+    end
+    if tk.source and tk.source.key then
+      table.insert(items, { key = tk.source.key, desc = "toggle markdown source" })
     end
     table.insert(items, { key = "q / <Esc>", desc = "close thread focus" })
   end
@@ -386,7 +399,7 @@ end
 ---@param anchor didymus.review.InlineAnchor
 ---@return vim.api.keyset.win_config?
 function InlineBox:compute_win_config(host_win, anchor)
-  local screen_top, win_text_top, win_text_bottom, textoff = measure_slot(host_win, anchor)
+  local screen_top, win_text_top, win_text_bottom = measure_slot(host_win, anchor)
   if not screen_top then
     return nil
   end
@@ -405,7 +418,7 @@ function InlineBox:compute_win_config(host_win, anchor)
     relative = "win",
     win = host_win,
     row = screen_top - win_text_top,
-    col = textoff + anchor.indent,
+    col = anchor.indent,
     width = width,
     height = inner_height,
     border = self.border,
@@ -584,6 +597,144 @@ function InlineBox:toggle_help()
   })
 end
 
+--- Render the focused read-only buffer in Path B rendered mode (matching unfocused `virt_lines`
+--- cell-for-cell) or raw markdown source mode (when toggled with `s`).
+function InlineBox:render_focus_view()
+  if self.mode ~= "focus" or not self:is_open() then
+    return
+  end
+  local box_width = vim.api.nvim_win_get_width(self.win) + 2
+  local inner_width = math.max(1, box_width - 4)
+  local cursor = vim.api.nvim_win_get_cursor(self.win)
+
+  vim.bo[self.buf].modifiable = true
+  vim.bo[self.buf].readonly = false
+  vim.api.nvim_buf_clear_namespace(self.buf, M.render_namespace, 0, -1)
+  vim.api.nvim_buf_clear_namespace(self.buf, M.divider_namespace, 0, -1)
+
+  if self.show_raw and self.render_raw then
+    local raw_lines, dividers, headers = self.render_raw()
+    self.dividers = dividers or {}
+    self.headers = headers or {}
+    self.rendered_width = nil
+    vim.api.nvim_buf_set_lines(self.buf, 0, -1, true, #raw_lines > 0 and raw_lines or { "" })
+    vim.bo[self.buf].modifiable = false
+    vim.bo[self.buf].readonly = true
+
+    vim.wo[self.win][0].wrap = true
+    vim.wo[self.win][0].linebreak = true
+    vim.wo[self.win][0].conceallevel = 0
+    vim.wo[self.win][0].concealcursor = ""
+    if not self.split then
+      vim.wo[self.win][0].statuscolumn = "%#DidymusThreadBg# "
+    end
+    pcall(vim.treesitter.start, self.buf, "markdown")
+    self:draw_dividers()
+  elseif self.render_rendered then
+    pcall(vim.treesitter.stop, self.buf)
+    local rows = self.render_rendered(box_width)
+    local buf_lines = {}
+    local divider_width = math.max(1, box_width - 2)
+    for _, row in ipairs(rows) do
+      if row.kind == "divider" then
+        table.insert(buf_lines, ("─"):rep(divider_width))
+      else
+        local parts = {}
+        for _, chunk in ipairs(row.chunks or {}) do
+          table.insert(parts, chunk[1])
+        end
+        table.insert(buf_lines, table.concat(parts))
+      end
+    end
+    if #buf_lines == 0 then
+      buf_lines = { "" }
+    end
+    vim.api.nvim_buf_set_lines(self.buf, 0, -1, true, buf_lines)
+    vim.bo[self.buf].modifiable = false
+    vim.bo[self.buf].readonly = true
+
+    vim.wo[self.win][0].wrap = false
+    vim.wo[self.win][0].conceallevel = 0
+    vim.wo[self.win][0].concealcursor = ""
+    if not self.split then
+      vim.wo[self.win][0].statuscolumn = ""
+    end
+
+    for index, row in ipairs(rows) do
+      local lnum = index - 1
+      local text = buf_lines[index]
+      if row.kind == "divider" then
+        vim.api.nvim_buf_set_extmark(self.buf, M.render_namespace, lnum, 0, {
+          end_row = lnum,
+          end_col = #text,
+          hl_group = row.hl or self.border_hl,
+        })
+      else
+        local display_width = vim.fn.strdisplaywidth(text)
+        local pad = row.eol_hl and math.max(0, inner_width - display_width) or 0
+        if not self.split then
+          if text == "" and pad > 0 then
+            vim.api.nvim_buf_set_extmark(self.buf, M.render_namespace, lnum, 0, {
+              virt_text = { { " ", "DidymusThreadBg" }, { (" "):rep(pad), row.eol_hl } },
+              virt_text_pos = "inline",
+              right_gravity = false,
+            })
+          else
+            vim.api.nvim_buf_set_extmark(self.buf, M.render_namespace, lnum, 0, {
+              virt_text = { { " ", "DidymusThreadBg" } },
+              virt_text_pos = "inline",
+              right_gravity = false,
+            })
+          end
+        elseif text == "" and pad > 0 then
+          vim.api.nvim_buf_set_extmark(self.buf, M.render_namespace, lnum, 0, {
+            virt_text = { { (" "):rep(pad), row.eol_hl } },
+            virt_text_pos = "inline",
+            right_gravity = false,
+          })
+        end
+
+        local col = 0
+        for _, chunk in ipairs(row.chunks or {}) do
+          local len = #chunk[1]
+          if chunk[2] and len > 0 then
+            vim.api.nvim_buf_set_extmark(self.buf, M.render_namespace, lnum, col, {
+              end_row = lnum,
+              end_col = col + len,
+              hl_group = chunk[2],
+            })
+          end
+          col = col + len
+        end
+
+        if text ~= "" and pad > 0 then
+          vim.api.nvim_buf_set_extmark(self.buf, M.render_namespace, lnum, #text, {
+            virt_text = { { (" "):rep(pad), row.eol_hl } },
+            virt_text_pos = "inline",
+          })
+        end
+      end
+    end
+    self.rendered_width = box_width
+  else
+    vim.bo[self.buf].modifiable = false
+    vim.bo[self.buf].readonly = true
+  end
+
+  local max_line = vim.api.nvim_buf_line_count(self.buf)
+  vim.api.nvim_win_set_cursor(self.win, { math.min(cursor[1], max_line), 0 })
+end
+
+--- Toggle between rendered markdown (Path B) and raw markdown source in a focused thread.
+function InlineBox:toggle_source()
+  if self.mode ~= "focus" or not self.render_raw or not self.render_rendered then
+    return
+  end
+  self.show_raw = not self.show_raw
+  self:render_focus_view()
+  self:update_height()
+end
+
 --- Update position, size, and visibility of `self.win` to match the `virt_lines` slot.
 ---@param scroll_into_view boolean?
 function InlineBox:sync(scroll_into_view)
@@ -616,7 +767,15 @@ function InlineBox:sync(scroll_into_view)
   if not vim.deep_equal(cfg, self.last_config) then
     vim.api.nvim_win_set_config(self.win, cfg)
     self.last_config = cfg
-    self:draw_dividers()
+    if self.mode == "focus" and not self.show_raw and self.render_rendered then
+      if self.rendered_width ~= anchor.box_width then
+        self:render_focus_view()
+        self:update_height()
+        return
+      end
+    else
+      self:draw_dividers()
+    end
   end
   if self.mode == "edit" then
     local text_height = vim.api.nvim_win_text_height(self.win, {}).all
@@ -840,6 +999,11 @@ function InlineBox:setup_interactions(opts)
         vim.tbl_extend("force", map_opts, { desc = "didymus: review fold" })
       )
     end
+    if tk.source and tk.source.key then
+      vim.keymap.set("n", tk.source.key --[[@as string]], function()
+        self:toggle_source()
+      end, vim.tbl_extend("force", map_opts, { desc = "didymus: toggle markdown source" }))
+    end
 
     if not self.split then
       -- A focused inline thread has no unsaved text, so leaving it reverts cleanly to `virt_lines`.
@@ -905,12 +1069,14 @@ function M.open(opts)
     pcall(vim.treesitter.start, buf, "markdown")
   else
     vim.bo[buf].filetype = "didymus_thread"
-    pcall(vim.treesitter.start, buf, "markdown")
+    if not opts.render_rendered then
+      pcall(vim.treesitter.start, buf, "markdown")
+    end
     vim.bo[buf].modifiable = false
     vim.bo[buf].readonly = true
   end
 
-  local initial_height = math.max(1, math.min(#lines, opts.max_height))
+  local initial_height = math.max(1, math.min(opts.initial_height or #lines, opts.max_height))
   local self = setmetatable({
     mode = opts.mode,
     kind = opts.kind,
@@ -929,6 +1095,10 @@ function M.open(opts)
     border_hl = opts.border_hl or "DidymusThreadBorder",
     dividers = opts.dividers or {},
     headers = opts.headers or {},
+    render_rendered = opts.render_rendered,
+    render_raw = opts.render_raw,
+    show_raw = false,
+    rendered_width = nil,
     help_items = build_help_items(opts),
     help_win = nil,
     opening_help = false,
@@ -946,7 +1116,7 @@ function M.open(opts)
   end
 
   if self.split then
-    local height = math.max(3, math.min(#lines + 1, opts.max_height))
+    local height = math.max(3, math.min(initial_height + 1, opts.max_height))
     vim.cmd(("botright %dsplit"):format(height))
     self.win = vim.api.nvim_get_current_win()
     vim.api.nvim_win_set_buf(self.win, buf)
@@ -961,13 +1131,18 @@ function M.open(opts)
       or (" %s "):format(self.title)
     vim.wo[self.win][0].winbar = bar:gsub("%%", "%%%%")
     if self.mode == "focus" then
-      self:draw_dividers()
-      configure_readonly_markdown(buf, self.win, function()
-        if not self.closed then
-          self:draw_dividers()
-          self:update_height()
-        end
-      end)
+      if self.render_rendered then
+        self:render_focus_view()
+        self:update_height()
+      else
+        self:draw_dividers()
+        configure_readonly_markdown(buf, self.win, function()
+          if not self.closed then
+            self:draw_dividers()
+            self:update_height()
+          end
+        end)
+      end
     else
       show_raw_markdown(buf, self.win)
     end
@@ -997,7 +1172,7 @@ function M.open(opts)
         relative = "win",
         win = host_win,
         row = 0,
-        col = info.textoff + anchor.indent,
+        col = anchor.indent,
         width = math.max(1, anchor.box_width - 2),
         height = math.max(1, math.min(self.height, math.max(1, info.height - 2))),
         border = self.border,
@@ -1016,20 +1191,24 @@ function M.open(opts)
     vim.wo[self.win][0].wrap = true
     vim.wo[self.win][0].linebreak = true
     vim.wo[self.win][0].winfixbuf = true
-    -- One-cell left margin aligns the buffer text with `│ ` in `virt_lines` and shares the card bg.
+    -- One-cell left margin aligns editable/raw text with `│ ` in `virt_lines` and shares the card bg.
     vim.wo[self.win][0].statuscolumn = "%#DidymusThreadBg# "
     vim.wo[self.win][0].winhighlight = ("Normal:DidymusThreadBg,FloatBorder:%s,FloatTitle:%s,FloatFooter:DidymusThreadFooter"):format(
       self.border_hl,
       self.title_hl
     )
     if self.mode == "focus" then
-      self:draw_dividers()
-      configure_readonly_markdown(buf, self.win, function()
-        if not self.closed then
-          self:draw_dividers()
-          self:update_height()
-        end
-      end)
+      if self.render_rendered then
+        self:render_focus_view()
+      else
+        self:draw_dividers()
+        configure_readonly_markdown(buf, self.win, function()
+          if not self.closed then
+            self:draw_dividers()
+            self:update_height()
+          end
+        end)
+      end
     else
       show_raw_markdown(buf, self.win)
     end

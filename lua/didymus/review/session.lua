@@ -300,8 +300,8 @@ end
 ---@param win integer
 ---@return integer
 local function get_win_text_width(win)
-  local info = vim.fn.getwininfo(win)[1]
-  return info.width - info.textoff
+  -- Thread cards use `virt_lines_leftcol = true` and `col = 0`, spanning the full window width.
+  return vim.fn.getwininfo(win)[1].width
 end
 
 --- The text width of the narrowest window of the review tabpage that shows `buf`. With no such
@@ -887,6 +887,7 @@ function Session:make_thread_keys(thread, allow_fold)
         require("didymus.review").fold()
       end,
     } or nil,
+    source = { key = keys.source },
   }
 end
 
@@ -939,6 +940,16 @@ function Session:focus_thread(thread)
       lines = split_lines,
       dividers = split_dividers,
       headers = split_headers,
+      render_rendered = function(box_width)
+        return threads.render_thread_rows(thread, {
+          box_width = box_width,
+          tabstop = vim.o.tabstop,
+          include_tags = true,
+        })
+      end,
+      render_raw = function()
+        return threads.get_lines(thread, { include_tags = true })
+      end,
       max_height = math.max(4, math.floor(vim.o.lines * 0.4)),
       thread_keys = self:make_thread_keys(thread, false),
       on_attach = function(box)
@@ -969,10 +980,16 @@ function Session:focus_thread(thread)
     return
   end
   preferred_win = vim.api.nvim_get_current_win()
+  local host_buf = vim.api.nvim_win_get_buf(preferred_win)
+  local include_tags = threads.get_line(thread) == nil
+  local initial_width = self:get_text_width(host_buf)
+  local initial_rows = threads.render_thread_rows(thread, {
+    box_width = initial_width,
+    tabstop = vim.bo[host_buf].tabstop,
+    include_tags = include_tags,
+  })
   self.folds[thread.id] = false
 
-  local focus_lines, focus_dividers, focus_headers =
-    threads.get_lines(thread, { include_tags = threads.get_line(thread) == nil })
   inline_box.open({
     mode = "focus",
     kind = "focus",
@@ -982,10 +999,20 @@ function Session:focus_thread(thread)
     title = "",
     border = inline_box.borders.box,
     border_hl = thread.resolved and "DidymusThreadResolvedBorder" or "DidymusThreadBorder",
-    lines = focus_lines,
-    dividers = focus_dividers,
-    headers = focus_headers,
-    max_height = math.max(4, math.floor(vim.o.lines * 0.5)),
+    initial_height = #initial_rows,
+    render_rendered = function(box_width)
+      local tabstop = vim.api.nvim_buf_is_valid(host_buf) and vim.bo[host_buf].tabstop
+        or vim.o.tabstop
+      return threads.render_thread_rows(thread, {
+        box_width = box_width,
+        tabstop = tabstop,
+        include_tags = include_tags,
+      })
+    end,
+    render_raw = function()
+      return threads.get_lines(thread, { include_tags = include_tags })
+    end,
+    max_height = math.max(4, vim.o.lines - 6),
     thread_keys = self:make_thread_keys(thread, true),
     on_attach = function(box)
       self.inline_box = box

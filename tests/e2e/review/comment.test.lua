@@ -178,7 +178,7 @@ T["add to review shows the comment as pending in the panel and at the line"] = f
   eq(marks()[1][1], 2)
   eq(marks()[1][2][1]:find("┌───", 1, true), 1)
   eq(marks()[1][2][2]:find("│ 💬 @reviewer [pending]", 1, true), 1)
-  eq(marks()[1][2][3]:find("│ Looks good.", 1, true), 1)
+  eq(marks()[1][2][4]:find("│ Looks good.", 1, true), 1)
   eq(has_message("didymus: added a pending comment at file.txt:3"), true)
 end
 
@@ -305,7 +305,7 @@ T["a comment on the selection in visual mode is a range comment"] = function()
   local thread = provider_threads()[2]
   eq({ thread.range, thread.comments[1].body }, { { first = 16, last = 17 }, "Two lines." })
   eq(marks()[1][1], 16)
-  eq(marks()[1][2][3]:find("│ Two lines.", 1, true), 1)
+  eq(marks()[1][2][4]:find("│ Two lines.", 1, true), 1)
 end
 
 T["a comment on a command range, and a cancel, add no comment"] = function()

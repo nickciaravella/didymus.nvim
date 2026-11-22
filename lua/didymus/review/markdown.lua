@@ -1007,12 +1007,17 @@ local function pad_eol(chunks, width, eol_hl)
   return result
 end
 
---- Render markdown `text` wrapped to `opts.width`, combining treesitter highlights with
---- `render-markdown.nvim` marks when installed (or `opts.marks` in tests).
+---@class didymus.review.markdown.RenderedLine
+---@field chunks didymus.review.markdown.Chunk[]
+---@field eol_hl didymus.review.markdown.Hl?
+
+--- Render markdown `text` wrapped to `opts.width`, keeping trailing `eol_hl` separate from
+--- `chunks` so callers can pad `virt_lines` or apply inline end-of-line extmarks without adding
+--- spaces to buffer text.
 ---@param text string
 ---@param opts { tabstop: integer?, hl: string?, width: integer, marks: table[]? }
----@return didymus.review.markdown.Chunk[][]
-function M.render(text, opts)
+---@return didymus.review.markdown.RenderedLine[]
+function M.render_lines(text, opts)
   local width = math.max(1, opts.width)
   local tabstop = opts.tabstop or 8
   local raw_lines = vim.split(text, "\n")
@@ -1029,19 +1034,26 @@ function M.render(text, opts)
 
   local source = table.concat(lines, "\n") .. "\n"
   local spans_by_line, conceals_by_line = parse_spans(source, #lines, rm_info == nil)
+  ---@type didymus.review.markdown.RenderedLine[]
   local result = {}
 
   for index, line in ipairs(lines) do
     local row = index - 1
     if rm_info and rm_info.virt_lines_above[row] then
       for _, vline in ipairs(rm_info.virt_lines_above[row]) do
-        table.insert(result, M.truncate_chunks(map_override_hl(vline, opts.hl), width))
+        table.insert(result, {
+          chunks = M.truncate_chunks(map_override_hl(vline, opts.hl), width),
+          eol_hl = nil,
+        })
       end
     end
 
     if rm_info and rm_info.replace[row] then
       for _, vline in ipairs(rm_info.replace[row]) do
-        table.insert(result, M.truncate_chunks(map_override_hl(vline, opts.hl), width))
+        table.insert(result, {
+          chunks = M.truncate_chunks(map_override_hl(vline, opts.hl), width),
+          eol_hl = nil,
+        })
       end
     elseif not (rm_info and rm_info.hidden[row]) then
       local chunks, eol_hl = composite_line(
@@ -1054,20 +1066,38 @@ function M.render(text, opts)
       )
       if chunks then
         for _, wrapped in ipairs(M.wrap_chunks(chunks, width)) do
-          table.insert(result, pad_eol(wrapped, width, eol_hl))
+          table.insert(result, { chunks = wrapped, eol_hl = eol_hl })
         end
       end
     end
 
     if rm_info and rm_info.virt_lines_below[row] then
       for _, vline in ipairs(rm_info.virt_lines_below[row]) do
-        table.insert(result, M.truncate_chunks(map_override_hl(vline, opts.hl), width))
+        table.insert(result, {
+          chunks = M.truncate_chunks(map_override_hl(vline, opts.hl), width),
+          eol_hl = nil,
+        })
       end
     end
   end
 
   if #result == 0 then
-    return { { { "", opts.hl } } }
+    return { { chunks = { { "", opts.hl } }, eol_hl = nil } }
+  end
+  return result
+end
+
+--- Render markdown `text` wrapped to `opts.width`, combining treesitter highlights with
+--- `render-markdown.nvim` marks when installed (or `opts.marks` in tests).
+---@param text string
+---@param opts { tabstop: integer?, hl: string?, width: integer, marks: table[]? }
+---@return didymus.review.markdown.Chunk[][]
+function M.render(text, opts)
+  local width = math.max(1, opts.width)
+  local rows = M.render_lines(text, opts)
+  local result = {}
+  for _, row in ipairs(rows) do
+    table.insert(result, pad_eol(row.chunks, width, row.eol_hl))
   end
   return result
 end

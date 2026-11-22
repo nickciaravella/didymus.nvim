@@ -151,9 +151,11 @@ In the file, each thread has a sign with its comment count. The thread shows und
 2 local count = 2
 ┌──────────────────────────────────────────────────────────┐
 │ 💬 @octocat  2026-11-21 14:30                            │
+│                                                          │
 │ Why two?                                                 │
 ├──────────────────────────────────────────────────────────┤
 │ @hubot [pending]  2026-11-21 14:35                       │
+│                                                          │
 │ Because.                                                 │
 └──────────────────────────────────────────────────────────┘
   local total = count * 2
@@ -162,13 +164,13 @@ In the file, each thread has a sign with its comment count. The thread shows und
 
 A thread is folded or unfolded:
 
-- A folded thread is one line: the icon of the state, the author and the first line of the first comment.
-- An unfolded thread shows all its comments in a smooth 4-sided box from the line numbers to the right edge of the window, with a subtle darker background (`DidymusThreadBg`). Each comment starts with a header line (status emoji, bold author, tags and lighter local date and time) followed by rendered markdown (treesitter hides delimiters and highlights code; when `render-markdown.nvim` is installed, its formatting applies too). A long line wraps at the width of the window.
+- A folded thread is one line from column 0: the icon of the state, the author and the first line of the first comment.
+- An unfolded thread shows all its comments in a smooth 4-sided box across the full window width (from column 0, over the line numbers), with a subtle darker background (`DidymusThreadBg`). Each comment starts with a header line (status emoji, bold author, tags and lighter local date and time), one blank line, and rendered markdown (treesitter hides delimiters and highlights code; when `render-markdown.nvim` is installed, its formatting applies too). A long line wraps at the width of the window.
 - As on github.com, an active head-side thread starts unfolded, and a resolved, outdated or base-side thread starts folded. A resolve folds the thread, and an unresolve unfolds it.
 
 `fold` folds the threads at the cursor line, or unfolds them. With two threads at the line, it folds both if one of them is unfolded. `fold all` folds all head-line threads if one of them is unfolded. Else, it unfolds them. A refresh keeps the folds.
 
-`focus` opens a read-only rendered markdown view in the exact inline space of the thread, with no float over the code. It keeps markdown rendered under the cursor (`conceallevel = 3`, `concealcursor = "nvc"`, and `anti_conceal = { enabled = false }` when `render-markdown.nvim` is loaded). Inside it, you can move the cursor, select text, yank, follow links and scroll long threads. Press `?` in normal mode to open a shortcuts popup (`r` reply, `x` resolve or unresolve, `z` fold, `q` / `<Esc>` close).
+`focus` opens a read-only view in the exact inline space of the thread, with no float over the code. It renders the same layout and markdown as the unfocused thread, with no shift on focus. Inside it, you can move the cursor, select text, yank, and scroll long threads. Press `s` to toggle raw markdown source (with syntax highlights and full link URLs for `gx`). Press `?` in normal mode to open a shortcuts popup (`r` reply, `x` resolve or unresolve, `z` fold, `s` toggle markdown source, `q` / `<Esc>` close).
 
 Outdated threads, threads on deleted lines and threads on the file show inline above line 1 of their file. `<CR>` on one of them in the panel opens the file at line 1 and focuses the thread inline. On a deleted file with no buffer, `<CR>` opens a bottom split under the code window.
 

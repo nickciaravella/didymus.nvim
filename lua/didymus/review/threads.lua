@@ -332,16 +332,19 @@ end
 ---@param chunks didymus.review.markdown.Chunk[]
 ---@param inner_width integer
 ---@param border_hl string
+---@param eol_hl didymus.review.markdown.Hl?
 ---@return didymus.review.markdown.Chunk[]
-local function make_body_line(chunks, inner_width, border_hl)
+local function make_body_line(chunks, inner_width, border_hl, eol_hl)
   local line = { { "│ ", with_card_bg(border_hl) } }
   local fitted = markdown.truncate_chunks(chunks, inner_width)
   for _, chunk in ipairs(fitted) do
-    table.insert(line, { chunk[1], with_card_bg(chunk[2]) })
+    if chunk[1] ~= "" then
+      table.insert(line, { chunk[1], with_card_bg(chunk[2]) })
+    end
   end
   local pad = math.max(0, inner_width - markdown.chunks_width(fitted))
   if pad > 0 then
-    table.insert(line, { (" "):rep(pad), "DidymusThreadBg" })
+    table.insert(line, { (" "):rep(pad), with_card_bg(eol_hl) })
   end
   table.insert(line, { " │", with_card_bg(border_hl) })
   return line
@@ -357,6 +360,65 @@ local function make_spacer_lines(count)
   return lines
 end
 
+---@class didymus.review.RenderedRow
+---@field kind "content"|"divider"
+---@field chunks didymus.review.markdown.Chunk[]?
+---@field eol_hl didymus.review.markdown.Hl?
+---@field hl string?
+
+---@class didymus.review.threads.RenderOpts
+---@field box_width integer
+---@field tabstop integer
+---@field include_tags boolean? True for top-of-file threads (`[outdated]`, `[base]`, `[file]`).
+
+--- Single shared renderer for both unfocused `virt_lines` and focused read-only floats (Path B).
+--- Produces inner content rows (header, blank separator line, rendered markdown body) and divider
+--- rows between replies, so unfocused and focused views match cell-for-cell.
+---@param thread didymus.review.Thread
+---@param opts didymus.review.threads.RenderOpts
+---@return didymus.review.RenderedRow[]
+function M.render_thread_rows(thread, opts)
+  local dim = thread.resolved and "DidymusThreadResolved" or nil
+  local border_hl = thread.resolved and "DidymusThreadResolvedBorder" or "DidymusThreadBorder"
+  local inner_width = math.max(1, opts.box_width - 4)
+  ---@type didymus.review.RenderedRow[]
+  local rows = {}
+
+  for index, comment in ipairs(thread.comments) do
+    if index > 1 then
+      table.insert(rows, { kind = "divider", hl = border_hl })
+    end
+
+    local header = get_comment_header_chunks(thread, comment, index, opts.include_tags)
+    table.insert(rows, { kind = "content", chunks = markdown.truncate_chunks(header, inner_width) })
+    table.insert(rows, { kind = "content", chunks = { { "" } } })
+
+    -- Keep the indent of the first line, because it can be code.
+    local body = comment.body:gsub("^%s*\n", ""):gsub("%s+$", "")
+    if body ~= "" then
+      local rendered_lines = markdown.render_lines(body, {
+        tabstop = opts.tabstop,
+        hl = dim,
+        width = inner_width,
+      })
+      for _, rendered_line in ipairs(rendered_lines) do
+        table.insert(rows, {
+          kind = "content",
+          chunks = markdown.truncate_chunks(rendered_line.chunks, inner_width),
+          eol_hl = rendered_line.eol_hl,
+        })
+      end
+    else
+      table.insert(rows, { kind = "content", chunks = { { "" } } })
+    end
+  end
+
+  if #rows == 0 then
+    table.insert(rows, { kind = "content", chunks = { { "" } } })
+  end
+  return rows
+end
+
 ---@class didymus.review.threads.UnfoldOpts
 ---@field box_width integer
 ---@field inner_width integer
@@ -364,39 +426,24 @@ end
 ---@field omit_bottom boolean? True when an inline reply box attaches directly below.
 ---@field include_tags boolean? True for top-of-file threads (`[outdated]`, `[base]`, `[file]`).
 
---- The `virt_lines` of an unfolded thread: smooth 4-sided box, comment headers (status emoji,
---- bold author, tags, lighter datetime) just under the border/divider, and rendered markdown bodies.
+--- The `virt_lines` of an unfolded thread: smooth 4-sided box wrapping `M.render_thread_rows()`.
 ---@param thread didymus.review.Thread
 ---@param opts didymus.review.threads.UnfoldOpts
 ---@return didymus.review.markdown.Chunk[][]
 local function get_unfolded_lines(thread, opts)
-  local dim = thread.resolved and "DidymusThreadResolved" or nil
   local border_hl = thread.resolved and "DidymusThreadResolvedBorder" or "DidymusThreadBorder"
   local lines = {}
 
   table.insert(lines, make_rule_line("┌", "┐", opts.box_width, border_hl))
 
-  for index, comment in ipairs(thread.comments) do
-    if index > 1 then
-      table.insert(lines, make_rule_line("├", "┤", opts.box_width, border_hl))
-    end
-
-    local header = get_comment_header_chunks(thread, comment, index, opts.include_tags)
-    table.insert(lines, make_body_line(header, opts.inner_width, border_hl))
-
-    -- Keep the indent of the first line, because it can be code.
-    local body = comment.body:gsub("^%s*\n", ""):gsub("%s+$", "")
-    if body ~= "" then
-      local rendered_lines = markdown.render(body, {
-        tabstop = opts.tabstop,
-        hl = dim,
-        width = opts.inner_width,
-      })
-      for _, rendered_line in ipairs(rendered_lines) do
-        table.insert(lines, make_body_line(rendered_line, opts.inner_width, border_hl))
-      end
+  for _, row in ipairs(M.render_thread_rows(thread, opts)) do
+    if row.kind == "divider" then
+      table.insert(lines, make_rule_line("├", "┤", opts.box_width, row.hl or border_hl))
     else
-      table.insert(lines, make_body_line({ { "" } }, opts.inner_width, border_hl))
+      table.insert(
+        lines,
+        make_body_line(row.chunks or { { "" } }, opts.inner_width, border_hl, row.eol_hl)
+      )
     end
   end
 
@@ -505,6 +552,7 @@ function M.draw(buf, path, threads, opts)
     if pos == 1 then
       mark_opts.virt_lines = top_virt_lines
       mark_opts.virt_lines_above = true
+      mark_opts.virt_lines_leftcol = true
     end
     vim.api.nvim_buf_set_extmark(buf, M.namespace, 0, 0, mark_opts)
   end
@@ -604,6 +652,7 @@ function M.draw(buf, path, threads, opts)
       vim.api.nvim_buf_set_extmark(buf, M.namespace, line - 1, 0, {
         id = #threads + 1,
         virt_lines = make_spacer_lines(outer),
+        virt_lines_leftcol = true,
       })
     end
   end
@@ -616,6 +665,7 @@ function M.draw(buf, path, threads, opts)
         mark_opts.sign_text = get_sign_text(group.comment_count)
         mark_opts.sign_hl_group = group.resolved and "DidymusThreadResolved" or "DidymusThread"
         mark_opts.virt_lines = group.virt_lines
+        mark_opts.virt_lines_leftcol = true
       end
       vim.api.nvim_buf_set_extmark(buf, M.namespace, line - 1, 0, mark_opts)
     end
@@ -733,6 +783,7 @@ function M.get_lines(thread, opts)
       row = #lines - 1,
       chunks = header_chunks,
     })
+    table.insert(lines, "")
     local body = comment.body:gsub("^%s*\n", ""):gsub("%s+$", "")
     vim.list_extend(lines, vim.split(body, "\n"))
   end

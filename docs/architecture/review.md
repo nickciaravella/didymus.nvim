@@ -177,17 +177,19 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 2 local count = 2
 ┌──────────────────────────────────────────────────────────┐
 │ 💬 @octocat  2026-11-21 14:30                            │
+│                                                          │
 │ Why two?                                                 │
 ├──────────────────────────────────────────────────────────┤
 │ @hubot [pending]  2026-11-21 14:35                       │
+│                                                          │
 │ Because.                                                 │
 └──────────────────────────────────────────────────────────┘
   local total = count * 2
 ✅ @hubot Rename this.
 ```
 
-1. A folded thread is one line: the text of its panel row (with `[base]` or `[file]` for top-of-file threads), aligned flush with the line numbers.
-2. An unfolded thread shows all comments in a smooth 4-sided box (`┌──┐`, `│ │`, `├──┤`, `└──┘`) with a subtle darker card background (`DidymusThreadBg`), aligned flush with the line numbers across the text width of the code window. `DidymusThreadBorder` highlights the border. Each comment begins with a header line inside the box: status emoji (on the first comment), bold author (`DidymusThreadAuthor`), optional `[pending]` and state tags, and lighter local date and time (`DidymusThreadTime`). Comment bodies render markdown with built-in `markdown` and `markdown_inline` treesitter parsers (and `render-markdown.nvim` marks when installed) so unfocused threads match focused read-only threads. A resolved thread is dim.
+1. A folded thread is one line from column 0 (`virt_lines_leftcol = true`): the text of its panel row (with `[base]` or `[file]` for top-of-file threads).
+2. An unfolded thread shows all comments in a smooth 4-sided box (`┌──┐`, `│ │`, `├──┤`, `└──┘`) with a subtle darker card background (`DidymusThreadBg`), across the full window width (`virt_lines_leftcol = true`, `col = 0`, over the sign and number columns). `DidymusThreadBorder` highlights the border. Each comment begins with a header line inside the box: status emoji (on the first comment), bold author (`DidymusThreadAuthor`), optional `[pending]` and state tags, and lighter local date and time (`DidymusThreadTime`), followed by one blank line. Comment bodies render through one shared renderer (`threads.render_thread_rows()` + `markdown.render_lines()`, using built-in treesitter parsers and `render-markdown.nvim` marks when installed) so unfocused threads and focused read-only threads match cell-for-cell. A resolved thread is dim.
 3. The session keeps the fold state that the user set, by thread id, so a refresh keeps it. With no state, a resolved, outdated or base-side thread is folded, and an active head-side or file-level thread is unfolded. A resolve or an unresolve removes the state, so the thread folds or unfolds with its new state.
 4. `fold` folds or unfolds the threads at the cursor line, with no question, because `next` treats them as one stop. Inside a focused thread, `fold` closes focus and folds that thread. `fold all` does the same for all head-line threads of the session. With no thread, a warning shows.
 5. `next thread`, `prev thread` and the `<CR>` of the panel unfold the threads at the line. `file` and `hunk` do not.
@@ -203,12 +205,13 @@ The files panel opens with the review tabpage, in the panel role of the picker, 
 
 #### Inline focus and bottom split
 
-1. `:Didymus review focus` and `<Plug>(didymus-review-focus)` put a read-only `didymus_thread` window (registered to the `markdown` treesitter parser, with `relative = "win"`, `statuscolumn = " "`, 4-sided single border, `conceallevel = 3`, `concealcursor = "nvc"`) into the exact `virt_lines` space of the thread, so no code hides under it. If `render-markdown.nvim` is installed, didymus calls its `render()` API with `anti_conceal = { enabled = false }` so the cursor line stays rendered. Inside it, the user can move the cursor, select text, yank, follow links and scroll long threads.
-2. Editable comment and reply boxes use `filetype = "didymus_input"` (registered to the `markdown` treesitter parser). While focused, they show raw markdown source with syntax highlights (`conceallevel = 0`). When unfocused (after `<Esc>` in normal mode or `WinLeave`), they render markdown until focus returns.
-3. When you leave a read-only focused thread (`q`, `<Esc>` or `WinLeave`), the window closes and restores the `virt_lines` box.
-4. `<CR>` on a top-of-file thread (outdated, base side or file level) in the panel opens the file at line 1 and focuses the thread inline above line 1. On a deleted file with no buffer, it opens a bottom split under the code window.
-5. The focused thread and the bottom split have the keys of `review.thread.keys`: `r` replies, `x` resolves or unresolves, and `z` folds (in an inline thread). `false` turns a key off.
-6. The order of the threads is the order of the panel: the files in the order of the provider. In each file, the threads with a line come first, by line. The other threads stay in the order of the provider.
+1. `:Didymus review focus` and `<Plug>(didymus-review-focus)` put a read-only `didymus_thread` window (`relative = "win"`, `col = 0`, full window width, 4-sided single border, `conceallevel = 0`) into the exact `virt_lines` space of the thread, so no code hides under it. By default it renders the exact output of `threads.render_thread_rows()` via extmarks (with inline left and end-of-line background extmarks so code yanks have no extra spaces). Inside it, the user can move the cursor, select text, yank, and scroll long threads.
+2. Pressing `s` (`review.thread.keys.source`, or `false` to turn off) toggles between rendered markdown and raw markdown source with treesitter syntax highlights (unwrapped, full link URLs for `gx`).
+3. Editable comment and reply boxes use `filetype = "didymus_input"` (registered to the `markdown` treesitter parser). While focused, they show raw markdown source with syntax highlights (`conceallevel = 0`). When unfocused (after `<Esc>` in normal mode or `WinLeave`), they render markdown until focus returns.
+4. When you leave a read-only focused thread (`q`, `<Esc>` or `WinLeave`), the window closes and restores the `virt_lines` box.
+5. `<CR>` on a top-of-file thread (outdated, base side or file level) in the panel opens the file at line 1 and focuses the thread inline above line 1. On a deleted file with no buffer, it opens a bottom split under the code window.
+6. The focused thread and the bottom split have the keys of `review.thread.keys`: `r` replies, `x` resolves or unresolves, `z` folds (in an inline thread), and `s` toggles raw markdown source. `false` turns a key off. `?` in normal mode opens a shortcuts popup.
+7. The order of the threads is the order of the panel: the files in the order of the provider. In each file, the threads with a line come first, by line. The other threads stay in the order of the provider.
 
 ### Navigation
 
