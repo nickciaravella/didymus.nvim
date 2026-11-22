@@ -161,7 +161,7 @@ In the file, each thread has a sign with its comment count. The thread shows und
 A thread is folded or unfolded:
 
 - A folded thread is one line: the icon of the state, the author and the first line of the first comment.
-- An unfolded thread shows all its comments as rendered markdown in a 4-sided box (treesitter hides markdown delimiters and highlights inline code and fenced code blocks). A long line wraps at the width of the window.
+- An unfolded thread shows all its comments as rendered markdown in a 4-sided box (treesitter hides markdown delimiters and highlights inline code and fenced code blocks; when `render-markdown.nvim` is installed, its formatting applies too). A long line wraps at the width of the window.
 - As on github.com, an active head-side thread starts unfolded, and a resolved, outdated or base-side thread starts folded. A resolve folds the thread, and an unresolve unfolds it.
 
 `fold` folds the threads at the cursor line, or unfolds them. With two threads at the line, it folds both if one of them is unfolded. `fold all` folds all head-line threads if one of them is unfolded. Else, it unfolds them. A refresh keeps the folds.

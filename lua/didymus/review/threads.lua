@@ -236,10 +236,10 @@ end
 
 --- Build a boxed body line padded to the right border: `│ <chunks>   │`.
 ---@param indent_str string
----@param chunks [string, string?][]
+---@param chunks didymus.review.markdown.Chunk[]
 ---@param inner_width integer
 ---@param border_hl string
----@return [string, string?][]
+---@return didymus.review.markdown.Chunk[]
 local function make_body_line(indent_str, chunks, inner_width, border_hl)
   local line = {}
   if indent_str ~= "" then
@@ -318,11 +318,13 @@ local function get_unfolded_lines(thread, opts)
     -- Keep the indent of the first line, because it can be code.
     local body = comment.body:gsub("^%s*\n", ""):gsub("%s+$", "")
     if body ~= "" then
-      local styled_lines = markdown.highlight(body, { tabstop = opts.tabstop, hl = dim })
-      for _, styled_line in ipairs(styled_lines) do
-        for _, wrapped in ipairs(markdown.wrap_chunks(styled_line, opts.inner_width)) do
-          table.insert(lines, make_body_line(indent_str, wrapped, opts.inner_width, border_hl))
-        end
+      local rendered_lines = markdown.render(body, {
+        tabstop = opts.tabstop,
+        hl = dim,
+        width = opts.inner_width,
+      })
+      for _, rendered_line in ipairs(rendered_lines) do
+        table.insert(lines, make_body_line(indent_str, rendered_line, opts.inner_width, border_hl))
       end
     else
       table.insert(lines, make_body_line(indent_str, { { "" } }, opts.inner_width, border_hl))
